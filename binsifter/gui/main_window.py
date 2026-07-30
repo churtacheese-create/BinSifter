@@ -14,6 +14,7 @@ still a placeholder; that's been removed now that Scan Queue is real.
 
 from __future__ import annotations
 
+import logging
 import time
 from pathlib import Path
 
@@ -36,10 +37,15 @@ from binsifter import __version__
 from binsifter.core.config import build_default_config
 from binsifter.core.engine import ScanResult, scan_directory
 from binsifter.core.models import FileRecord
+from binsifter.gui.log_bridge import QtLogHandler
+from binsifter.gui.pages.capa_rules import CapaRulesPage
 from binsifter.gui.pages.dashboard import DashboardPage
+from binsifter.gui.pages.logs import LogsPage
+from binsifter.gui.pages.nsrl import NsrlPage
 from binsifter.gui.pages.results import ResultsPage
 from binsifter.gui.pages.scan_queue import ScanQueuePage
 from binsifter.gui.pages.settings import SettingsPage
+from binsifter.gui.pages.yara_rules import YaraRulesPage
 from binsifter.gui.theme import DARK, ThemePalette, qcolor_to_css
 from binsifter.gui.widgets import NavButton, accent_to_css
 
@@ -193,6 +199,10 @@ class MainWindow(QMainWindow):
             if active:
                 self.pages.setCurrentIndex(i)
                 self.page_title.setText("" if i == 0 else _NAV_ITEMS[i][0])
+                if i == 3:  # YARA Rules - re-read the file fresh every time it's shown, same as Show-Page's Update-YaraRulesContent call
+                    self.yara_rules_page.reload_content()
+                elif i == 4:  # Capa Rules - same "re-list on every visit" behavior as Show-Page's Update-CapaRulesList call
+                    self.capa_rules_page.reload_content()
 
     def _on_settings_clicked(self) -> None:
         """Settings (like Help/About) is reachable only from the top bar,
@@ -354,17 +364,58 @@ class MainWindow(QMainWindow):
         self.results_page = ResultsPage(theme, self.config)
         self.pages.addWidget(self.results_page)
 
-        for label, _ in _NAV_ITEMS[3:]:
-            placeholder = QLabel(f"{label} page - not yet built.")
-            placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            placeholder.setStyleSheet(f"color: {accent_to_css(theme.MutedFore)};")
-            self.pages.addWidget(placeholder)
+        self.yara_rules_page = YaraRulesPage(theme, self.config)
+        self.pages.addWidget(self.yara_rules_page)
+
+        self.capa_rules_page = CapaRulesPage(theme, self.config)
+        self.pages.addWidget(self.capa_rules_page)
+
+        self.nsrl_page = NsrlPage(theme, self.config)
+        self.pages.addWidget(self.nsrl_page)
+
+        self.logs_page = LogsPage(theme)
+        self.pages.addWidget(self.logs_page)
+
+        # Every sidebar nav page is real as of this pass - no more
+        # "page - not yet built" placeholders in the QStackedWidget.
 
         # Settings, like Help/About, is a top-bar-only destination - added
         # to the same QStackedWidget but not part of the sidebar's
         # _NAV_ITEMS loop above (see _on_settings_clicked).
         self.settings_page = SettingsPage(theme, self.config)
         self.pages.addWidget(self.settings_page)
+
+        # Cross-page sync, matching the PowerShell version's direct field
+        # pokes: browsing to a new path from YARA Rules/Capa Rules/NSRL
+        # updates Settings' matching textbox too. Saving Settings refreshes
+        # YARA Rules' content and Capa Rules' list (same as the original's
+        # Update-YaraRulesContent/Update-CapaRulesList calls after a save);
+        # NSRL only gets its label text resynced, not an automatic reload -
+        # the original doesn't auto-reload the hash count on Settings save
+        # either (BinSifter_v1.3.0-alpha.2.ps1 lines ~5212-5217), since a
+        # reload can be a real multi-second parse the analyst should ask
+        # for explicitly via Reload Now.
+        self.yara_rules_page.rules_path_changed.connect(
+            lambda path: self.settings_page._fields["YaraRules"].setText(path)
+        )
+        self.capa_rules_page.rules_path_changed.connect(
+            lambda path: self.settings_page._fields["CapaRules"].setText(path)
+        )
+        self.nsrl_page.path_changed.connect(lambda path: self.settings_page._fields["NsrlPath"].setText(path))
+
+        self.settings_page.settings_saved.connect(self.yara_rules_page.reload_content)
+        self.settings_page.settings_saved.connect(self.capa_rules_page.reload_content)
+        self.settings_page.settings_saved.connect(
+            lambda: self.nsrl_page.path_label.setText(self.config.NsrlPath or "No NSRL file configured.")
+        )
+
+        # Bridges binsifter's own logging into the Logs page - the first
+        # thing that makes engine.py's log calls (ATT&CK load status,
+        # draft rule-gen skips, etc.) visible anywhere in the GUI.
+        self._log_handler = QtLogHandler(level=logging.INFO)
+        self._log_handler.log_line.connect(self.logs_page.append_line)
+        logging.getLogger("binsifter").addHandler(self._log_handler)
+        logging.getLogger("binsifter").setLevel(logging.INFO)
 
         layout.addWidget(self.pages)
         return wrap
