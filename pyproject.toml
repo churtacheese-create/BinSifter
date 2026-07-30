@@ -31,6 +31,11 @@ dependencies = [
                            # which matters a lot for the Linux + installer goals (the real "ssdeep" PyPI
                            # package requires libfuzzy to be compiled/available on the target machine).
     "pefile>=2023.2.7",   # PE parsing (imphash, Rich header) - pure Python, no external tool needed at all.
+    "signify>=0.8",       # Authenticode/PKCS#7 verification, pure Python and cross-platform -
+                           # replaces the PowerShell version's Windows-only Get-AuthenticodeSignature.
+                           # NOTE: BinSifter doesn't populate a real root CA trust store yet, so
+                           # every signature currently comes back "NotTrusted" rather than "Valid" -
+                           # see core/authenticode.py's TODO before treating that status as final.
 ]
 
 [project.optional-dependencies]

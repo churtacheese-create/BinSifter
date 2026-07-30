@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import logging
 import sys
 from dataclasses import asdict, fields
 from datetime import datetime, timezone
@@ -35,18 +36,31 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--src-dir", required=True, help="Directory of files to scan")
     parser.add_argument("--nsrl-path", default="", help="NSRL known-good hash set")
     parser.add_argument("--yara-rules", default="", help="YARA rules file")
+    parser.add_argument("--capa-rules", default="", help="capa rules directory")
     parser.add_argument("--blocklist-path", default="", help="Known-bad hash blocklist (overrides the default)")
     parser.add_argument("--report-dir", default="", help="Where to write the CSV report (overrides the default)")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
+    # binsifter.core's diagnostic logging (e.g. "loaded N capa rules from
+    # X") is INFO-level and otherwise silently swallowed by Python's
+    # default logging config - without this, a rule silently failing to
+    # load looks identical to "capa ran and found nothing" in the output.
+    # Root stays at WARNING (not INFO) deliberately: capa's dependencies
+    # (vivisect especially) are known to be very noisy at INFO - FLOSS's
+    # own CLI explicitly suppresses vivisect's logger for exactly this
+    # reason. Only binsifter's own loggers get bumped to INFO.
+    logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s", stream=sys.stderr)
+    logging.getLogger("binsifter").setLevel(logging.INFO)
+
     args = _build_arg_parser().parse_args(argv)
 
     config = build_default_config()
     config.SrcDir = args.src_dir
     config.NsrlPath = args.nsrl_path
     config.YaraRules = args.yara_rules
+    config.CapaRules = args.capa_rules
     if args.blocklist_path:
         config.BlocklistPath = args.blocklist_path
     if args.report_dir:

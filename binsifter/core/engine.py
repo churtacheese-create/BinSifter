@@ -3,12 +3,12 @@ PowerShell version.
 
 This is a first-pass skeleton, not a finished port: it wires together the
 modules that are already real (hashing, NSRL, blocklist, YARA, imphash,
-ssdeep clustering) and clearly marks the ones that still throw
-NotImplementedError (capa, FLOSS, Speakeasy, Authenticode, MITRE ATT&CK
-enrichment) so a scan can be exercised end-to-end today without those,
-and each one gets swapped in as its own module is finished - a hard gate
-per step, not a rewrite-then-test-everything-at-the-end approach, per
-Steve's stated priority on accuracy over speed of delivery.
+ssdeep clustering, capa, FLOSS, Authenticode) and clearly marks the ones
+that still throw NotImplementedError (Speakeasy, MITRE ATT&CK enrichment)
+so a scan can be exercised end-to-end today without those, and each one gets
+swapped in as its own module is finished - a hard gate per step, not a
+rewrite-then-test-everything-at-the-end approach, per Steve's stated
+priority on accuracy over speed of delivery.
 
 NOTE on a design question not yet resolved: the PowerShell version's
 FileRecord.Entropy doc comment implies NSRL-known files skip entropy
@@ -28,7 +28,11 @@ from pathlib import Path
 
 from binsifter.core.config import BinSifterConfig
 from binsifter.core.models import FileRecord
+from binsifter.core import authenticode
 from binsifter.core import blocklist as blocklist_mod
+from binsifter.core import capa_scan
+from binsifter.core import file_type as file_type_mod
+from binsifter.core import floss_scan
 from binsifter.core import hashing
 from binsifter.core import imphash as imphash_mod
 from binsifter.core import nsrl as nsrl_mod
@@ -76,10 +80,20 @@ def scan_directory(config: BinSifterConfig, progress_callback=None) -> list[File
     records: dict[str, FileRecord] = {p: FileRecord(Path=p) for p in paths}
 
     nsrl_hashes = nsrl_mod.load_nsrl_hashes(config.NsrlPath) if config.NsrlPath else set()
+    # BlocklistPath (unlike NsrlPath/YaraRules/CapaRules) always has a real
+    # default value - Reports/Attack/Blocklist default next to the install
+    # even when the analyst never asked for blocklist checking - so guard
+    # on the file actually existing, not just the path being non-empty.
+    # Otherwise every scan logs a "could not read blocklist" warning until
+    # someone places a blocklist file there, which is misleading noise for
+    # a feature that was never configured in the first place.
     blocklist_hashes = (
-        blocklist_mod.load_blocklist_hashes(config.BlocklistPath) if config.BlocklistPath else set()
+        blocklist_mod.load_blocklist_hashes(config.BlocklistPath)
+        if config.BlocklistPath and Path(config.BlocklistPath).is_file()
+        else set()
     )
     yara_rules = yara_scan.compile_rules(config.YaraRules) if config.YaraRules else None
+    capa_rules = capa_scan.load_rules(config.CapaRules) if config.CapaRules else None
 
     imphashes: dict[str, str | None] = {}
     ssdeep_hashes: dict[str, str] = {}
@@ -91,6 +105,14 @@ def scan_directory(config: BinSifterConfig, progress_callback=None) -> list[File
             record.MD5 = hash_result.md5
             record.SHA1 = hash_result.sha1
             record.Entropy = hash_result.entropy
+
+            # Authenticode check runs unconditionally, like entropy - same
+            # rationale as the PowerShell version (line ~2141): "signed" vs
+            # "unsigned" is meaningful regardless of NSRL/hash reputation,
+            # and it's a single read against the file already on disk.
+            auth_result = authenticode.check_signature(path)
+            record.SignatureStatus = auth_result.status
+            record.SignerName = auth_result.signer_name
 
             record.NsrlMatch = nsrl_mod.is_known_good(hash_result.sha1, nsrl_hashes)
 
@@ -104,6 +126,31 @@ def scan_directory(config: BinSifterConfig, progress_callback=None) -> list[File
                 record.YaraHitCount = yara_result.hit_count
                 record.YaraSeverity = yara_result.severity
                 record.YaraSeverityScore = yara_result.severity_score
+
+            # PE/ELF/shellcode classification - direct port of the
+            # PowerShell version's magic-byte sniff (see file_type.py),
+            # gates both capa eligibility and the FLOSS fallback below.
+            ft = file_type_mod.classify(path, hash_result.length)
+            record.CapaEligible = ft.capa_eligible
+            record.PossibleFalseNegative = file_type_mod.is_possible_false_negative(
+                ft, record.YaraHitCount, path
+            )
+
+            if capa_rules is not None and record.CapaEligible:
+                capa_result = capa_scan.scan_file(path, capa_rules, is_shellcode=ft.is_shellcode)
+                record.CapaDetectionCount = capa_result.detection_count
+                record.CAPAOutput = capa_result.output or None
+                record.CapaShellcodeFormat = capa_result.shellcode_format
+            elif record.PossibleFalseNegative:
+                # Best-effort fallback for the PossibleFalseNegative case:
+                # capa couldn't run at all, so recover what we can via
+                # FLOSS's string extraction instead - same rationale as the
+                # PowerShell version's fallback at this exact branch.
+                floss_result = floss_scan.scan_file(path)
+                record.FlossStringCount = floss_result.string_count
+                # IOC extraction from FLOSS output (iocs.py) not yet
+                # ported - ExtractedIOCs/IocCount stay at their defaults
+                # until that module exists.
 
             imphashes[path] = imphash_mod.compute_imphash(path)
             ssdeep_hash = ssdeep_cluster.compute_ssdeep_hash(path)
@@ -135,10 +182,10 @@ def scan_directory(config: BinSifterConfig, progress_callback=None) -> list[File
             records[path].SsdeepMatches = info.matches_summary or None
 
     # TODO, each gated behind its own module being finished:
-    #   - capa/FLOSS for PossibleFalseNegative-eligible files
-    #   - Authenticode verification
     #   - MITRE ATT&CK technique enrichment (YaraAttackTechniques)
+    #   - IOC extraction from FLOSS output (iocs.py)
     #   - draft YARA rule auto-generation per ssdeep cluster
-    #   - CSV/report writing to config.ReportDirectory
+    #   - CSV/report writing to config.ReportDirectory (cli.py already
+    #     writes a CSV independently - engine.py itself still doesn't)
 
     return list(records.values())

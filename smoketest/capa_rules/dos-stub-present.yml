@@ -1,0 +1,60 @@
+rule:
+  meta:
+    name: imports common kernel32 API
+    namespace: executable/pe
+    authors:
+      - binsifter-smoketest
+    description: >
+      Smoke-test rule for BinSifter's Python capa integration - matches
+      import of any of a handful of common loader-related API functions
+      present in virtually every dynamically-linked Windows PE. Not a real
+      detection rule (no security relevance) - exists purely to give the
+      smoke test a guaranteed, deterministic capa hit against ordinary,
+      benign local executables without needing malware samples or
+      Mandiant's full rule set.
+
+      Originally matched on the "This program cannot be run in DOS mode."
+      string instead (file-scope string feature) - that failed because
+      capa's PE extractor builds file-scope strings from the binary's
+      mapped/section content, not a raw byte-for-byte scan of the whole
+      file the way YARA does, and the DOS stub message sits in the file
+      header region before any PE section starts. Switched to import
+      features to sidestep that.
+
+      Second bug, found 2026-07-30: an initial import-based version
+      (`import: kernel32.GetProcAddress` etc., DLL-qualified) still only
+      matched 1 of 7 real benign samples. Root cause, confirmed via
+      objdump against the raw PE import tables: modern Windows binaries
+      resolve most kernel32 functions through "API Set" forwarder stub
+      DLLs (api-ms-win-core-libraryloader-l1-2-0.dll and similar), not a
+      literal "KERNEL32.dll" entry in the import table. capa's `import:`
+      feature is file-scope and DLL-name-sensitive by design (per
+      capa/doc/format.md: "These can include DLL names that are checked
+      during matching"), so a DLL-qualified rule silently misses any
+      import routed through an API Set stub - this is NOT a vivisect bug.
+      capa's own docs describe the fix: omit the DLL name entirely to get
+      a documented "wildcard module name" match, e.g. `import: WinExec`
+      instead of `import: kernel32.WinExec`. This rule now uses wildcard
+      imports for that reason. This same gotcha applies to any real
+      BinSifter/capa rule authored with a DLL-qualified `import:` feature
+      targeting a commonly-API-Set-forwarded function - worth keeping in
+      mind for future rule authoring, not just this smoke test.
+
+      Even after the fix, not all 7 samples are expected to match - some
+      (cacls.exe, calc.exe, nslookup.exe) genuinely do not import any of
+      these specific functions directly (e.g. calc.exe calls
+      TerminateProcess rather than ExitProcess, and never imports
+      GetProcAddress/LoadLibrary* at all per its import table). That is
+      correct behavior, not a detection gap.
+    scopes:
+      static: file
+      dynamic: unsupported
+    examples:
+      - AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+  features:
+    - or:
+      - import: GetProcAddress       # wildcard module name (see description)
+      - import: LoadLibraryA
+      - import: LoadLibraryW
+      - import: LoadLibraryExW
+      - import: ExitProcess

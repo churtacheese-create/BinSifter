@@ -101,10 +101,10 @@ class FileRecord:
 
     # Authenticode verification result. Status is a string, not a bool,
     # since "not signed" and "signed but invalid" are very different triage
-    # signals. NOTE: the PowerShell version got this for free from
-    # Get-AuthenticodeSignature - the Python port needs a real
-    # cross-platform approach (candidate: the `signify` package) since this
-    # can't shell out to a Windows-only cmdlet. See tools/authenticode.py.
+    # signals. Ported 2026-07-30 using the `signify` library (pure Python,
+    # cross-platform) in place of the PowerShell version's
+    # Get-AuthenticodeSignature - see core/authenticode.py for the real
+    # implementation and important caveats about trust-store differences.
     SignatureStatus: str = ""
     SignerName: str = ""
 
