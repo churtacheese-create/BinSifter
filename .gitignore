@@ -27,3 +27,8 @@ venv/
 build/
 dist/
 *.egg-info/
+
+# Superseded PowerShell-version doc, removed as part of the Python rewrite -
+# ignored (not just deleted) so it doesn't get silently re-tracked if it
+# ever reappears untracked (old branch checkout, editor auto-restore, etc.)
+BinSifter_v1.2.1_Tutorial.md
