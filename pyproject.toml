@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "binsifter"
+version = "2.0.0a1"
+description = "Forensic binary triage tool for bulk assessment - Python/PySide6 rewrite"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [{ name = "Steven C. Lauterbach" }]
+
+# Pinned to library-based integrations wherever the PowerShell version had to
+# shell out to an external .exe - see project memory "BinSifter post-prototype
+# roadmap" for why this matters (no per-file process-spawn overhead, no
+# fragile stdout/JSON parsing, no "is the exe on PATH" configuration surface
+# for these five tools specifically).
+dependencies = [
+    "PySide6>=6.7",       # LGPL - safe for closed-source distribution, unlike PyQt6 (GPL/paid-commercial)
+    "yara-python>=4.5",   # YARA engine, imported directly instead of shelling out to yara64.exe
+    "flare-capa>=9.0",    # Mandiant capa, as a library instead of capa.exe
+    "flare-floss>=3.0",   # Mandiant FLOSS, as a library instead of floss.exe
+    "speakeasy-emulator>=1.5",  # Mandiant Speakeasy, as a library instead of hunting for a nonexistent speakeasy.exe.
+                                 # NOTE: pinned to the 1.5.x stable line, not 2.0 - as of 2026-07-30 PyPI only has
+                                 # pre-release 2.0.0b betas, which pip won't select for a plain ">=2.0" constraint
+                                 # (confirmed the hard way - an earlier ">=2.0" here broke the whole install, since
+                                 # pip fails the entire dependency resolution as one unit on an unsatisfiable pin,
+                                 # not just that one package). Revisit once 2.0 has an actual stable release.
+    "ppdeep>=20200505",   # Pure-Python ssdeep-compatible fuzzy hashing - no C library/compiler dependency,
+                           # which matters a lot for the Linux + installer goals (the real "ssdeep" PyPI
+                           # package requires libfuzzy to be compiled/available on the target machine).
+    "pefile>=2023.2.7",   # PE parsing (imphash, Rich header) - pure Python, no external tool needed at all.
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+binsifter = "binsifter.gui.__main__:main"
+binsifter-scan = "binsifter.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["binsifter*"]

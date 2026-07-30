@@ -1,0 +1,19 @@
+"""BinSifter - forensic binary triage tool for bulk binary assessment.
+
+This is the Python/PySide6 rewrite of the original PowerShell 7 + WinForms
+prototype (BinSifter_v1.3.0-alpha.2.ps1, kept in the repo root for reference).
+See BinSifter_CHANGELOG.md for the PowerShell version's history, and the
+"BinSifter post-prototype roadmap" project note for why this rewrite exists.
+
+Package layout:
+    binsifter.core  - the scan engine: hashing, YARA/capa/FLOSS/ssdeep/NSRL/
+                       blocklist integrations, config, and the FileRecord
+                       model. No GUI imports here - this half needs to run
+                       standalone under the future headless/Docker CLI mode.
+    binsifter.gui   - the PySide6 desktop application. Imports from
+                       binsifter.core, never the other way around.
+    binsifter.cli   - headless entry point (binsifter-scan), for automated/
+                       pipeline use without a GUI.
+"""
+
+__version__ = "2.0.0a1"

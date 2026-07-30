@@ -3,6 +3,7 @@
 Reports/
 Blocklist/
 /Attack/
+/AttackData/
 generated_rules/
 
 # Local dev/testing scratch

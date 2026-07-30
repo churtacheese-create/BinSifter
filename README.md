@@ -6,7 +6,7 @@ BinSifter is a binary triage tool for forensic examiners: point it at a director
 
 The current release (`BinSifter_v1.3.0-alpha.2.ps1`) is a PowerShell 7 + WinForms desktop app, and represents the end of the initial dev-prototype stage. It is functional and has been run against real casework on a FRED forensic workstation, but is still pre-1.0 and Windows-only.
 
-A rewrite in Python (PySide6 for the UI) is planned next, primarily to add Linux support and to integrate CAPA, FLOSS, YARA, ssdeep, and Speakeasy as in-process libraries instead of external tool invocations. See `BinSifter_CHANGELOG.md` for version history.
+A rewrite in Python (PySide6 for the UI) is underway - see the `binsifter/` package. Hashing/entropy, NSRL, blocklist, YARA, imphash, and SSDEEP clustering are ported and working; CAPA, FLOSS, Speakeasy, and Authenticode verification are stubbed pending their library APIs being verified rather than guessed. `pip install -e ".[dev]"` then `binsifter` launches the (currently placeholder) GUI shell, and `binsifter-scan --src-dir ... --yara-rules ... --nsrl-path ...` runs a headless scan. See `BinSifter_CHANGELOG.md` for the PowerShell version's history.
 
 ## Core features
 
