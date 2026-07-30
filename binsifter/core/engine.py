@@ -4,12 +4,12 @@ PowerShell version.
 This is a first-pass skeleton, not a finished port: it wires together the
 modules that are already real (hashing, NSRL, blocklist, YARA, imphash,
 ssdeep clustering, capa, FLOSS, Authenticode, IOC extraction, MITRE ATT&CK
-enrichment) and clearly marks the ones that still throw NotImplementedError
-(Speakeasy) so a scan can be exercised end-to-end today without those, and
-each one gets
-swapped in as its own module is finished - a hard gate per step, not a
-rewrite-then-test-everything-at-the-end approach, per Steve's stated
-priority on accuracy over speed of delivery.
+enrichment, draft YARA rule generation, CSV report writing) and clearly
+marks the one still-unported piece (Speakeasy, blocked on the FRED's own
+proxy for its pip install) so a scan can be exercised end-to-end today
+without it, swapped in once that module is finished - a hard gate per
+step, not a rewrite-then-test-everything-at-the-end approach, per Steve's
+stated priority on accuracy over speed of delivery.
 
 NOTE on a design question not yet resolved: the PowerShell version's
 FileRecord.Entropy doc comment implies NSRL-known files skip entropy
@@ -25,6 +25,8 @@ added complexity either way - don't "fix" this speculatively.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 from binsifter.core.config import BinSifterConfig
@@ -39,10 +41,22 @@ from binsifter.core import hashing
 from binsifter.core import imphash as imphash_mod
 from binsifter.core import iocs as iocs_mod
 from binsifter.core import nsrl as nsrl_mod
+from binsifter.core import report as report_mod
 from binsifter.core import ssdeep_cluster
+from binsifter.core import yara_rule_gen
 from binsifter.core import yara_scan
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ScanResult:
+    records: list[FileRecord]
+    # None when config.ReportDirectory wasn't usable (blank, or the
+    # directory couldn't be created) - a scan without a report destination
+    # is still a valid result (e.g. a future GUI page reading `records`
+    # directly), just one with nothing written to disk.
+    report_paths: report_mod.ReportPaths | None
 
 
 def enumerate_files(src_dir: str) -> list[str]:
@@ -69,11 +83,13 @@ def enumerate_files(src_dir: str) -> list[str]:
     return files
 
 
-def scan_directory(config: BinSifterConfig, progress_callback=None) -> list[FileRecord]:
+def scan_directory(config: BinSifterConfig, progress_callback=None) -> ScanResult:
     """Runs the currently-implemented pipeline stages over every file under
     config.SrcDir: hash + entropy, NSRL, blocklist, YARA, imphash. Returns
-    the full FileRecord list; ssdeep/imphash clustering is applied as a
-    post-scan pass across the whole batch, same as the PowerShell version.
+    a ScanResult (records + the paths of any CSV reports written);
+    ssdeep/imphash clustering, draft YARA rule generation, and report
+    writing are all applied as post-scan passes across the whole batch,
+    same as the PowerShell version.
 
     progress_callback(done: int, total: int, current_path: str), if given,
     is called after each file - the GUI's progress bar should be driven off
@@ -81,6 +97,13 @@ def scan_directory(config: BinSifterConfig, progress_callback=None) -> list[File
     """
     paths = enumerate_files(config.SrcDir)
     records: dict[str, FileRecord] = {p: FileRecord(Path=p) for p in paths}
+
+    # One timestamp per scan, reused everywhere a filename needs to be
+    # stamped (draft YARA rule names, the 4 CSV reports below) - same role
+    # as the PowerShell version's $timestamp (Get-Date -Format
+    # 'yyyy-MM-dd_HHmmss'), computed once so every output from this run
+    # sorts/groups together.
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
 
     nsrl_hashes = nsrl_mod.load_nsrl_hashes(config.NsrlPath) if config.NsrlPath else set()
     # BlocklistPath (unlike NsrlPath/YaraRules/CapaRules) always has a real
@@ -123,6 +146,11 @@ def scan_directory(config: BinSifterConfig, progress_callback=None) -> list[File
 
     imphashes: dict[str, str | None] = {}
     ssdeep_hashes: dict[str, str] = {}
+    # Only populated for files that actually ran FLOSS - feeds the draft
+    # YARA rule generator's per-cluster string intersection below. Kept
+    # in-memory rather than persisted to disk per-file, unlike the
+    # PowerShell version - see yara_rule_gen.py's module docstring.
+    floss_static_strings: dict[str, list[str]] = {}
 
     for i, path in enumerate(paths):
         record = records[path]
@@ -175,6 +203,8 @@ def scan_directory(config: BinSifterConfig, progress_callback=None) -> list[File
                 # PowerShell version's fallback at this exact branch.
                 floss_result = floss_scan.scan_file(path)
                 record.FlossStringCount = floss_result.string_count
+                if floss_result.static_strings:
+                    floss_static_strings[path] = floss_result.static_strings
 
                 # Mines the same FLOSS strings just extracted above for
                 # IOC-shaped values (IPs, URLs, domains, registry paths) -
@@ -215,9 +245,52 @@ def scan_directory(config: BinSifterConfig, progress_callback=None) -> list[File
             records[path].SsdeepHasHighSimilarity = info.has_high_similarity
             records[path].SsdeepMatches = info.matches_summary or None
 
-    # TODO, each gated behind its own module being finished:
-    #   - draft YARA rule auto-generation per ssdeep cluster
-    #   - CSV/report writing to config.ReportDirectory (cli.py already
-    #     writes a CSV independently - engine.py itself still doesn't)
+    record_list = list(records.values())
 
-    return list(records.values())
+    # ================= Draft YARA rule generation (v1.3-proto1) =================
+    # Best-effort and gracefully skipped on error - this is the same inner
+    # try/except scope the PowerShell version used around just this block
+    # (BinSifter_v1.3.0-alpha.2.ps1 lines ~3233/3317-3320), separate from
+    # the CSV report writing below, which is NOT similarly swallowed.
+    records_by_cluster: dict[int, list[FileRecord]] = {}
+    for r in record_list:
+        if r.SsdeepClusterId >= 0 and r.SsdeepClusterSize >= 2:
+            records_by_cluster.setdefault(r.SsdeepClusterId, []).append(r)
+
+    if records_by_cluster and config.ReportDirectory:
+        try:
+            rule_gen_result = yara_rule_gen.generate_draft_rules(
+                records_by_cluster,
+                floss_static_strings,
+                config.ReportDirectory,
+                ssdeep_cluster.CLUSTER_THRESHOLD,
+                timestamp=timestamp,
+            )
+            if rule_gen_result.rules_written > 0:
+                logger.info(
+                    "Generated %d draft YARA rule(s) from SSDEEP clusters - review under: %s",
+                    rule_gen_result.rules_written, rule_gen_result.output_dir,
+                )
+        except Exception as exc:  # noqa: BLE001 - optional feature, never fatal to the scan
+            logger.warning("Draft YARA rule generation skipped due to error: %s", exc)
+
+    # ================= CSV/report writing =================
+    # Unlike rule generation above, NOT wrapped in a swallow-all except:
+    # a report-write failure (disk full, permissions) was a real
+    # scan-ending error in the PowerShell version too (its try/catch sat
+    # one level up, around this and the rule-gen block together, but only
+    # rule-gen had its own inner catch - see BinSifter_v1.3.0-alpha.2.ps1
+    # lines ~3322-3338 vs. ~3340). Skipped (not raised) only when
+    # ReportDirectory itself is blank - same "optional, off by default
+    # absence" treatment as every other Config path field.
+    report_paths = None
+    if config.ReportDirectory:
+        report_paths = report_mod.write_all_reports(record_list, config.ReportDirectory, timestamp)
+        logger.info("Full report saved: %s", report_paths.full)
+        logger.info("Suspicious/unknown (non-NSRL) list saved: %s", report_paths.suspicious)
+        logger.info("YARA matches list saved: %s", report_paths.yara_matches)
+        logger.info("Capa-compatible list saved: %s", report_paths.capa_compatible)
+    else:
+        logger.info("No ReportDirectory configured - skipping CSV report writing.")
+
+    return ScanResult(records=record_list, report_paths=report_paths)

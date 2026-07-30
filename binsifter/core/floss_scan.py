@@ -51,6 +51,14 @@ logger = logging.getLogger(__name__)
 class FlossResult:
     string_count: int
     strings: list[str]
+    # static_strings only (not stack/tight/decoded) - kept separate from the
+    # combined `strings` list above because the draft-YARA-rule-generation
+    # step (see yara_rule_gen.py) intersects only static strings across
+    # cluster members, matching the PowerShell version's persisted
+    # floss_reports/<sha1>.json re-read at that later stage (this port
+    # keeps the same in-memory data instead of writing/re-reading JSON -
+    # see yara_rule_gen.py's module docstring).
+    static_strings: list[str]
 
 
 def scan_file(target_path: str) -> FlossResult:
@@ -74,24 +82,31 @@ def scan_file(target_path: str) -> FlossResult:
             return_code = floss.main.main(argv)
     except Exception:
         logger.exception("FLOSS raised while processing %s", target_path)
-        return FlossResult(string_count=0, strings=[])
+        return FlossResult(string_count=0, strings=[], static_strings=[])
 
     if return_code != 0:
         logger.info("FLOSS returned %s for %s - no strings recovered", return_code, target_path)
-        return FlossResult(string_count=0, strings=[])
+        return FlossResult(string_count=0, strings=[], static_strings=[])
 
     try:
         doc = json.loads(captured.getvalue())
     except json.JSONDecodeError:
         logger.warning("Could not parse FLOSS JSON output for %s", target_path)
-        return FlossResult(string_count=0, strings=[])
+        return FlossResult(string_count=0, strings=[], static_strings=[])
 
     strings_section = doc.get("strings", {})
-    collected: list[str] = []
-    for key in ("static_strings", "stack_strings", "tight_strings", "decoded_strings"):
+
+    def _collect(key: str) -> list[str]:
+        values = []
         for entry in strings_section.get(key, []):
             value = entry.get("string")
             if value:
-                collected.append(value)
+                values.append(value)
+        return values
 
-    return FlossResult(string_count=len(collected), strings=collected)
+    static_strings = _collect("static_strings")
+    collected: list[str] = list(static_strings)
+    for key in ("stack_strings", "tight_strings", "decoded_strings"):
+        collected.extend(_collect(key))
+
+    return FlossResult(string_count=len(collected), strings=collected, static_strings=static_strings)

@@ -6,26 +6,23 @@ without dragging in a windowing toolkit. See the "BinSifter post-prototype
 roadmap" project note for why a containerized GUI was ruled out in favor
 of this.
 
-Minimal but real: runs the currently-implemented pipeline stages
-(hash/entropy, NSRL, blocklist, YARA, imphash/ssdeep clustering) and writes
-a CSV report - the same stages engine.scan_directory supports today. capa/
-FLOSS/Speakeasy/Authenticode results will appear in the CSV once those
-modules are finished; the columns are already there via dataclasses.
+Real, not a placeholder: runs the full currently-implemented pipeline
+(hash/entropy, NSRL, blocklist, YARA, capa, FLOSS, Authenticode, IOC
+extraction, MITRE ATT&CK enrichment, imphash/ssdeep clustering, draft YARA
+rule generation) and writes the 4 CSV reports - engine.scan_directory()
+does the actual report writing now (see report.py), so this module no
+longer maintains its own separate/ad hoc CSV writer.
 """
 
 from __future__ import annotations
 
 import argparse
-import csv
 import logging
 import sys
-from dataclasses import asdict, fields
-from datetime import datetime, timezone
 from pathlib import Path
 
 from binsifter.core.config import build_default_config
 from binsifter.core.engine import scan_directory
-from binsifter.core.models import FileRecord
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
@@ -70,22 +67,17 @@ def main(argv: list[str] | None = None) -> int:
     def _progress(done: int, total: int, path: str) -> None:
         print(f"[{done}/{total}] {path}", file=sys.stderr)
 
-    records = scan_directory(config, progress_callback=_progress)
+    result = scan_directory(config, progress_callback=_progress)
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    report_path = Path(config.ReportDirectory) / f"binsifter_scan_{timestamp}.csv"
-    _write_csv_report(records, report_path)
-    print(f"Wrote {len(records)} records to {report_path}")
+    print(f"Scanned {len(result.records)} file(s).")
+    if result.report_paths:
+        print(f"Full report: {result.report_paths.full}")
+        print(f"Suspicious/unknown (non-NSRL): {result.report_paths.suspicious}")
+        print(f"YARA matches: {result.report_paths.yara_matches}")
+        print(f"Capa-compatible: {result.report_paths.capa_compatible}")
+    else:
+        print("No ReportDirectory configured - no CSV reports were written.")
     return 0
-
-
-def _write_csv_report(records: list[FileRecord], report_path: Path) -> None:
-    column_names = [f.name for f in fields(FileRecord)]
-    with open(report_path, "w", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=column_names)
-        writer.writeheader()
-        for record in records:
-            writer.writerow(asdict(record))
 
 
 if __name__ == "__main__":
