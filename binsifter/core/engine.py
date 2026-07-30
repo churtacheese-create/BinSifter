@@ -45,6 +45,7 @@ from binsifter.core import attack_db as attack_db_mod
 from binsifter.core import authenticode
 from binsifter.core import blocklist as blocklist_mod
 from binsifter.core import capa_scan
+from binsifter.core import disposition as disposition_mod
 from binsifter.core import file_type as file_type_mod
 from binsifter.core import floss_scan
 from binsifter.core import hashing
@@ -148,6 +149,14 @@ def scan_directory(
     yara_rules = yara_scan.compile_rules(config.YaraRules) if config.YaraRules else None
     capa_rules = capa_scan.load_rules(config.CapaRules) if config.CapaRules else None
 
+    # v1.3-proto1: prior triage dispositions, persisted by SHA-1 so
+    # re-scanning the same files (or re-opening the same case directory
+    # later) keeps earlier Benign/Suspicious/Escalated calls instead of
+    # resetting everything to Untriaged - written by the Results page's
+    # Disposition column edits, read back here once per scan (see
+    # BinSifter_v1.3.0-alpha.2.ps1 lines ~2775-2782).
+    disposition_history = disposition_mod.load_disposition_history(config.ReportDirectory)
+
     # MITRE ATT&CK mapping is optional, same as the PowerShell version - a
     # blank/missing AttackDataPath just means TTP mapping is disabled for
     # this scan, not an error. Unlike the other loads above, this one is
@@ -209,6 +218,10 @@ def scan_directory(
             record.MD5 = hash_result.md5
             record.SHA1 = hash_result.sha1
             record.Entropy = hash_result.entropy
+
+            prior_disposition = disposition_history.get(hash_result.sha1.lower())
+            if prior_disposition:
+                record.Disposition = prior_disposition
 
             # Authenticode check runs unconditionally, like entropy - same
             # rationale as the PowerShell version (line ~2141): "signed" vs

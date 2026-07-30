@@ -37,7 +37,9 @@ from binsifter.core.config import build_default_config
 from binsifter.core.engine import ScanResult, scan_directory
 from binsifter.core.models import FileRecord
 from binsifter.gui.pages.dashboard import DashboardPage
+from binsifter.gui.pages.results import ResultsPage
 from binsifter.gui.pages.scan_queue import ScanQueuePage
+from binsifter.gui.pages.settings import SettingsPage
 from binsifter.gui.theme import DARK, ThemePalette, qcolor_to_css
 from binsifter.gui.widgets import NavButton, accent_to_css
 
@@ -192,6 +194,16 @@ class MainWindow(QMainWindow):
                 self.pages.setCurrentIndex(i)
                 self.page_title.setText("" if i == 0 else _NAV_ITEMS[i][0])
 
+    def _on_settings_clicked(self) -> None:
+        """Settings (like Help/About) is reachable only from the top bar,
+        not the sidebar - same as the PowerShell version's Show-Page, which
+        only recolors $navButtons entries and leaves Settings/Help/About
+        with no sidebar highlight of their own."""
+        for btn in self._nav_buttons:
+            btn.set_active(False)
+        self.page_title.setText("Settings")
+        self.pages.setCurrentWidget(self.settings_page)
+
     # ---------- top bar ----------
 
     def _build_topbar(self) -> QWidget:
@@ -213,6 +225,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.page_title)
         layout.addStretch(1)
 
+        self._topbar_buttons: dict[str, QPushButton] = {}
         for label, width in (("Settings", 126), ("Help", 96), ("About", 106)):
             btn = QPushButton(label)
             btn.setFixedSize(width, 44)
@@ -221,6 +234,12 @@ class MainWindow(QMainWindow):
                 f"color: {accent_to_css(theme.Fore)}; border: 1px solid {qcolor_to_css(theme.Border)}; }}"
             )
             layout.addWidget(btn)
+            self._topbar_buttons[label] = btn
+
+        # Settings is the only one of these three wired to a real page so
+        # far - Help/About have no built page yet, same "still a
+        # placeholder" status as the remaining sidebar nav pages.
+        self._topbar_buttons["Settings"].clicked.connect(self._on_settings_clicked)
 
         layout.addSpacing(16)
 
@@ -291,6 +310,7 @@ class MainWindow(QMainWindow):
 
     def _on_scan_finished(self, result: ScanResult) -> None:
         self.dashboard_page.update_from_records(result.records)
+        self.results_page.set_records(result.records)
         completed = sum(1 for r in result.records if r.Status == "Completed")
         self.scan_queue_page.set_summary(f"Scan finished. {completed} / {len(result.records)} files completed.")
         self._set_status("Ready", self.theme.Success)
@@ -322,6 +342,7 @@ class MainWindow(QMainWindow):
 
         self.pages = QStackedWidget()
         self.dashboard_page = DashboardPage(theme)
+        self.dashboard_page.filter_requested.connect(self._on_dashboard_filter_requested)
         self.pages.addWidget(self.dashboard_page)
 
         self.scan_queue_page = ScanQueuePage(theme)
@@ -330,14 +351,29 @@ class MainWindow(QMainWindow):
         self.scan_queue_page.stop_clicked.connect(self._on_stop_clicked)
         self.pages.addWidget(self.scan_queue_page)
 
-        for label, _ in _NAV_ITEMS[2:]:
+        self.results_page = ResultsPage(theme, self.config)
+        self.pages.addWidget(self.results_page)
+
+        for label, _ in _NAV_ITEMS[3:]:
             placeholder = QLabel(f"{label} page - not yet built.")
             placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
             placeholder.setStyleSheet(f"color: {accent_to_css(theme.MutedFore)};")
             self.pages.addWidget(placeholder)
 
+        # Settings, like Help/About, is a top-bar-only destination - added
+        # to the same QStackedWidget but not part of the sidebar's
+        # _NAV_ITEMS loop above (see _on_settings_clicked).
+        self.settings_page = SettingsPage(theme, self.config)
+        self.pages.addWidget(self.settings_page)
+
         layout.addWidget(self.pages)
         return wrap
+
+    def _on_dashboard_filter_requested(self, label: str, predicate) -> None:
+        """A Dashboard tile or severity bar was clicked - jump to Results
+        pre-narrowed to that subset, same as Show-FilteredResults."""
+        self.results_page.apply_filter(label, predicate)
+        self._on_nav_clicked(self._nav_buttons[2])  # Results is nav index 2
 
     # ---------- status bar ----------
 

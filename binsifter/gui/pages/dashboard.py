@@ -9,7 +9,7 @@ source-order in the PowerShell script once WinForms' Dock=Top stacking
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QGridLayout, QLabel, QVBoxLayout, QWidget
 
@@ -20,10 +20,22 @@ from binsifter.gui.widgets import SeverityBarChart, StatTile, get_heat_color
 
 
 class DashboardPage(QWidget):
+    # Emitted (label, predicate) when a stat tile or severity bar is
+    # clicked - same role as Show-FilteredResults being called from a
+    # dashboard tile's click handler. predicate takes one FileRecord and
+    # returns bool; main_window.py connects this to switching to Results
+    # and calling results_page.apply_filter(label, predicate).
+    filter_requested = Signal(str, object)
+
     def __init__(self, theme: ThemePalette, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._theme = theme
-        self._on_tile_click = None  # set via set_tile_click_handler(), see main_window.py
+        # Read live by the "Largest Cluster" tile's predicate at click time
+        # (not baked in when the predicate is registered) - same as the
+        # PowerShell version reading $ScanControl.SsdeepMetrics.LargestClusterId
+        # fresh on every click, since which cluster is "largest" can change
+        # between scans.
+        self._last_stats: DashboardStats | None = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -117,10 +129,25 @@ class DashboardPage(QWidget):
             "Files with extracted IOCs": (self.tile_iocs, lambda r: r.IocCount > 0),
             "Disposition: Escalated": (self.tile_escalated, lambda r: r.Disposition == "Escalated"),
             "SSDEEP clusters (2+ files)": (self.heat_clusters, lambda r: r.SsdeepClusterId >= 0 and r.SsdeepClusterSize >= 2),
+            "Largest SSDEEP cluster": (self.heat_largest, self._is_in_largest_cluster),
             "SSDEEP singletons": (self.heat_singletons, lambda r: r.SsdeepClusterSize == 1),
+            "Files with any SSDEEP match": (self.heat_avg_score, lambda r: r.SsdeepClusterId >= 0 and r.SsdeepClusterSize >= 2),
             "SSDEEP similarity >= 85%": (self.heat_above_85, lambda r: r.SsdeepHasHighSimilarity),
             "Previously-seen SSDEEP clusters": (self.heat_previously_seen, lambda r: r.SsdeepPreviouslySeen),
         }
+
+        for label, (tile, predicate) in self._all_tiles.items():
+            tile.clicked.connect(lambda label=label, predicate=predicate: self.filter_requested.emit(label, predicate))
+
+        self.severity_chart.bar_clicked.connect(self._on_severity_bar_clicked)
+
+    def _is_in_largest_cluster(self, record: FileRecord) -> bool:
+        stats = self._last_stats
+        return bool(stats and stats.largest_cluster_id >= 0 and record.SsdeepClusterId == stats.largest_cluster_id)
+
+    def _on_severity_bar_clicked(self, severity_key: str) -> None:
+        predicate = lambda r, k=severity_key: r.YaraHitCount > 0 and r.YaraSeverity == k  # noqa: E731
+        self.filter_requested.emit(f"YARA Severity: {severity_key}", predicate)
 
     def update_from_records(self, records: list[FileRecord]) -> None:
         """Repopulates every tile/chart from a fresh scan's records - the
@@ -129,6 +156,7 @@ class DashboardPage(QWidget):
         maintained as a running delta (see dashboard_stats.py's docstring
         for why)."""
         stats = DashboardStats.from_records(records)
+        self._last_stats = stats
         theme = self._theme
 
         self.tile_files.set_value(stats.completed_count)

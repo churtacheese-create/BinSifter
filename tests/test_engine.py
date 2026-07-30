@@ -9,6 +9,7 @@ path end to end.
 """
 
 from binsifter.core.config import BinSifterConfig
+from binsifter.core.disposition import save_disposition_entry
 from binsifter.core.engine import scan_directory
 
 
@@ -140,3 +141,24 @@ def test_pause_then_stop_cancels_without_hanging(tmp_path, monkeypatch):
 
     assert all(r.Status == "Cancelled" for r in result.records)
     assert state["sleeps"] < 100  # sanity: didn't spin forever
+
+
+def test_prior_disposition_carries_into_next_scan(tmp_path):
+    """A file's SHA-1 keeps its analyst-set disposition across scans, as
+    long as ReportDirectory (where the history file lives) stays the same -
+    mirrors the PowerShell dispatcher reading .bsifter-disposition-history.txt
+    back in at the start of each scan."""
+    src_dir = _make_files(tmp_path, 1)
+    report_dir = tmp_path / "reports"
+    report_dir.mkdir()
+    config = BinSifterConfig(SrcDir=src_dir, ReportDirectory=str(report_dir))
+
+    first_pass = scan_directory(config)
+    assert first_pass.records[0].Disposition == "Untriaged"  # FileRecord's default
+
+    sha1 = first_pass.records[0].SHA1
+    save_disposition_entry(str(report_dir), sha1, "Escalated")
+
+    second_pass = scan_directory(config)
+    assert second_pass.records[0].Disposition == "Escalated"
+    assert second_pass.records[0].SHA1 == sha1

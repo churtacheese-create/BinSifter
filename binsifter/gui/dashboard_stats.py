@@ -50,6 +50,11 @@ class DashboardStats:
 
     num_clusters: int = 0
     largest_cluster_size: int = 0
+    # -1 = no cluster with size >= 2 exists yet. Which cluster "wins" a tie
+    # for largest matters for the Dashboard's click-to-filter (clicking the
+    # "Largest Cluster" tile filters Results to this specific cluster id) -
+    # see the tie-break note in from_records() below.
+    largest_cluster_id: int = -1
     singletons: int = 0
     avg_score: float = 0.0
     files_above_85: int = 0
@@ -114,7 +119,20 @@ class DashboardStats:
                 all_scores.extend(int(m) for m in _SCORE_RE.findall(r.SsdeepMatches))
 
         stats.num_clusters = len(cluster_sizes)
-        stats.largest_cluster_size = max(cluster_sizes.values(), default=0)
+        # Strictly-greater-than comparison over insertion order (matches
+        # each cluster's first-encountered-in-scan order, same as the
+        # PowerShell version's Dictionary enumeration) - so on a tie, the
+        # cluster that was FIRST seen during this scan wins, same
+        # tie-break as BinSifter_v1.3.0-alpha.2.ps1 lines ~3118-3123
+        # (`foreach ($kvp in $clusterSizes.GetEnumerator()) { if
+        # ($kvp.Value -gt $largestClusterSize) ... }`), not just "whichever
+        # dict.values() happens to return max() for".
+        largest_id, largest_size = -1, 0
+        for cid, size in cluster_sizes.items():
+            if size > largest_size:
+                largest_id, largest_size = cid, size
+        stats.largest_cluster_id = largest_id
+        stats.largest_cluster_size = largest_size
         stats.previously_seen_clusters = sum(1 for cid in cluster_sizes if cluster_previously_seen.get(cid))
         stats.avg_score = round(sum(all_scores) / len(all_scores), 1) if all_scores else 0.0
 

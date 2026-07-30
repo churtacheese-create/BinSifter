@@ -107,6 +107,30 @@ def test_ssdeep_cluster_metrics():
     assert stats.files_above_85 == 2
     assert stats.avg_score == 87.5  # avg of 90, 85, 90, 85 (each pair counted from both sides)
     assert stats.heat_denominator == 4
+    assert stats.largest_cluster_id == 0
+
+
+def test_largest_cluster_id_ties_go_to_first_encountered():
+    # Cluster 1 and cluster 0 both end up size 2, but cluster 0's first
+    # member is seen earlier in the records list - it should win the tie,
+    # matching the PowerShell version's strictly-greater-than comparison
+    # over Dictionary enumeration (insertion) order, not "whichever cluster
+    # id happens to be numerically smallest" or similar.
+    records = [
+        _rec("a", SSDEEP="s1", SsdeepClusterId=1, SsdeepClusterSize=2),
+        _rec("b", SSDEEP="s2", SsdeepClusterId=0, SsdeepClusterSize=2),
+        _rec("c", SSDEEP="s3", SsdeepClusterId=1, SsdeepClusterSize=2),
+        _rec("d", SSDEEP="s4", SsdeepClusterId=0, SsdeepClusterSize=2),
+    ]
+    stats = DashboardStats.from_records(records)
+    assert stats.largest_cluster_id == 1  # cluster 1's member ("a") appears first
+
+
+def test_largest_cluster_id_is_negative_one_when_no_real_cluster_exists():
+    records = [_rec("a", SSDEEP="s1", SsdeepClusterId=-1, SsdeepClusterSize=0)]
+    stats = DashboardStats.from_records(records)
+    assert stats.largest_cluster_id == -1
+    assert stats.largest_cluster_size == 0
 
 
 def test_previously_seen_clusters_counts_distinct_clusters_not_files():
