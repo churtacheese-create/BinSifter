@@ -1,15 +1,23 @@
 """Scan orchestration - the Python equivalent of Start-ScanEngine in the
 PowerShell version.
 
-This is a first-pass skeleton, not a finished port: it wires together the
-modules that are already real (hashing, NSRL, blocklist, YARA, imphash,
+This is a first-pass skeleton, not a finished port: it wires together every
+automatic per-file/bulk-scan stage (hashing, NSRL, blocklist, YARA, imphash,
 ssdeep clustering, capa, FLOSS, Authenticode, IOC extraction, MITRE ATT&CK
-enrichment, draft YARA rule generation, CSV report writing) and clearly
-marks the one still-unported piece (Speakeasy, blocked on the FRED's own
-proxy for its pip install) so a scan can be exercised end-to-end today
-without it, swapped in once that module is finished - a hard gate per
-step, not a rewrite-then-test-everything-at-the-end approach, per Steve's
-stated priority on accuracy over speed of delivery.
+enrichment, draft YARA rule generation, CSV report writing) - each swapped
+in as its own module was finished, a hard gate per step rather than a
+rewrite-then-test-everything-at-the-end approach, per Steve's stated
+priority on accuracy over speed of delivery.
+
+Speakeasy (core/speakeasy_scan.py) is a real, tested module too now, but
+deliberately NOT wired into this file's scan_directory() loop - the
+PowerShell version treated Speakeasy as a single-file, analyst-initiated,
+confirmation-gated Results-grid action (same category as Ghidra/Sigcheck/
+x64dbg/x32dbg), never a bulk-scan step, since it's execution-adjacent and
+can run up to 120 seconds per file. Wiring it in here would be a real
+behavior change, not "finishing the port" - it stays a standalone building
+block for a future GUI action to call on one analyst-selected file at a
+time.
 
 NOTE on a design question not yet resolved: the PowerShell version's
 FileRecord.Entropy doc comment implies NSRL-known files skip entropy
