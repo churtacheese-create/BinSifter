@@ -1,0 +1,27 @@
+# BinSifter runtime data - never commit case/scan data or local machine paths
+.bsifter-settings-cache.json
+Reports/
+Blocklist/
+/Attack/
+generated_rules/
+
+# Local dev/testing scratch
+Archive/
+
+# OS junk
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Editor junk
+.vscode/
+*.user
+
+# Future Python rewrite artifacts
+__pycache__/
+*.pyc
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
