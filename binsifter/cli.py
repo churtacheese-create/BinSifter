@@ -64,8 +64,8 @@ def main(argv: list[str] | None = None) -> int:
         config.ReportDirectory = args.report_dir
         Path(config.ReportDirectory).mkdir(parents=True, exist_ok=True)
 
-    def _progress(done: int, total: int, path: str) -> None:
-        print(f"[{done}/{total}] {path}", file=sys.stderr)
+    def _progress(done: int, total: int, path: str, record) -> None:  # noqa: ANN001 - FileRecord, avoids importing just for the type hint here
+        print(f"[{done}/{total}] {path} ({record.Status})", file=sys.stderr)
 
     result = scan_directory(config, progress_callback=_progress)
 

@@ -5,12 +5,16 @@ Sidebar width/nav order, top bar height/button widths, and status bar height
 are copied 1:1 from that source rather than re-derived, same fidelity goal
 as theme.py/icons.py/widgets.py.
 
-This replaces the earlier scaffold (nav QListWidget + plain QLabel
-placeholders) now that the real themed pieces exist.
+The scan trigger (folder picker + background thread) now lives on the Scan
+Queue page's Start/Pause/Stop buttons, matching the PowerShell version's own
+design (BtnStart.Add_Click, lines ~5221-5263) - an earlier pass had a
+stopgap "Run Scan" button on the Dashboard's top bar since Scan Queue was
+still a placeholder; that's been removed now that Scan Queue is real.
 """
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Qt, QThread, Signal
@@ -31,7 +35,9 @@ from PySide6.QtWidgets import (
 from binsifter import __version__
 from binsifter.core.config import build_default_config
 from binsifter.core.engine import ScanResult, scan_directory
+from binsifter.core.models import FileRecord
 from binsifter.gui.pages.dashboard import DashboardPage
+from binsifter.gui.pages.scan_queue import ScanQueuePage
 from binsifter.gui.theme import DARK, ThemePalette, qcolor_to_css
 from binsifter.gui.widgets import NavButton, accent_to_css
 
@@ -52,32 +58,62 @@ _TOPBAR_HEIGHT = 72
 _STATUSBAR_HEIGHT = 40
 _LOGO_FILENAME = "BinSifter-Logo-Horizontal-Dark.png"
 
+_TERMINAL_STATUSES = ("Completed", "Error", "Cancelled")
+
+
+def _format_elapsed(seconds: float) -> str:
+    total = int(seconds)
+    h, rem = divmod(total, 3600)
+    m, s = divmod(rem, 60)
+    return f"{h:02d}:{m:02d}:{s:02d}"
+
+
+class _ScanControl:
+    """Cooperative pause/stop flags shared between the UI thread and the
+    scan worker thread - same role as the PowerShell version's $ScanControl
+    hashtable (IsPaused/StopRequested), just as plain attributes instead of
+    a hashtable. Reading/writing a bool attribute across threads without a
+    lock is safe enough here under the GIL for this polling use (the worker
+    only ever reads these between files, never mid-file), matching the
+    original's own lock-free access pattern on the same fields."""
+
+    def __init__(self) -> None:
+        self.is_paused = False
+        self.stop_requested = False
+
 
 class _ScanWorker(QObject):
     """Runs engine.scan_directory() off the UI thread - a real scan can take
     long enough on a large source tree that running it inline would freeze
     the window, which the PowerShell version avoided via its own background
     runspace. progress/finished/failed mirror that runspace's event
-    callbacks."""
+    callbacks. progress now carries the FileRecord itself (Scanning, then
+    Completed/Error) so the Scan Queue grid can show live per-file state."""
 
-    progress = Signal(int, int, str)
+    progress = Signal(int, int, str, object)  # done, total, path, FileRecord
     finished = Signal(object)  # ScanResult
     failed = Signal(str)
 
-    def __init__(self, config) -> None:
+    def __init__(self, config, scan_control: _ScanControl) -> None:
         super().__init__()
         self._config = config
+        self._scan_control = scan_control
 
     def run(self) -> None:
         try:
-            result: ScanResult = scan_directory(self._config, progress_callback=self._on_progress)
+            result: ScanResult = scan_directory(
+                self._config,
+                progress_callback=self._on_progress,
+                should_pause=lambda: self._scan_control.is_paused,
+                should_stop=lambda: self._scan_control.stop_requested,
+            )
         except Exception as exc:  # noqa: BLE001 - report to the UI instead of crashing the thread
             self.failed.emit(str(exc))
             return
         self.finished.emit(result)
 
-    def _on_progress(self, done: int, total: int, current_path: str) -> None:
-        self.progress.emit(done, total, current_path)
+    def _on_progress(self, done: int, total: int, current_path: str, record: FileRecord) -> None:
+        self.progress.emit(done, total, current_path, record)
 
 
 class MainWindow(QMainWindow):
@@ -91,6 +127,9 @@ class MainWindow(QMainWindow):
         self.config = build_default_config()
         self._scan_thread: QThread | None = None
         self._scan_worker: _ScanWorker | None = None
+        self._scan_control: _ScanControl | None = None
+        self._scan_start_time: float | None = None
+        self._scan_total_files = 0
 
         central = QWidget()
         central_layout = QHBoxLayout(central)
@@ -136,7 +175,6 @@ class MainWindow(QMainWindow):
         layout.addSpacing(150 - 18 - logo_label.sizeHint().height())
 
         self._nav_buttons: list[NavButton] = []
-        self._pages_by_nav: dict[int, QWidget] = {}
         for label, icon_name in _NAV_ITEMS:
             btn = NavButton(theme, icon_name, label)
             btn.clicked.connect(lambda checked=False, b=btn: self._on_nav_clicked(b))
@@ -175,23 +213,6 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.page_title)
         layout.addStretch(1)
 
-        # Run Scan has no equivalent button in the reference screenshot -
-        # the PowerShell version triggers scans from the Scan Queue page,
-        # which is still a placeholder here. Kept as a distinct, visually
-        # separated control (not mixed into the Settings/Help/About group)
-        # since it's a deliberate scope addition for wiring the Dashboard to
-        # real data, not part of the ported chrome.
-        self.run_scan_button = QPushButton("Run Scan")
-        self.run_scan_button.setFixedSize(110, 44)
-        self.run_scan_button.setStyleSheet(
-            f"QPushButton {{ background-color: {qcolor_to_css(theme.Accent)}; "
-            f"color: {accent_to_css(theme.AccentFore)}; border: none; }}"
-        )
-        self.run_scan_button.clicked.connect(self._on_run_scan_clicked)
-        layout.addWidget(self.run_scan_button)
-
-        layout.addSpacing(16)
-
         for label, width in (("Settings", 126), ("Help", 96), ("About", 106)):
             btn = QPushButton(label)
             btn.setFixedSize(width, 44)
@@ -213,7 +234,13 @@ class MainWindow(QMainWindow):
 
         return bar
 
-    def _on_run_scan_clicked(self) -> None:
+    def _set_status(self, text: str, color) -> None:
+        self.status_dot.setStyleSheet(f"color: {accent_to_css(color)}; border: none; background: transparent;")
+        self.status_text.setText(text)
+
+    # ---------- scan lifecycle ----------
+
+    def _on_start_scan_clicked(self) -> None:
         if self._scan_thread is not None:
             return  # a scan is already running
 
@@ -222,14 +249,15 @@ class MainWindow(QMainWindow):
             return
         self.config.SrcDir = src_dir
 
-        self.status_dot.setStyleSheet(
-            f"color: {accent_to_css(self.theme.Warning)}; border: none; background: transparent;"
-        )
-        self.status_text.setText("Scanning...")
-        self.run_scan_button.setEnabled(False)
+        self.scan_queue_page.reset()
+        self.scan_queue_page.set_running(True)
+        self._set_status("Scanning...", self.theme.Warning)
+        self._scan_start_time = time.monotonic()
+        self._scan_total_files = 0
 
+        self._scan_control = _ScanControl()
         self._scan_thread = QThread(self)
-        self._scan_worker = _ScanWorker(self.config)
+        self._scan_worker = _ScanWorker(self.config, self._scan_control)
         self._scan_worker.moveToThread(self._scan_thread)
         self._scan_thread.started.connect(self._scan_worker.run)
         self._scan_worker.progress.connect(self._on_scan_progress)
@@ -237,24 +265,41 @@ class MainWindow(QMainWindow):
         self._scan_worker.failed.connect(self._on_scan_failed)
         self._scan_thread.start()
 
-    def _on_scan_progress(self, done: int, total: int, current_path: str) -> None:
-        self.status_text.setText(f"Scanning... {done}/{total}")
+    def _on_pause_toggled(self, paused: bool) -> None:
+        if self._scan_control is not None:
+            self._scan_control.is_paused = paused
+        if paused:
+            self._set_status("Paused", self.theme.Warning)
+        elif self._scan_thread is not None:
+            self._set_status("Scanning...", self.theme.Warning)
+
+    def _on_stop_clicked(self) -> None:
+        if self._scan_control is not None:
+            self._scan_control.stop_requested = True
+        self._set_status("Stopping...", self.theme.Warning)
+
+    def _on_scan_progress(self, done: int, total: int, current_path: str, record: FileRecord) -> None:
+        self._scan_total_files = total
+        self.scan_queue_page.upsert_record(record)
+
+        if record.Status not in _TERMINAL_STATUSES:
+            return  # the mid-file "Scanning" callback only needs the grid row above
+
+        elapsed = _format_elapsed(time.monotonic() - self._scan_start_time) if self._scan_start_time else "00:00:00"
+        self.dashboard_page.summary_label.setText(f"Scanning: {done} / {total} files - elapsed {elapsed}")
+        self.scan_queue_page.set_summary(f"{total} files total - {done} completed - elapsed {elapsed}")
 
     def _on_scan_finished(self, result: ScanResult) -> None:
         self.dashboard_page.update_from_records(result.records)
-        self.status_dot.setStyleSheet(
-            f"color: {accent_to_css(self.theme.Success)}; border: none; background: transparent;"
-        )
-        self.status_text.setText("Ready")
-        self.run_scan_button.setEnabled(True)
+        completed = sum(1 for r in result.records if r.Status == "Completed")
+        self.scan_queue_page.set_summary(f"Scan finished. {completed} / {len(result.records)} files completed.")
+        self._set_status("Ready", self.theme.Success)
+        self.scan_queue_page.set_running(False)
         self._teardown_scan_thread()
 
     def _on_scan_failed(self, message: str) -> None:
-        self.status_dot.setStyleSheet(
-            f"color: {accent_to_css(self.theme.Danger)}; border: none; background: transparent;"
-        )
-        self.status_text.setText("Error")
-        self.run_scan_button.setEnabled(True)
+        self._set_status("Error", self.theme.Danger)
+        self.scan_queue_page.set_running(False)
         self._teardown_scan_thread()
         QMessageBox.critical(self, "Scan failed", message)
 
@@ -264,6 +309,7 @@ class MainWindow(QMainWindow):
             self._scan_thread.wait()
         self._scan_thread = None
         self._scan_worker = None
+        self._scan_control = None
 
     # ---------- content ----------
 
@@ -277,7 +323,14 @@ class MainWindow(QMainWindow):
         self.pages = QStackedWidget()
         self.dashboard_page = DashboardPage(theme)
         self.pages.addWidget(self.dashboard_page)
-        for label, _ in _NAV_ITEMS[1:]:
+
+        self.scan_queue_page = ScanQueuePage(theme)
+        self.scan_queue_page.start_clicked.connect(self._on_start_scan_clicked)
+        self.scan_queue_page.pause_toggled.connect(self._on_pause_toggled)
+        self.scan_queue_page.stop_clicked.connect(self._on_stop_clicked)
+        self.pages.addWidget(self.scan_queue_page)
+
+        for label, _ in _NAV_ITEMS[2:]:
             placeholder = QLabel(f"{label} page - not yet built.")
             placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
             placeholder.setStyleSheet(f"color: {accent_to_css(theme.MutedFore)};")

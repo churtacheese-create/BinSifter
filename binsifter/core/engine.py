@@ -33,6 +33,8 @@ added complexity either way - don't "fix" this speculatively.
 from __future__ import annotations
 
 import logging
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -91,7 +93,12 @@ def enumerate_files(src_dir: str) -> list[str]:
     return files
 
 
-def scan_directory(config: BinSifterConfig, progress_callback=None) -> ScanResult:
+def scan_directory(
+    config: BinSifterConfig,
+    progress_callback: Callable[[int, int, str, FileRecord], None] | None = None,
+    should_pause: Callable[[], bool] | None = None,
+    should_stop: Callable[[], bool] | None = None,
+) -> ScanResult:
     """Runs the currently-implemented pipeline stages over every file under
     config.SrcDir: hash + entropy, NSRL, blocklist, YARA, imphash. Returns
     a ScanResult (records + the paths of any CSV reports written);
@@ -99,9 +106,21 @@ def scan_directory(config: BinSifterConfig, progress_callback=None) -> ScanResul
     writing are all applied as post-scan passes across the whole batch,
     same as the PowerShell version.
 
-    progress_callback(done: int, total: int, current_path: str), if given,
-    is called after each file - the GUI's progress bar should be driven off
-    this rather than polling.
+    progress_callback(done, total, current_path, record) is called TWICE per
+    file - once with record.Status == "Scanning" right before processing
+    starts, once again after with Status == "Completed"/"Error" - so a live
+    queue view can show an in-flight row, not just a jump from Queued
+    straight to a finished state. This is a single-threaded sequential scan
+    (unlike the PowerShell version's bounded worker-pool dispatcher), so only
+    one row will ever show "Scanning" at a time here - a known, existing
+    simplification of this port, not something this change alters.
+
+    should_pause()/should_stop(), if given, are polled BETWEEN files, mirroring
+    the PowerShell dispatcher's own cooperative gate (BinSifter_v1.3.0-alpha.2.ps1
+    lines ~2895/2867: pause blocks starting new files, already-dispatched ones
+    finish; stop aborts before the next file starts, never mid-file). On stop,
+    every file that hadn't started yet is marked Status="Cancelled" - same as
+    the PowerShell version's "force-remaining to Cancelled" (line ~2941).
     """
     paths = enumerate_files(config.SrcDir)
     records: dict[str, FileRecord] = {p: FileRecord(Path=p) for p in paths}
@@ -160,8 +179,31 @@ def scan_directory(config: BinSifterConfig, progress_callback=None) -> ScanResul
     # PowerShell version - see yara_rule_gen.py's module docstring.
     floss_static_strings: dict[str, list[str]] = {}
 
+    stopped_at: int | None = None
     for i, path in enumerate(paths):
+        if should_stop and should_stop():
+            stopped_at = i
+            break
+
+        # should_stop() is only polled a second time here if the pause loop
+        # actually ran - avoids calling it twice per file in the common
+        # (never-paused) case, which would otherwise make a stop-callback
+        # that flips state on each call (like the real GUI's) fire once too
+        # often per iteration.
+        stopped_while_paused = False
+        while should_pause and should_pause():
+            time.sleep(0.15)
+            if should_stop and should_stop():
+                stopped_while_paused = True
+                break
+        if stopped_while_paused:
+            stopped_at = i
+            break
+
         record = records[path]
+        record.Status = "Scanning"
+        if progress_callback:
+            progress_callback(i, len(paths), path, record)
         try:
             hash_result = hashing.hash_and_score_file(path)
             record.MD5 = hash_result.md5
@@ -237,7 +279,15 @@ def scan_directory(config: BinSifterConfig, progress_callback=None) -> ScanResul
             logger.exception("Error processing %s", path)
 
         if progress_callback:
-            progress_callback(i + 1, len(paths), path)
+            progress_callback(i + 1, len(paths), path, record)
+
+    if stopped_at is not None:
+        for remaining_path in paths[stopped_at:]:
+            records[remaining_path].Status = "Cancelled"
+        logger.info(
+            "Scan stopped by request - %d/%d file(s) were not processed.",
+            len(paths) - stopped_at, len(paths),
+        )
 
     # Post-scan clustering passes
     imphash_clusters = imphash_mod.cluster_by_imphash(imphashes)
