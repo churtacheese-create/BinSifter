@@ -17,6 +17,25 @@ authors = [{ name = "Steven C. Lauterbach" }]
 # fragile stdout/JSON parsing, no "is the exe on PATH" configuration surface
 # for these five tools specifically).
 dependencies = [
+    # Not used directly by BinSifter's own code - pinned here as a real
+    # RUNTIME dependency (not just the [build-system] requires above) so its
+    # distutils compatibility shim (_distutils_hack) is always installed
+    # alongside speakeasy-emulator's hard "unicorn==1.0.2" pin (see that
+    # entry below). Without setuptools present, unicorn 1.0.2's Python
+    # bindings do a bare "import distutils.sysconfig" that raises
+    # ModuleNotFoundError on Python 3.12+, where distutils was removed from
+    # the standard library outright - confirmed the hard way on a real
+    # Python 3.13 install (2026-07-30). Harmless/no-op on Python <3.12,
+    # where distutils still exists natively.
+    # Upper bound is load-bearing, not cosmetic: unicorn 1.0.2's Python
+    # bindings ALSO do a bare "import pkg_resources" right after the
+    # distutils import (same file, next line) - setuptools removed
+    # pkg_resources outright in 82.0.0 (confirmed the hard way too, right
+    # after fixing the distutils half of this on 2026-07-30: installing
+    # plain "setuptools" pulled 83.0.0 and traded one ModuleNotFoundError
+    # for another). <82 keeps both the distutils shim and pkg_resources
+    # available in the same install.
+    "setuptools>=68,<82",
     "PySide6>=6.7",       # LGPL - safe for closed-source distribution, unlike PyQt6 (GPL/paid-commercial)
     "yara-python>=4.5",   # YARA engine, imported directly instead of shelling out to yara64.exe
     "flare-capa>=9.0",    # Mandiant capa, as a library instead of capa.exe
@@ -27,6 +46,15 @@ dependencies = [
                                  # (confirmed the hard way - an earlier ">=2.0" here broke the whole install, since
                                  # pip fails the entire dependency resolution as one unit on an unsatisfiable pin,
                                  # not just that one package). Revisit once 2.0 has an actual stable release.
+                                 # NOTE 2: speakeasy-emulator 1.5.11 itself hard-pins "unicorn==1.0.2" (an exact
+                                 # equality, not a floor) - confirmed via `importlib.metadata.requires()`, not
+                                 # assumed. That old unicorn release does a bare "import distutils.sysconfig" at
+                                 # module load (removed from unicorn's own loader entirely as of the 2.x line, per
+                                 # its GitHub source) - harmless on Python <3.12 where distutils still exists, but
+                                 # a hard ModuleNotFoundError on 3.12+. Can't fix by re-pinning unicorn here (pip
+                                 # would just report an unresolvable conflict against speakeasy's own pin) - the
+                                 # "setuptools" entry above is the actual fix, restoring distutils via setuptools'
+                                 # own compatibility shim instead.
     "ppdeep>=20200505",   # Pure-Python ssdeep-compatible fuzzy hashing - no C library/compiler dependency,
                            # which matters a lot for the Linux + installer goals (the real "ssdeep" PyPI
                            # package requires libfuzzy to be compiled/available on the target machine).

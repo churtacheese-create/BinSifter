@@ -37,9 +37,12 @@ from binsifter import __version__
 from binsifter.core.config import build_default_config
 from binsifter.core.engine import ScanResult, scan_directory
 from binsifter.core.models import FileRecord
+from binsifter.core.tool_metadata import format_status_line, refresh_tool_metadata
 from binsifter.gui.log_bridge import QtLogHandler
+from binsifter.gui.pages.about import AboutPage
 from binsifter.gui.pages.capa_rules import CapaRulesPage
 from binsifter.gui.pages.dashboard import DashboardPage
+from binsifter.gui.pages.help import HelpPage
 from binsifter.gui.pages.logs import LogsPage
 from binsifter.gui.pages.nsrl import NsrlPage
 from binsifter.gui.pages.results import ResultsPage
@@ -214,6 +217,18 @@ class MainWindow(QMainWindow):
         self.page_title.setText("Settings")
         self.pages.setCurrentWidget(self.settings_page)
 
+    def _on_help_clicked(self) -> None:
+        for btn in self._nav_buttons:
+            btn.set_active(False)
+        self.page_title.setText("Help")
+        self.pages.setCurrentWidget(self.help_page)
+
+    def _on_about_clicked(self) -> None:
+        for btn in self._nav_buttons:
+            btn.set_active(False)
+        self.page_title.setText("About")
+        self.pages.setCurrentWidget(self.about_page)
+
     # ---------- top bar ----------
 
     def _build_topbar(self) -> QWidget:
@@ -246,10 +261,9 @@ class MainWindow(QMainWindow):
             layout.addWidget(btn)
             self._topbar_buttons[label] = btn
 
-        # Settings is the only one of these three wired to a real page so
-        # far - Help/About have no built page yet, same "still a
-        # placeholder" status as the remaining sidebar nav pages.
         self._topbar_buttons["Settings"].clicked.connect(self._on_settings_clicked)
+        self._topbar_buttons["Help"].clicked.connect(self._on_help_clicked)
+        self._topbar_buttons["About"].clicked.connect(self._on_about_clicked)
 
         layout.addSpacing(16)
 
@@ -385,6 +399,15 @@ class MainWindow(QMainWindow):
         self.settings_page = SettingsPage(theme, self.config)
         self.pages.addWidget(self.settings_page)
 
+        # Help/About, like Settings, are top-bar-only destinations - added
+        # to the same QStackedWidget but not part of the sidebar's
+        # _NAV_ITEMS loop (see _on_help_clicked/_on_about_clicked).
+        self.help_page = HelpPage(theme)
+        self.pages.addWidget(self.help_page)
+
+        self.about_page = AboutPage(theme)
+        self.pages.addWidget(self.about_page)
+
         # Cross-page sync, matching the PowerShell version's direct field
         # pokes: browsing to a new path from YARA Rules/Capa Rules/NSRL
         # updates Settings' matching textbox too. Saving Settings refreshes
@@ -437,12 +460,27 @@ class MainWindow(QMainWindow):
         layout = QHBoxLayout(bar)
         layout.setContentsMargins(24, 0, 24, 0)
 
-        label = QLabel(f"BinSifter {__version__}")
-        label.setStyleSheet(f"color: {accent_to_css(theme.MutedFore)}; border: none; background: transparent;")
-        font = label.font()
+        self.footer_label = QLabel(f"BinSifter {__version__}")
+        self.footer_label.setStyleSheet(f"color: {accent_to_css(theme.MutedFore)}; border: none; background: transparent;")
+        font = self.footer_label.font()
         font.setPointSize(9)
-        label.setFont(font)
-        layout.addWidget(label)
+        self.footer_label.setFont(font)
+        layout.addWidget(self.footer_label)
         layout.addStretch(1)
 
+        # Populate immediately - Start-ToolMetadataRefresh's role, but
+        # synchronous here (see core/tool_metadata.py's docstring for why no
+        # background thread is needed anymore). Covers the "cached ToolsDir/
+        # NsrlPath already filled in at startup" case the original called
+        # out explicitly, since build_default_config() already loaded the
+        # settings cache before this runs.
+        self._refresh_footer()
+        # Re-run after every Settings save, same as the original's
+        # Start-ToolMetadataRefresh call at the end of the Save handler.
+        self.settings_page.settings_saved.connect(self._refresh_footer)
+
         return bar
+
+    def _refresh_footer(self) -> None:
+        metadata = refresh_tool_metadata(self.config.NsrlPath)
+        self.footer_label.setText(format_status_line(__version__, metadata))

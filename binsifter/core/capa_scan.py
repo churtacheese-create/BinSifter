@@ -59,6 +59,17 @@ import capa.loader
 import capa.rules
 from capa.features.common import FORMAT_AUTO, FORMAT_SC32, FORMAT_SC64, OS_AUTO
 
+from binsifter.core.subprocess_timeout import run_with_timeout
+
+# Confirmed necessary, not a defensive guess: modern (2025-toolchain-built)
+# Windows binaries - bash.exe, curl.exe, notepad.exe all reproduced this on
+# 2026-07-30 - can get vivisect's aarch64 register-context construction
+# stuck for 30-90+ seconds inside envi's own code (a third-party bug, not
+# something in this module). A 60s default gives real, complex-but-healthy
+# files room to finish while still keeping one pathological file from
+# stalling an entire batch scan indefinitely.
+DEFAULT_TIMEOUT_SECONDS = 60
+
 
 @dataclass
 class CapaResult:
@@ -125,3 +136,39 @@ def scan_file(target_path: str, rules: capa.rules.RuleSet, is_shellcode: bool = 
         return CapaResult(detection_count=count, output=output, shellcode_format=label)
 
     return CapaResult(detection_count=0, output="", shellcode_format=None)
+
+
+def _scan_file_worker_entrypoint(target_path: str, capa_rules_dir: str, is_shellcode: bool) -> CapaResult:
+    """Top-level (picklable) entrypoint for the child process spawned by
+    scan_file_with_timeout(). Reloads rules here instead of passing the
+    parent's already-loaded capa.rules.RuleSet across the process boundary
+    - that object isn't confirmed picklable, and rule loading itself is
+    fast (~30ms measured against smoketest/capa_rules), so reloading per
+    file is a trivial cost next to the actual analysis time."""
+    rules = load_rules(capa_rules_dir)
+    return scan_file(target_path, rules, is_shellcode=is_shellcode)
+
+
+def scan_file_with_timeout(
+    target_path: str,
+    capa_rules_dir: str,
+    is_shellcode: bool = False,
+    timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+) -> CapaResult:
+    """Safety-net wrapper around scan_file() - runs it in a child process
+    with a hard, OS-level timeout instead of calling it directly in-process.
+    See subprocess_timeout.py's module docstring for why a subprocess (not
+    a signal-based timeout) is required here specifically. Raises
+    TimeoutError if analysis doesn't finish in time, or RuntimeError if the
+    worker process failed some other way - both are ordinary exceptions
+    engine.py's existing per-file try/except already handles (marks that
+    one file Status="Error" with the exception text, keeps the rest of the
+    batch going), so no engine.py error-handling changes were needed beyond
+    calling this instead of scan_file() directly.
+    """
+    return run_with_timeout(
+        _scan_file_worker_entrypoint,
+        (target_path, capa_rules_dir, is_shellcode),
+        timeout_seconds,
+        label="capa analysis",
+    )

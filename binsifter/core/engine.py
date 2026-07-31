@@ -255,7 +255,16 @@ def scan_directory(
             )
 
             if capa_rules is not None and record.CapaEligible:
-                capa_result = capa_scan.scan_file(path, capa_rules, is_shellcode=ft.is_shellcode)
+                # scan_file_with_timeout(), not scan_file() directly: certain
+                # modern Windows binaries (confirmed 2026-07-30) get
+                # vivisect's aarch64 register-context construction stuck for
+                # 30-90+ seconds - a third-party bug that could otherwise
+                # stall an entire batch scan on one file. Reloads capa_rules
+                # from config.CapaRules in a child process rather than
+                # reusing the `capa_rules` RuleSet already loaded above,
+                # since that object can't be passed across the process
+                # boundary - see capa_scan.py's docstring for why.
+                capa_result = capa_scan.scan_file_with_timeout(path, config.CapaRules, is_shellcode=ft.is_shellcode)
                 record.CapaDetectionCount = capa_result.detection_count
                 record.CAPAOutput = capa_result.output or None
                 record.CapaShellcodeFormat = capa_result.shellcode_format
