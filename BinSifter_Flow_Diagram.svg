@@ -1,0 +1,120 @@
+<svg width="100%" viewBox="0 0 680 1600" xmlns="http://www.w3.org/2000/svg" role="img">
+<title>BinSifter application and scan pipeline flow</title>
+<desc>Combined flow from launching BinSifter and configuring settings, through enumerating files and running the per-file pipeline (hashing, reputation lookup, YARA, classification, a branch into a timeout-guarded capa scan or FLOSS fallback, fuzzy hashing), looping per file, then post-scan clustering, report writing, and results review. Colored to match the BinSifter dashboard and logo palette.</desc>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#1FAEFF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+</defs>
+<style>
+.box{fill:#0E1920;stroke:#314450}
+.t{font-family:Arial,Helvetica,sans-serif;font-size:12px;fill:#A4B1BB}
+.th{font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;fill:#E4EBF0}
+.ts{font-family:Arial,Helvetica,sans-serif;font-size:12px;fill:#A4B1BB}
+.arr{stroke:#1FAEFF;stroke-width:1.5;fill:none}
+.c-gray rect{fill:#18242B;stroke:#4A5A64}
+.c-gray text.th{fill:#E4EBF0}
+.c-gray text.ts{fill:#A4B1BB}
+.c-blue rect{fill:#0C2A3D;stroke:#1FAEFF}
+.c-blue text.th{fill:#8FD4FF}
+.c-blue text.ts{fill:#5FBAFF}
+.c-amber rect{fill:#3A2A08;stroke:#F7AE1C}
+.c-amber text.th{fill:#FFD98A}
+.c-amber text.ts{fill:#F7C862}
+.node{cursor:pointer}
+</style>
+<rect x="0" y="0" width="680" height="1600" fill="#0B1319"/>
+<g class="node c-gray">
+<rect x="180" y="40" width="320" height="56" rx="8" stroke-width="0.5"/>
+<text class="th" x="340" y="58" text-anchor="middle" dominant-baseline="central">Launch &amp; configure</text>
+<text class="ts" x="340" y="76" text-anchor="middle" dominant-baseline="central">Source dir, rule paths</text>
+</g>
+<line x1="340" y1="96" x2="340" y2="150" class="arr" marker-end="url(#arrow)"/>
+<g class="node c-gray">
+<rect x="180" y="150" width="320" height="56" rx="8" stroke-width="0.5"/>
+<text class="th" x="340" y="168" text-anchor="middle" dominant-baseline="central">Start scan</text>
+<text class="ts" x="340" y="186" text-anchor="middle" dominant-baseline="central">Scan queue page</text>
+</g>
+<line x1="340" y1="206" x2="340" y2="260" class="arr" marker-end="url(#arrow)"/>
+<g class="node c-gray">
+<rect x="180" y="260" width="320" height="56" rx="8" stroke-width="0.5"/>
+<text class="th" x="340" y="278" text-anchor="middle" dominant-baseline="central">Enumerate files</text>
+<text class="ts" x="340" y="296" text-anchor="middle" dominant-baseline="central">Recursive directory walk</text>
+</g>
+<line x1="340" y1="316" x2="340" y2="400" class="arr" marker-end="url(#arrow)"/>
+<rect x="50" y="340" width="580" height="852" rx="16" fill="none" stroke="#314450" stroke-width="0.5" stroke-dasharray="4 4"/>
+<text class="th" x="70" y="368" text-anchor="start">Per-file pipeline</text>
+<g class="node c-blue">
+<rect x="180" y="400" width="320" height="56" rx="8" stroke-width="0.5"/>
+<text class="th" x="340" y="418" text-anchor="middle" dominant-baseline="central">Hash &amp; signature check</text>
+<text class="ts" x="340" y="436" text-anchor="middle" dominant-baseline="central">MD5, SHA-1, entropy, Authenticode</text>
+</g>
+<line x1="340" y1="456" x2="340" y2="510" class="arr" marker-end="url(#arrow)"/>
+<g class="node c-blue">
+<rect x="180" y="510" width="320" height="56" rx="8" stroke-width="0.5"/>
+<text class="th" x="340" y="528" text-anchor="middle" dominant-baseline="central">Reputation lookup</text>
+<text class="ts" x="340" y="546" text-anchor="middle" dominant-baseline="central">NSRL known-good, blocklist match</text>
+</g>
+<line x1="340" y1="566" x2="340" y2="620" class="arr" marker-end="url(#arrow)"/>
+<g class="node c-blue">
+<rect x="180" y="620" width="320" height="56" rx="8" stroke-width="0.5"/>
+<text class="th" x="340" y="638" text-anchor="middle" dominant-baseline="central">YARA scan</text>
+<text class="ts" x="340" y="656" text-anchor="middle" dominant-baseline="central">Rule matches, severity score</text>
+</g>
+<line x1="340" y1="676" x2="340" y2="730" class="arr" marker-end="url(#arrow)"/>
+<g class="node c-blue">
+<rect x="180" y="730" width="320" height="56" rx="8" stroke-width="0.5"/>
+<text class="th" x="340" y="748" text-anchor="middle" dominant-baseline="central">Classify file type</text>
+<text class="ts" x="340" y="766" text-anchor="middle" dominant-baseline="central">PE, ELF, or shellcode</text>
+</g>
+<line x1="340" y1="786" x2="340" y2="840" class="arr" marker-end="url(#arrow)"/>
+<g class="node c-blue">
+<rect x="180" y="840" width="320" height="56" rx="8" stroke-width="0.5"/>
+<text class="th" x="340" y="858" text-anchor="middle" dominant-baseline="central">Capa-eligible?</text>
+<text class="ts" x="340" y="876" text-anchor="middle" dominant-baseline="central">PE/ELF, not excluded</text>
+</g>
+<path d="M340 896 L340 931 L200 931 L200 966" fill="none" class="arr" marker-end="url(#arrow)"/>
+<path d="M340 896 L340 931 L480 931 L480 966" fill="none" class="arr" marker-end="url(#arrow)"/>
+<text class="ts" x="212" y="924" dominant-baseline="central">Yes</text>
+<text class="ts" x="450" y="924" dominant-baseline="central">No</text>
+<g class="node c-amber">
+<rect x="70" y="966" width="260" height="56" rx="8" stroke-width="0.5"/>
+<text class="th" x="200" y="984" text-anchor="middle" dominant-baseline="central">Capa scan (guarded)</text>
+<text class="ts" x="200" y="1002" text-anchor="middle" dominant-baseline="central">vivisect, 60s hard timeout</text>
+</g>
+<g class="node c-amber">
+<rect x="350" y="966" width="260" height="56" rx="8" stroke-width="0.5"/>
+<text class="th" x="480" y="984" text-anchor="middle" dominant-baseline="central">FLOSS + IOC fallback</text>
+<text class="ts" x="480" y="1002" text-anchor="middle" dominant-baseline="central">String recovery, IOC mining</text>
+</g>
+<path d="M200 1022 L200 1057 L340 1057 L340 1092" fill="none" class="arr" marker-end="url(#arrow)"/>
+<path d="M480 1022 L480 1057 L340 1057 L340 1092" fill="none" class="arr" marker-end="url(#arrow)"/>
+<g class="node c-blue">
+<rect x="180" y="1092" width="320" height="56" rx="8" stroke-width="0.5"/>
+<text class="th" x="340" y="1110" text-anchor="middle" dominant-baseline="central">Imphash &amp; SSDEEP hash</text>
+<text class="ts" x="340" y="1128" text-anchor="middle" dominant-baseline="central">Per-file fuzzy fingerprints</text>
+</g>
+<text class="ts" x="610" y="1178" text-anchor="end">repeats per file</text>
+<line x1="340" y1="1192" x2="340" y2="1246" class="arr" marker-end="url(#arrow)"/>
+<g class="node c-blue">
+<rect x="180" y="1246" width="320" height="56" rx="8" stroke-width="0.5"/>
+<text class="th" x="340" y="1264" text-anchor="middle" dominant-baseline="central">Post-scan clustering</text>
+<text class="ts" x="340" y="1282" text-anchor="middle" dominant-baseline="central">Imphash &amp; SSDEEP cluster IDs</text>
+</g>
+<line x1="340" y1="1302" x2="340" y2="1356" class="arr" marker-end="url(#arrow)"/>
+<g class="node c-blue">
+<rect x="180" y="1356" width="320" height="56" rx="8" stroke-width="0.5"/>
+<text class="th" x="340" y="1374" text-anchor="middle" dominant-baseline="central">Write CSV reports</text>
+<text class="ts" x="340" y="1392" text-anchor="middle" dominant-baseline="central">Full, suspicious, YARA, capa lists</text>
+</g>
+<line x1="340" y1="1412" x2="340" y2="1466" class="arr" marker-end="url(#arrow)"/>
+<g class="node c-gray">
+<rect x="180" y="1466" width="320" height="56" rx="8" stroke-width="0.5"/>
+<text class="th" x="340" y="1484" text-anchor="middle" dominant-baseline="central">Results &amp; analyst review</text>
+<text class="ts" x="340" y="1502" text-anchor="middle" dominant-baseline="central">Grid, quick-launch tools</text>
+</g>
+<rect x="70" y="1554" width="12" height="12" rx="2" fill="#18242B" stroke="#4A5A64" stroke-width="0.5"/>
+<text class="ts" x="90" y="1560" dominant-baseline="central">User / control flow</text>
+<rect x="240" y="1554" width="12" height="12" rx="2" fill="#0C2A3D" stroke="#1FAEFF" stroke-width="0.5"/>
+<text class="ts" x="260" y="1560" dominant-baseline="central">Automatic pipeline</text>
+<rect x="400" y="1554" width="12" height="12" rx="2" fill="#3A2A08" stroke="#F7AE1C" stroke-width="0.5"/>
+<text class="ts" x="420" y="1560" dominant-baseline="central">Heavier analysis (capa/FLOSS)</text>
+</svg>

@@ -23,6 +23,10 @@ A full rewrite in Python and PySide6 is underway (see the `binsifter/` package),
 - Per-file triage disposition tracking, persisted across scans
 - Results-grid quick-launch into PE Studio, DIE, CFF Explorer, Resource Hacker, Ghidra (headless), Sigcheck, x64dbg/x32dbg, and Speakeasy
 
+## How it works
+
+<img src="BinSifter_Flow_Diagram.svg" alt="BinSifter application and scan pipeline flow" width="100%">
+
 ## Requirements
 
 - Windows, PowerShell 7+ (`pwsh.exe`)
