@@ -44,7 +44,24 @@ def compile_rules(yara_rules_path: str) -> yara.Rules:
 
 
 def scan_file(rules: yara.Rules, target_path: str, attack_db: AttackDb | None = None) -> YaraMatchResult:
-    matches = rules.match(filepath=target_path)
+    try:
+        matches = rules.match(filepath=target_path)
+    except yara.Error:
+        # yara-python's filepath-based match opens the file through a
+        # Windows narrow (ANSI/active-code-page) file API under the hood,
+        # which can fail for filenames containing characters outside the
+        # system's active code page - confirmed 2026-08-03 against a real
+        # scan of a directory with Cyrillic filenames on an English-locale
+        # FRED ("could not open file ..."), even though the same path
+        # opens fine through Python's own (wide-char/Unicode-aware) file
+        # I/O. Falling back to reading the bytes ourselves and handing
+        # YARA the buffer directly sidesteps the narrow-path limitation
+        # entirely. Kept as a fallback rather than the default, so the
+        # common case still gets YARA's own (likely memory-mapped) file
+        # handling rather than a full read into memory for every file.
+        with open(target_path, "rb") as f:
+            data = f.read()
+        matches = rules.match(data=data)
     if not matches:
         return YaraMatchResult(
             rule_names=[], hit_count=0, severity="Unknown", severity_score=-1, attack_techniques=None

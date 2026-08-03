@@ -44,8 +44,10 @@ from __future__ import annotations
 
 import logging
 import multiprocessing
+import multiprocessing.pool
 import os
 import queue
+import signal
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -87,6 +89,90 @@ def _default_worker_count() -> int:
     return max(1, min(MAX_SCAN_WORKERS, os.cpu_count() or 4))
 
 
+# ================= Non-daemonic pool (required for capa's own subprocess) =====
+# multiprocessing.Pool always marks its own worker processes daemonic - and
+# Python unconditionally forbids a daemonic process from spawning children
+# of its own (Process.start() hard-asserts on it: "daemonic processes are
+# not allowed to have children"). But _process_one_file() needs to do
+# exactly that for CapaEligible files: PersistentCapaWorker (see
+# capa_scan.py) spawns and owns its own further child process per worker
+# (the vivisect hang-safety net - see subprocess_timeout.py's module
+# docstring for the same rationale applied there). Confirmed as a real,
+# majority-of-files failure mode in a live scan run on 2026-08-03 - a vanilla Pool made
+# every capa call inside a worker raise that AssertionError.
+#
+# The fix (a well-known pattern for "pool whose workers need their own
+# children") is to give the Pool a Process class whose `daemon` property is
+# hard-pinned to False, so pool workers themselves come up as ordinary,
+# non-daemonic processes. Normal shutdown is unaffected: Pool.__exit__
+# still calls terminate() on the pool regardless of the daemon flag, and
+# that's the only shutdown path this codebase relies on (see the `with
+# ctx.Pool(...) as pool:` block in scan_directory() below). The one
+# tradeoff, accepted here: if the GUI process were to crash hard without
+# going through that context-manager exit, non-daemonic workers (and their
+# own capa grandchild processes) wouldn't be auto-reaped the way daemonic
+# ones would - a low-probability edge case, not worth more machinery for.
+_BaseSpawnProcess = multiprocessing.get_context("spawn").Process
+
+
+class _NoDaemonProcess(_BaseSpawnProcess):
+    @property
+    def daemon(self) -> bool:
+        return False
+
+    @daemon.setter
+    def daemon(self, value: bool) -> None:
+        pass  # Pool always tries to set this True on its workers - ignored
+
+
+class _NoDaemonSpawnContext(type(multiprocessing.get_context("spawn"))):
+    Process = _NoDaemonProcess
+
+
+_NO_DAEMON_SPAWN_CONTEXT = _NoDaemonSpawnContext()
+
+
+class _NoDaemonPool(multiprocessing.pool.Pool):
+    def __init__(self, *args, **kwargs) -> None:
+        kwargs["context"] = _NO_DAEMON_SPAWN_CONTEXT
+        super().__init__(*args, **kwargs)
+
+
+def _reap_capa_children(capa_pid_queue: "multiprocessing.Queue") -> None:
+    """Best-effort cleanup for every PersistentCapaWorker child spawned
+    during this scan, called once from the parent process after the scan
+    pool itself has been torn down (see scan_directory()).
+
+    Necessary because scan_directory() always exits its `with
+    _NoDaemonPool(...) as pool:` block via Pool.__exit__, which calls
+    pool.terminate() - an abrupt kill of every worker process, on every
+    scan, even a fully successful one. Killing a worker does not kill that
+    worker's own children (neither Windows nor POSIX auto-reap a killed
+    process's descendants), so without this, every scan would leak one
+    still-running, capa/vivisect-loaded orphan process per worker that ever
+    handled a CapaEligible file - a real, accumulating problem over many
+    scans in one long BinSifter session, not just a theoretical one.
+
+    Draining capa_pid_queue (rather than tracking child Process objects
+    directly) is what makes this work regardless of how the pool shut
+    down: each worker reported its own child's PID the moment it spawned
+    one, so the parent can kill by PID directly without needing any
+    cooperation from the (now-dead) worker that spawned it.
+    """
+    pids: list[int] = []
+    while True:
+        try:
+            pids.append(capa_pid_queue.get_nowait())
+        except queue.Empty:
+            break
+
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            pass  # already exited on its own, or never fully started - nothing to clean up
+
+
 # ================= Concurrent scan pool: worker-process state =================
 # Set once per worker process by _pool_worker_init(), then reused for every
 # file that worker goes on to process - these are per-WORKER-PROCESS
@@ -100,6 +186,13 @@ _worker_nsrl_hashes: set = set()
 _worker_blocklist_hashes: set = set()
 _worker_attack_db = None
 _worker_disposition_history: dict = {}
+# One warm capa child process per scan-pool worker, reused across every
+# file that worker processes - see capa_scan.PersistentCapaWorker's
+# docstring for why (avoids re-spawning + re-importing capa/vivisect from
+# scratch for every single file, confirmed as a major contributor to a real
+# 34-minute, 652-file scan versus the PowerShell version's ~5 minutes for
+# the same batch, 2026-08-03). None when CapaRules isn't configured.
+_worker_persistent_capa: "capa_scan.PersistentCapaWorker | None" = None
 
 
 def _pool_worker_init(
@@ -108,6 +201,7 @@ def _pool_worker_init(
     blocklist_hashes: set,
     attack_db,
     disposition_history: dict,
+    capa_pid_queue: "multiprocessing.Queue | None",
 ) -> None:
     """Runs exactly once in each freshly-spawned worker process, before that
     worker picks up its first file (multiprocessing.Pool guarantees this).
@@ -119,14 +213,18 @@ def _pool_worker_init(
 
     YARA rules are the one exception: a compiled yara.Rules object wraps a
     native library handle that isn't safely shareable across a process
-    boundary (the same reason capa_scan.py's scan_file_with_timeout()
-    already reloads its RuleSet fresh in its own child process rather than
-    reusing a parent-compiled one - see that module's docstring), so each
-    worker compiles its own copy here, once, from the same YaraRules path
-    the parent already validated.
+    boundary (the same reason capa's own RuleSet can't be handed down
+    either - see PersistentCapaWorker), so each worker compiles its own
+    copy here, once, from the same YaraRules path the parent already
+    validated.
+
+    capa_pid_queue is handed straight through to PersistentCapaWorker so it
+    can report its child's PID back to the parent process for cleanup -
+    see _reap_capa_children() below for why that's necessary at all.
     """
     global _worker_config, _worker_yara_rules, _worker_nsrl_hashes
     global _worker_blocklist_hashes, _worker_attack_db, _worker_disposition_history
+    global _worker_persistent_capa
 
     _worker_config = config
     _worker_yara_rules = yara_scan.compile_rules(config.YaraRules) if config.YaraRules else None
@@ -134,6 +232,11 @@ def _pool_worker_init(
     _worker_blocklist_hashes = blocklist_hashes
     _worker_attack_db = attack_db
     _worker_disposition_history = disposition_history
+    _worker_persistent_capa = (
+        capa_scan.PersistentCapaWorker(config.CapaRules, pid_report_queue=capa_pid_queue)
+        if config.CapaRules
+        else None
+    )
 
 
 @dataclass
@@ -214,16 +317,37 @@ def _process_one_file(path: str) -> _WorkerFileResult:
         )
 
         if config.CapaRules and record.CapaEligible:
-            # scan_file_with_timeout() spawns its own further child process
-            # per call (the vivisect hang safety net) - so a capa scan
-            # inside a pool worker means a grandchild process relative to
-            # the GUI's own process, which is fine: multiprocessing "spawn"
-            # supports nesting, and __main__.py already has the required
-            # `if __name__ == "__main__":` guard.
-            capa_result = capa_scan.scan_file_with_timeout(path, config.CapaRules, is_shellcode=ft.is_shellcode)
-            record.CapaDetectionCount = capa_result.detection_count
-            record.CAPAOutput = capa_result.output or None
-            record.CapaShellcodeFormat = capa_result.shellcode_format
+            # _worker_persistent_capa keeps ONE capa child process warm for
+            # this worker's entire lifetime instead of spawning a fresh one
+            # (and re-importing capa/vivisect from scratch) for every single
+            # file - see capa_scan.PersistentCapaWorker's docstring. The
+            # hang-safety net is unchanged: a stuck file still times out and
+            # gets a fresh replacement child on the next call, it just no
+            # longer costs a respawn for every well-behaved file too.
+            #
+            # This call is wrapped in its OWN try/except, separate from the
+            # outer one - confirmed 2026-08-03 against a real 652-file scan
+            # that capa timing out (its own hang-safety-net, not a bug in
+            # this code) is common enough on a real-world corpus that it was
+            # wiping out the WHOLE file's results: hashing, YARA, NSRL,
+            # signature status all already succeeded and were sitting on
+            # `record` by this point, but the outer except caught capa's
+            # TimeoutError and marked the entire file Status="Error" anyway,
+            # discarding everything already learned about it. A capa
+            # failure now only means "capa specifically didn't finish" -
+            # noted on record.Error for transparency - not "this file's scan
+            # failed"; every other already-computed field is left standing
+            # and the file still finishes as Status="Completed" below.
+            try:
+                capa_result = _worker_persistent_capa.scan_file(
+                    path, ft.is_shellcode, timeout_seconds=capa_scan.DEFAULT_TIMEOUT_SECONDS
+                )
+                record.CapaDetectionCount = capa_result.detection_count
+                record.CAPAOutput = capa_result.output or None
+                record.CapaShellcodeFormat = capa_result.shellcode_format
+            except Exception as exc:  # noqa: BLE001 - capa's own failure, not this file's scan failing
+                record.Error = f"capa analysis did not complete: {exc}"
+                logger.warning("capa analysis failed for %s: %s", path, exc)
         elif record.PossibleFalseNegative:
             floss_result = floss_scan.scan_file(path)
             record.FlossStringCount = floss_result.string_count
@@ -419,8 +543,12 @@ def scan_directory(
     stopped_at: int | None = None
 
     if paths:
-        ctx = multiprocessing.get_context("spawn")
         result_queue: "queue.Queue" = queue.Queue()
+        # Every worker's PersistentCapaWorker reports its child's PID here
+        # the moment it spawns one - see _reap_capa_children() below for why
+        # this is needed (pool.terminate() kills workers abruptly, which
+        # does NOT kill those workers' own children).
+        capa_pid_queue: "multiprocessing.Queue" = multiprocessing.get_context("spawn").Queue()
 
         def _on_result(result: _WorkerFileResult) -> None:
             # Runs in a Pool-internal result-handler thread inside THIS
@@ -435,10 +563,15 @@ def scan_directory(
             # last-resort net, not the expected per-file-error path.
             result_queue.put(("error", exc))
 
-        with ctx.Pool(
+        # _NoDaemonPool, not a plain multiprocessing.Pool - see that
+        # class's docstring above: capa's own per-file hang-safety
+        # subprocess (spawned from inside _process_one_file) requires its
+        # parent (the pool worker) to be non-daemonic, or Python's own
+        # multiprocessing module refuses to let it start.
+        with _NoDaemonPool(
             processes=worker_count,
             initializer=_pool_worker_init,
-            initargs=(config, nsrl_hashes, blocklist_hashes, attack_db, disposition_history),
+            initargs=(config, nsrl_hashes, blocklist_hashes, attack_db, disposition_history, capa_pid_queue),
         ) as pool:
             submitted = 0
             for i, path in enumerate(paths):
@@ -500,6 +633,13 @@ def scan_directory(
                 completed += 1
                 if progress_callback:
                     progress_callback(completed, len(paths), result.record.Path, result.record)
+
+        # Pool.__exit__ (just ran, above) tears down worker processes via
+        # terminate() - an abrupt kill that does NOT clean up each worker's
+        # own persistent capa child. Reap them explicitly, by PID, now that
+        # every worker has had a chance to report one (or more, across
+        # respawns) via capa_pid_queue.
+        _reap_capa_children(capa_pid_queue)
 
     if stopped_at is not None:
         for remaining_path in paths[stopped_at:]:

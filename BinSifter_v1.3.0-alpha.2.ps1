@@ -1717,6 +1717,37 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                 'BinSifter', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
         }
 
+        # Belt-and-suspenders on top of the fallback above: even a
+        # correctly-resolved $BinSifterRoot can land somewhere the current
+        # user has no write access to - the concrete case that motivated
+        # this (2026-08-03): a launch path that left $BinSifterRoot pointing
+        # at C:\Windows\System32, so every default (Reports/Attack/
+        # Blocklist/the Settings cache file) tried to live under a directory
+        # a non-admin account can't write to. The old behavior let this slide
+        # silently past the New-Item calls below (wrapped in their own
+        # swallow-all try/catch) and only surfaced once Settings Save probed
+        # ReportDirectory directly - a confusing place to first learn about a
+        # bootstrap-time problem. Testing writability here, once, up front,
+        # and falling back to a guaranteed-per-user-writable folder if it
+        # fails, means Settings Save's own write-test (further down) should
+        # now only ever fire for a genuinely new problem (e.g. the folder got
+        # deleted or locked mid-session), not this one.
+        try {
+            $rootProbePath = Join-Path $BinSifterRoot ".bsifter-write-test-$([Guid]::NewGuid().ToString('N')).tmp"
+            [System.IO.File]::WriteAllText($rootProbePath, 'test')
+            Remove-Item -LiteralPath $rootProbePath -Force -ErrorAction SilentlyContinue
+        }
+        catch {
+            $unwritableRoot = $BinSifterRoot
+            $BinSifterRoot = Join-Path $env:LOCALAPPDATA 'BinSifter'
+            try { $null = New-Item -Path $BinSifterRoot -ItemType Directory -Force -ErrorAction Stop } catch { }
+            $null = [System.Windows.Forms.MessageBox]::Show(
+                "BinSifter's default folder isn't writable, so its Reports/Attack/Blocklist folders and Settings cache will be created here instead:" + "`r`n`r`n" +
+                $BinSifterRoot + "`r`n`r`n" +
+                "(The unwritable folder was: $unwritableRoot)",
+                'BinSifter', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
+        }
+
         # Maps each tool's Config key to the fixed filename BinSifter looks
         # for somewhere under ToolsDir. Single source of truth - both the
         # initial $Config build (via $form.Add_Shown, see bootstrap) and the

@@ -36,7 +36,9 @@ deliberate about keeping the Settings page to 6 fields).
 from __future__ import annotations
 
 import logging
+import multiprocessing
 import pathlib
+import queue
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -65,10 +67,22 @@ from binsifter.core.subprocess_timeout import run_with_timeout
 # Windows binaries - bash.exe, curl.exe, notepad.exe all reproduced this on
 # 2026-07-30 - can get vivisect's aarch64 register-context construction
 # stuck for 30-90+ seconds inside envi's own code (a third-party bug, not
-# something in this module). A 60s default gives real, complex-but-healthy
-# files room to finish while still keeping one pathological file from
-# stalling an entire batch scan indefinitely.
-DEFAULT_TIMEOUT_SECONDS = 60
+# something in this module).
+#
+# Raised from 60 to 120 on 2026-08-03: a real 652-file scan against a mixed
+# real-world corpus (large C++ libraries like xerces-c, xul.dll, and
+# similar) showed a meaningful share of files hitting the 60s cutoff while
+# still doing real, forward-progress vivisect analysis on a genuinely
+# complex binary - not the stuck-forever pattern above, just slow. 120s
+# still keeps one pathological file from stalling a batch scan
+# indefinitely (each file has its own worker process, so a slow file no
+# longer blocks the others the way it would have in a single-threaded
+# scan), while giving legitimately large/complex files room to actually
+# finish rather than erroring out. If files are still timing out
+# frequently against a given corpus, that's a signal this may need to go
+# higher still, or that vivisect's per-file cost is the real bottleneck
+# worth addressing directly rather than papering over with a bigger number.
+DEFAULT_TIMEOUT_SECONDS = 120
 
 
 @dataclass
@@ -172,3 +186,166 @@ def scan_file_with_timeout(
         timeout_seconds,
         label="capa analysis",
     )
+
+
+# ================= Persistent (warm) capa worker =================
+# scan_file_with_timeout() above is correct but expensive when called once
+# per file across a large batch: every single call spawns a brand-new
+# Python process and re-imports capa/vivisect from scratch (capa.main,
+# capa.loader, envi, vivisect, and everything they pull in - a genuinely
+# heavy import, confirmed as a major contributor to a real 34-minute,
+# 652-file Python-side scan versus the PowerShell version's ~5 minutes for
+# the same batch, 2026-08-03). PersistentCapaWorker instead keeps ONE capa
+# child process warm (rules loaded once, interpreter already started) and
+# reuses it across every file engine.py's pool worker processes - the
+# import/rule-load cost is paid roughly once per scan-pool worker instead
+# of once per file.
+#
+# The hang-safety guarantee from scan_file_with_timeout() is preserved: if
+# a request doesn't come back within timeout_seconds, the (presumably
+# stuck) child is terminated/killed and discarded; the NEXT call
+# transparently spawns a fresh one. The only added cost is that a genuine
+# timeout now also pays a one-time respawn cost on the following file -
+# negligible next to the alternative of paying that cost on every file
+# regardless of whether it was ever going to hang.
+#
+# Accepted tradeoff, same category as engine.py's _NoDaemonPool: if the
+# whole scan pool were killed abruptly rather than exiting through its own
+# `with pool:` block (e.g. a hard crash of the GUI process), a persistent
+# capa child could be left running as an orphan rather than being reaped
+# automatically the way a daemonic process would be. Normal operation -
+# Stop button, scan completion, or a clean GUI close - always goes through
+# engine.py's `with _NoDaemonPool(...) as pool:`, which calls close() on
+# every PersistentCapaWorker via _pool_worker_shutdown() (see engine.py)
+# before the pool itself tears down.
+
+
+def _capa_worker_loop(
+    capa_rules_dir: str,
+    request_queue: "multiprocessing.Queue",
+    result_queue: "multiprocessing.Queue",
+) -> None:
+    """Runs in the persistent capa child process for its entire lifetime -
+    loads rules exactly once, then services requests until told to stop.
+    Top-level (picklable) by necessity: "spawn" needs to reimport this by
+    name in the fresh child interpreter.
+
+    Request protocol: request_queue yields either a (target_path,
+    is_shellcode) tuple, or None as the shutdown sentinel. Every non-None
+    request gets exactly one ("ok", CapaResult) or ("error", str) reply on
+    result_queue - errors from an individual scan_file() call are caught
+    here and reported back rather than crashing this loop, so a single
+    bad-but-not-hanging file doesn't cost a respawn the way a real timeout
+    does.
+    """
+    rules = load_rules(capa_rules_dir)
+    while True:
+        request = request_queue.get()
+        if request is None:
+            return
+        target_path, is_shellcode = request
+        try:
+            result = scan_file(target_path, rules, is_shellcode=is_shellcode)
+            result_queue.put(("ok", result))
+        except Exception as exc:  # noqa: BLE001 - report back, don't crash the warm worker over one file
+            result_queue.put(("error", str(exc)))
+
+
+class PersistentCapaWorker:
+    """One warm capa child process, lazily (re)spawned as needed. See the
+    module-level comment above for the full rationale. Not thread-safe and
+    not meant to be shared - one instance per scan-pool worker process,
+    created once in engine.py's _pool_worker_init() and reused for every
+    file that worker processes.
+
+    pid_report_queue, if given, receives this worker's child PID (as a
+    plain int) every time a new child is spawned. This exists because
+    killing a scan-pool worker does NOT kill that worker's own children -
+    engine.py's scan_directory() always tears the pool down via
+    `pool.terminate()` (even on a normal, successful scan completion - see
+    Pool.__exit__), which abruptly kills worker processes rather than
+    letting them exit on their own, so an atexit-style hook inside the
+    worker would never fire. Reporting PIDs back to the parent lets
+    scan_directory() clean up every persistent capa child explicitly, by
+    PID, regardless of how the pool itself shut down - see
+    engine.py's _reap_capa_children().
+    """
+
+    def __init__(self, capa_rules_dir: str, pid_report_queue: "multiprocessing.Queue | None" = None) -> None:
+        self._capa_rules_dir = capa_rules_dir
+        self._ctx = multiprocessing.get_context("spawn")
+        self._pid_report_queue = pid_report_queue
+        self._process: multiprocessing.process.BaseProcess | None = None
+        self._request_queue: "multiprocessing.Queue | None" = None
+        self._result_queue: "multiprocessing.Queue | None" = None
+
+    def _ensure_alive(self) -> None:
+        if self._process is not None and self._process.is_alive():
+            return
+        self._request_queue = self._ctx.Queue()
+        self._result_queue = self._ctx.Queue()
+        # daemon=False: this child's own parent (the scan-pool worker that
+        # owns this PersistentCapaWorker) is itself already non-daemonic
+        # (see engine.py's _NoDaemonPool) specifically so it's allowed to
+        # have children at all - no reason for THIS child to be daemonic
+        # either, and Process() defaults to inheriting the calling
+        # process's daemon flag otherwise, which could vary.
+        self._process = self._ctx.Process(
+            target=_capa_worker_loop,
+            args=(self._capa_rules_dir, self._request_queue, self._result_queue),
+            daemon=False,
+        )
+        self._process.start()
+        if self._pid_report_queue is not None:
+            try:
+                self._pid_report_queue.put(self._process.pid)
+            except (OSError, ValueError):
+                pass  # best-effort - a failed report just means one less PID to clean up later
+
+    def scan_file(self, target_path: str, is_shellcode: bool, timeout_seconds: float) -> "CapaResult":
+        """Same contract as scan_file_with_timeout(): returns a CapaResult,
+        raises TimeoutError if the warm worker doesn't respond in time (and
+        discards it - the next call gets a fresh one), or RuntimeError if
+        the file itself failed analysis (the warm worker survives that
+        case and stays ready for the next file)."""
+        self._ensure_alive()
+        self._request_queue.put((target_path, is_shellcode))
+        try:
+            status, payload = self._result_queue.get(timeout=timeout_seconds)
+        except queue.Empty:
+            self._discard(force=True)
+            raise TimeoutError(f"capa analysis timed out after {timeout_seconds}s")
+
+        if status == "error":
+            raise RuntimeError(f"capa analysis raised in worker process: {payload}")
+        return payload
+
+    def _discard(self, force: bool = False) -> None:
+        """Terminates the current child (if any) and clears state so the
+        next scan_file() call transparently spawns a fresh one."""
+        process, self._process = self._process, None
+        self._request_queue = None
+        self._result_queue = None
+        if process is None or not process.is_alive():
+            return
+        process.terminate()
+        process.join(5)
+        if process.is_alive():
+            process.kill()
+            process.join()
+
+    def close(self) -> None:
+        """Graceful shutdown for the common case (scan finished, Stop was
+        pressed, or the pool worker is exiting normally) - sends the
+        sentinel and gives the child a moment to exit on its own before
+        falling back to the same terminate/kill escalation as a timeout.
+        Safe to call even if no child was ever spawned."""
+        if self._process is None:
+            return
+        if self._process.is_alive() and self._request_queue is not None:
+            try:
+                self._request_queue.put(None)
+            except (OSError, ValueError):
+                pass  # queue's already gone/closed - fall through to a hard discard
+            self._process.join(5)
+        self._discard()
