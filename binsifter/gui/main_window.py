@@ -21,7 +21,6 @@ from pathlib import Path
 from PySide6.QtCore import QObject, Qt, QThread, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
-    QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -251,12 +250,27 @@ class MainWindow(QMainWindow):
         layout.addStretch(1)
 
         self._topbar_buttons: dict[str, QPushButton] = {}
-        for label, width in (("Settings", 126), ("Help", 96), ("About", 106)):
-            btn = QPushButton(label)
-            btn.setFixedSize(width, 44)
+        # Flat, borderless text-plus-glyph buttons - matches the PowerShell
+        # version's New-TopBarButton exactly (BinSifter_v1.3.0-alpha.2.ps1
+        # lines ~3456-3473): FlatStyle.Flat, FlatAppearance.BorderSize = 0,
+        # BackColor == the bar's own HeaderBack (so there's no visible
+        # "chip" behind the label, just colored text), same three glyphs
+        # (gear / question mark / circled i) prefixed onto the label text.
+        for label, glyph, width in (
+            ("Settings", "⚙", 142),  # GEAR
+            ("Help", "?", 110),  # plain question mark, same as the original
+            ("About", "ⓘ", 122),  # CIRCLED LATIN CAPITAL LETTER I
+        ):
+            btn = QPushButton(f"{glyph}  {label}")
+            btn.setFixedSize(width, 50)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            font = btn.font()
+            font.setPointSizeF(12.5)
+            btn.setFont(font)
             btn.setStyleSheet(
-                f"QPushButton {{ background-color: {qcolor_to_css(theme.ButtonBack)}; "
-                f"color: {accent_to_css(theme.Fore)}; border: 1px solid {qcolor_to_css(theme.Border)}; }}"
+                f"QPushButton {{ background-color: {qcolor_to_css(theme.HeaderBack)}; "
+                f"color: {accent_to_css(theme.Fore)}; border: none; }}"
+                f"QPushButton:hover {{ color: {accent_to_css(theme.Accent)}; }}"
             )
             layout.addWidget(btn)
             self._topbar_buttons[label] = btn
@@ -269,10 +283,16 @@ class MainWindow(QMainWindow):
 
         self.status_dot = QLabel("●")
         self.status_dot.setStyleSheet(f"color: {accent_to_css(theme.Success)}; border: none; background: transparent;")
+        dot_font = self.status_dot.font()
+        dot_font.setPointSizeF(12.5)
+        self.status_dot.setFont(dot_font)
         layout.addWidget(self.status_dot)
 
         self.status_text = QLabel("Ready")
         self.status_text.setStyleSheet(f"color: {accent_to_css(theme.Fore)}; border: none; background: transparent;")
+        status_font = self.status_text.font()
+        status_font.setPointSizeF(12.5)
+        self.status_text.setFont(status_font)
         layout.addWidget(self.status_text)
 
         return bar
@@ -287,10 +307,18 @@ class MainWindow(QMainWindow):
         if self._scan_thread is not None:
             return  # a scan is already running
 
-        src_dir = QFileDialog.getExistingDirectory(self, "Select folder to scan")
-        if not src_dir:
+        # No folder picker here - SrcDir is a Settings-page field, already
+        # on self.config once Settings has been saved. Same required-fields
+        # gate as the PowerShell version's BtnStart.Add_Click
+        # (BinSifter_v1.3.0-alpha.2.ps1 lines ~5221-5239): warn and jump to
+        # Settings if anything required is still blank, instead of silently
+        # prompting for (and overwriting SrcDir with) a directory inline.
+        required = ("SrcDir", "NsrlPath", "YaraRules", "CapaRules", "ToolsDir")
+        missing = [key for key in required if not (getattr(self.config, key, "") or "").strip()]
+        if missing:
+            QMessageBox.warning(self, "BinSifter", "Configure Settings before starting a scan.")
+            self._on_settings_clicked()
             return
-        self.config.SrcDir = src_dir
 
         self.scan_queue_page.reset()
         self.scan_queue_page.set_running(True)

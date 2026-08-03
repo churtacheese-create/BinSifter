@@ -1,13 +1,23 @@
 """Scan orchestration - the Python equivalent of Start-ScanEngine in the
 PowerShell version.
 
-This is a first-pass skeleton, not a finished port: it wires together every
-automatic per-file/bulk-scan stage (hashing, NSRL, blocklist, YARA, imphash,
-ssdeep clustering, capa, FLOSS, Authenticode, IOC extraction, MITRE ATT&CK
-enrichment, draft YARA rule generation, CSV report writing) - each swapped
-in as its own module was finished, a hard gate per step rather than a
-rewrite-then-test-everything-at-the-end approach, per Steve's stated
-priority on accuracy over speed of delivery.
+Wires together every automatic per-file/bulk-scan stage (hashing, NSRL,
+blocklist, YARA, imphash, ssdeep clustering, capa, FLOSS, Authenticode, IOC
+extraction, MITRE ATT&CK enrichment, draft YARA rule generation, CSV report
+writing) - each swapped in as its own module was finished, a hard gate per
+step rather than a rewrite-then-test-everything-at-the-end approach, per
+Steve's stated priority on accuracy over speed of delivery.
+
+scan_directory() runs files through a bounded multiprocessing.Pool (see
+MAX_SCAN_WORKERS below) instead of one at a time - added 2026-08-03 after a
+real 657-file scan against the full capa-rules-9.4.0 corpus took 18+
+minutes for just 30 files under the original single-threaded loop. The
+PowerShell version's own worker-pool dispatcher (ThrottleLimit capped at
+16) was the parity target; this is the first pass at matching it, not
+"finishing the port" of that specific piece as a first-pass skeleton
+anymore. See _pool_worker_init()/_process_one_file() below for why YARA
+rules are recompiled per worker process while NSRL/blocklist/ATT&CK/
+disposition-history data is loaded once in the parent and handed down.
 
 Speakeasy (core/speakeasy_scan.py) is a real, tested module too now, but
 deliberately NOT wired into this file's scan_directory() loop - the
@@ -33,6 +43,9 @@ added complexity either way - don't "fix" this speculatively.
 from __future__ import annotations
 
 import logging
+import multiprocessing
+import os
+import queue
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -58,6 +71,183 @@ from binsifter.core import yara_rule_gen
 from binsifter.core import yara_scan
 
 logger = logging.getLogger(__name__)
+
+# Bounded worker count for the concurrent scan pool - same ceiling as the
+# PowerShell version's ThrottleLimit (capped at 16 "regardless of core
+# count" per its own comment). Unlike that version, which spent most of
+# each file's wall-clock time waiting on a spawned yara64.exe/capa.exe
+# process (I/O/process-launch-bound), this rewrite runs YARA/capa as
+# in-process libraries inside each worker, so oversubscribing past the
+# real core count buys nothing but context-switch overhead - see
+# _default_worker_count().
+MAX_SCAN_WORKERS = 16
+
+
+def _default_worker_count() -> int:
+    return max(1, min(MAX_SCAN_WORKERS, os.cpu_count() or 4))
+
+
+# ================= Concurrent scan pool: worker-process state =================
+# Set once per worker process by _pool_worker_init(), then reused for every
+# file that worker goes on to process - these are per-WORKER-PROCESS
+# globals (multiprocessing.Pool spawns up to _default_worker_count() child
+# processes, each running its own independent copy of this module, so each
+# child gets its own copy of these names), not per-file state and not
+# shared with the parent process or other workers.
+_worker_config: BinSifterConfig | None = None
+_worker_yara_rules = None
+_worker_nsrl_hashes: set = set()
+_worker_blocklist_hashes: set = set()
+_worker_attack_db = None
+_worker_disposition_history: dict = {}
+
+
+def _pool_worker_init(
+    config: BinSifterConfig,
+    nsrl_hashes: set,
+    blocklist_hashes: set,
+    attack_db,
+    disposition_history: dict,
+) -> None:
+    """Runs exactly once in each freshly-spawned worker process, before that
+    worker picks up its first file (multiprocessing.Pool guarantees this).
+
+    nsrl_hashes/blocklist_hashes/attack_db/disposition_history are handed
+    down from the parent, which already loaded them once - no reason to
+    have every one of up to 16 workers separately re-parse the same
+    multi-thousand-line NSRL/blocklist file or STIX JSON bundle.
+
+    YARA rules are the one exception: a compiled yara.Rules object wraps a
+    native library handle that isn't safely shareable across a process
+    boundary (the same reason capa_scan.py's scan_file_with_timeout()
+    already reloads its RuleSet fresh in its own child process rather than
+    reusing a parent-compiled one - see that module's docstring), so each
+    worker compiles its own copy here, once, from the same YaraRules path
+    the parent already validated.
+    """
+    global _worker_config, _worker_yara_rules, _worker_nsrl_hashes
+    global _worker_blocklist_hashes, _worker_attack_db, _worker_disposition_history
+
+    _worker_config = config
+    _worker_yara_rules = yara_scan.compile_rules(config.YaraRules) if config.YaraRules else None
+    _worker_nsrl_hashes = nsrl_hashes
+    _worker_blocklist_hashes = blocklist_hashes
+    _worker_attack_db = attack_db
+    _worker_disposition_history = disposition_history
+
+
+@dataclass
+class _WorkerFileResult:
+    """What a pool worker sends back to the parent for one file: the
+    FileRecord itself, plus the handful of per-file byproducts the
+    post-scan clustering/draft-rule-generation passes need but that don't
+    belong on FileRecord itself - the same three loose dicts
+    (imphashes[path], ssdeep_hashes[path], floss_static_strings[path]) the
+    previous single-threaded loop body built up directly as local
+    variables. Since each file is now processed in its own worker process,
+    only what's returned from _process_one_file() crosses back to the
+    parent - these have to travel explicitly instead."""
+
+    record: FileRecord
+    imphash: str | None
+    ssdeep_hash: str | None
+    floss_static_strings: list[str] | None
+
+
+def _process_one_file(path: str) -> _WorkerFileResult:
+    """Top-level (picklable, spawn-safe) per-file pipeline - the pool
+    worker's task function, submitted once per file via pool.apply_async().
+    Reads this worker's own _worker_* globals (set up once by
+    _pool_worker_init) instead of scan_directory()'s local variables, since
+    a pool task function can't close over its caller's locals across a
+    process boundary.
+
+    Same processing steps, in the same order, as the single-threaded loop
+    body this replaced - see git history for the pre-2026-08-03 version of
+    this function if a side-by-side comparison is ever needed.
+
+    Never raises: any exception during processing is caught here and turned
+    into a Status="Error" record carrying the exception text, the same
+    contract the original sequential loop's try/except had. A pool worker
+    function that raises instead would just look like a silent task
+    failure to the parent's error_callback (see scan_directory() below) -
+    that path exists purely as a last-resort net for a bug in THIS
+    function, not as the expected way per-file errors get reported.
+    """
+    config = _worker_config
+    record = FileRecord(Path=path)
+    imphash: str | None = None
+    ssdeep_hash: str | None = None
+    floss_static_strings: list[str] | None = None
+    try:
+        hash_result = hashing.hash_and_score_file(path)
+        record.MD5 = hash_result.md5
+        record.SHA1 = hash_result.sha1
+        record.Entropy = hash_result.entropy
+
+        prior_disposition = _worker_disposition_history.get(hash_result.sha1.lower())
+        if prior_disposition:
+            record.Disposition = prior_disposition
+
+        auth_result = authenticode.check_signature(path)
+        record.SignatureStatus = auth_result.status
+        record.SignerName = auth_result.signer_name
+
+        record.NsrlMatch = nsrl_mod.is_known_good(hash_result.sha1, _worker_nsrl_hashes)
+
+        record.ReputationStatus, record.ReputationSource = blocklist_mod.check_reputation(
+            hash_result.md5, hash_result.sha1, hash_result.sha256, _worker_blocklist_hashes
+        ) if _worker_blocklist_hashes else ("", "")
+
+        if _worker_yara_rules is not None:
+            yara_result = yara_scan.scan_file(_worker_yara_rules, path, attack_db=_worker_attack_db)
+            record.YaraMatches = "; ".join(yara_result.rule_names) or None
+            record.YaraHitCount = yara_result.hit_count
+            record.YaraSeverity = yara_result.severity
+            record.YaraSeverityScore = yara_result.severity_score
+            record.YaraAttackTechniques = yara_result.attack_techniques
+
+        ft = file_type_mod.classify(path, hash_result.length)
+        record.CapaEligible = ft.capa_eligible
+        record.PossibleFalseNegative = file_type_mod.is_possible_false_negative(
+            ft, record.YaraHitCount, path
+        )
+
+        if config.CapaRules and record.CapaEligible:
+            # scan_file_with_timeout() spawns its own further child process
+            # per call (the vivisect hang safety net) - so a capa scan
+            # inside a pool worker means a grandchild process relative to
+            # the GUI's own process, which is fine: multiprocessing "spawn"
+            # supports nesting, and __main__.py already has the required
+            # `if __name__ == "__main__":` guard.
+            capa_result = capa_scan.scan_file_with_timeout(path, config.CapaRules, is_shellcode=ft.is_shellcode)
+            record.CapaDetectionCount = capa_result.detection_count
+            record.CAPAOutput = capa_result.output or None
+            record.CapaShellcodeFormat = capa_result.shellcode_format
+        elif record.PossibleFalseNegative:
+            floss_result = floss_scan.scan_file(path)
+            record.FlossStringCount = floss_result.string_count
+            if floss_result.static_strings:
+                floss_static_strings = floss_result.static_strings
+
+            ioc_result = iocs_mod.extract_iocs(floss_result.strings)
+            record.IocCount = ioc_result.count
+            record.ExtractedIOCs = ioc_result.display
+
+        imphash = imphash_mod.compute_imphash(path)
+        ssdeep_hash = ssdeep_cluster.compute_ssdeep_hash(path)
+        if ssdeep_hash:
+            record.SSDEEP = ssdeep_hash
+
+        record.Status = "Completed"
+    except Exception as exc:  # noqa: BLE001 - one bad file shouldn't abort the batch
+        record.Status = "Error"
+        record.Error = str(exc)
+        logger.exception("Error processing %s", path)
+
+    return _WorkerFileResult(
+        record=record, imphash=imphash, ssdeep_hash=ssdeep_hash, floss_static_strings=floss_static_strings
+    )
 
 
 @dataclass
@@ -99,6 +289,7 @@ def scan_directory(
     progress_callback: Callable[[int, int, str, FileRecord], None] | None = None,
     should_pause: Callable[[], bool] | None = None,
     should_stop: Callable[[], bool] | None = None,
+    max_workers: int | None = None,
 ) -> ScanResult:
     """Runs the currently-implemented pipeline stages over every file under
     config.SrcDir: hash + entropy, NSRL, blocklist, YARA, imphash. Returns
@@ -107,21 +298,38 @@ def scan_directory(
     writing are all applied as post-scan passes across the whole batch,
     same as the PowerShell version.
 
-    progress_callback(done, total, current_path, record) is called TWICE per
-    file - once with record.Status == "Scanning" right before processing
-    starts, once again after with Status == "Completed"/"Error" - so a live
-    queue view can show an in-flight row, not just a jump from Queued
-    straight to a finished state. This is a single-threaded sequential scan
-    (unlike the PowerShell version's bounded worker-pool dispatcher), so only
-    one row will ever show "Scanning" at a time here - a known, existing
-    simplification of this port, not something this change alters.
+    Per-file work runs on a bounded multiprocessing.Pool (max_workers,
+    defaulting to _default_worker_count() - see MAX_SCAN_WORKERS) instead of
+    one file at a time in this process, matching the PowerShell version's
+    own bounded worker-pool dispatcher (ThrottleLimit capped at 16). Each
+    file is submitted to the pool via apply_async() as soon as it's
+    dispatched; progress_callback fires once per file at submission time
+    (Status == "Scanning") and once again when that file's result actually
+    comes back from a worker (Status == "Completed"/"Error"/whatever that
+    worker produced) - completion notifications arrive in true finish
+    order, which is not necessarily submission order, since files don't
+    all take the same amount of time. ScanQueuePage.upsert_record() is
+    keyed by record.Path already, so it handles out-of-order completions
+    correctly with no GUI-side changes needed.
 
-    should_pause()/should_stop(), if given, are polled BETWEEN files, mirroring
-    the PowerShell dispatcher's own cooperative gate (BinSifter_v1.3.0-alpha.2.ps1
-    lines ~2895/2867: pause blocks starting new files, already-dispatched ones
-    finish; stop aborts before the next file starts, never mid-file). On stop,
-    every file that hadn't started yet is marked Status="Cancelled" - same as
-    the PowerShell version's "force-remaining to Cancelled" (line ~2941).
+    Known simplification: submission (all files quickly marked "Scanning")
+    and completion draining currently happen as two back-to-back phases
+    rather than fully interleaved - in practice this means the queue view
+    will show every row flip to "Scanning" almost immediately, then start
+    flipping to a terminal status one by one as workers finish, rather than
+    a slower drip of individual rows going "Scanning" one at a time. This
+    still delivers real concurrency and correct, path-keyed progress
+    reporting; true single-file "picked up by a worker just now" timing
+    would need a cross-process progress channel (e.g. a
+    multiprocessing.Manager queue) and isn't implemented yet.
+
+    should_pause()/should_stop(), if given, are polled BETWEEN submissions,
+    mirroring the PowerShell dispatcher's own cooperative gate
+    (BinSifter_v1.3.0-alpha.2.ps1 lines ~2895/2867: pause blocks starting new
+    files, already-dispatched ones finish; stop aborts before the next file
+    is submitted, never mid-file). On stop, every file that hadn't been
+    submitted to the pool yet is marked Status="Cancelled" - same as the
+    PowerShell version's "force-remaining to Cancelled" (line ~2941).
     """
     paths = enumerate_files(config.SrcDir)
     records: dict[str, FileRecord] = {p: FileRecord(Path=p) for p in paths}
@@ -146,8 +354,19 @@ def scan_directory(
         if config.BlocklistPath and Path(config.BlocklistPath).is_file()
         else set()
     )
-    yara_rules = yara_scan.compile_rules(config.YaraRules) if config.YaraRules else None
-    capa_rules = capa_scan.load_rules(config.CapaRules) if config.CapaRules else None
+    # Compiled/loaded here too (in the parent), even though the actual
+    # per-file scanning happens in worker processes that each load their
+    # own copy - this is deliberate fail-fast validation, so a bad YARA/capa
+    # rules path raises here, before a single worker process is spawned,
+    # instead of every worker independently discovering (and logging) the
+    # same error. Neither object is passed down to the workers - a compiled
+    # yara.Rules wraps a native handle, and capa's RuleSet "can't be passed
+    # across the process boundary" per capa_scan.py's own docstring - so
+    # these two locals exist purely for this validation pass.
+    if config.YaraRules:
+        yara_scan.compile_rules(config.YaraRules)
+    if config.CapaRules:
+        capa_scan.load_rules(config.CapaRules)
 
     # v1.3-proto1: prior triage dispositions, persisted by SHA-1 so
     # re-scanning the same files (or re-opening the same case directory
@@ -188,127 +407,112 @@ def scan_directory(
     # PowerShell version - see yara_rule_gen.py's module docstring.
     floss_static_strings: dict[str, list[str]] = {}
 
+    worker_count = max_workers if max_workers else _default_worker_count()
+    # No point spinning up more worker processes than there are files -
+    # each spawned process has real startup cost (a fresh Python
+    # interpreter + re-importing binsifter), so a 2-file scan shouldn't pay
+    # for 16 of them.
+    if paths:
+        worker_count = max(1, min(worker_count, len(paths)))
+    logger.info("Scanning %d file(s) with %d worker process(es).", len(paths), worker_count)
+
     stopped_at: int | None = None
-    for i, path in enumerate(paths):
-        if should_stop and should_stop():
-            stopped_at = i
-            break
 
-        # should_stop() is only polled a second time here if the pause loop
-        # actually ran - avoids calling it twice per file in the common
-        # (never-paused) case, which would otherwise make a stop-callback
-        # that flips state on each call (like the real GUI's) fire once too
-        # often per iteration.
-        stopped_while_paused = False
-        while should_pause and should_pause():
-            time.sleep(0.15)
-            if should_stop and should_stop():
-                stopped_while_paused = True
-                break
-        if stopped_while_paused:
-            stopped_at = i
-            break
+    if paths:
+        ctx = multiprocessing.get_context("spawn")
+        result_queue: "queue.Queue" = queue.Queue()
 
-        record = records[path]
-        record.Status = "Scanning"
-        if progress_callback:
-            progress_callback(i, len(paths), path, record)
-        try:
-            hash_result = hashing.hash_and_score_file(path)
-            record.MD5 = hash_result.md5
-            record.SHA1 = hash_result.sha1
-            record.Entropy = hash_result.entropy
+        def _on_result(result: _WorkerFileResult) -> None:
+            # Runs in a Pool-internal result-handler thread inside THIS
+            # (parent) process, not in the worker - safe to touch
+            # result_queue directly since queue.Queue is thread-safe.
+            result_queue.put(("ok", result))
 
-            prior_disposition = disposition_history.get(hash_result.sha1.lower())
-            if prior_disposition:
-                record.Disposition = prior_disposition
+        def _on_error(exc: BaseException) -> None:
+            # Only fires for a bug in _process_one_file itself - that
+            # function catches its own exceptions and returns a
+            # Status="Error" record instead of raising, so this is a
+            # last-resort net, not the expected per-file-error path.
+            result_queue.put(("error", exc))
 
-            # Authenticode check runs unconditionally, like entropy - same
-            # rationale as the PowerShell version (line ~2141): "signed" vs
-            # "unsigned" is meaningful regardless of NSRL/hash reputation,
-            # and it's a single read against the file already on disk.
-            auth_result = authenticode.check_signature(path)
-            record.SignatureStatus = auth_result.status
-            record.SignerName = auth_result.signer_name
+        with ctx.Pool(
+            processes=worker_count,
+            initializer=_pool_worker_init,
+            initargs=(config, nsrl_hashes, blocklist_hashes, attack_db, disposition_history),
+        ) as pool:
+            submitted = 0
+            for i, path in enumerate(paths):
+                if should_stop and should_stop():
+                    stopped_at = i
+                    break
 
-            record.NsrlMatch = nsrl_mod.is_known_good(hash_result.sha1, nsrl_hashes)
+                # should_stop() is only polled a second time here if the
+                # pause loop actually ran - avoids calling it twice per
+                # file in the common (never-paused) case, which would
+                # otherwise make a stop-callback that flips state on each
+                # call (like the real GUI's) fire once too often per
+                # iteration.
+                stopped_while_paused = False
+                while should_pause and should_pause():
+                    time.sleep(0.15)
+                    if should_stop and should_stop():
+                        stopped_while_paused = True
+                        break
+                if stopped_while_paused:
+                    stopped_at = i
+                    break
 
-            record.ReputationStatus, record.ReputationSource = blocklist_mod.check_reputation(
-                hash_result.md5, hash_result.sha1, hash_result.sha256, blocklist_hashes
-            ) if blocklist_hashes else ("", "")
+                record = records[path]
+                record.Status = "Scanning"
+                if progress_callback:
+                    # "done" here is the SUBMITTED count, not the completed
+                    # one - matches the previous version's own
+                    # pre-processing call (which fired right before that
+                    # one file started too), just potentially several files
+                    # ahead of the true completed count now that files run
+                    # concurrently.
+                    progress_callback(submitted, len(paths), path, record)
+                pool.apply_async(_process_one_file, (path,), callback=_on_result, error_callback=_on_error)
+                submitted += 1
 
-            if yara_rules is not None:
-                yara_result = yara_scan.scan_file(yara_rules, path, attack_db=attack_db)
-                record.YaraMatches = "; ".join(yara_result.rule_names) or None
-                record.YaraHitCount = yara_result.hit_count
-                record.YaraSeverity = yara_result.severity
-                record.YaraSeverityScore = yara_result.severity_score
-                record.YaraAttackTechniques = yara_result.attack_techniques
+            # Drain exactly `submitted` results, in true completion order
+            # (not submission order): apply_async's callback fires the
+            # instant each worker returns, regardless of which file was
+            # dispatched first, so this loop naturally reports whichever
+            # file actually finished next - which is exactly what
+            # ScanQueuePage.upsert_record()'s path-keyed updates already
+            # handle correctly.
+            completed = 0
+            for _ in range(submitted):
+                status, payload = result_queue.get()
+                if status == "error":
+                    logger.error("Scan worker failed unexpectedly: %s", payload)
+                    continue
 
-            # PE/ELF/shellcode classification - direct port of the
-            # PowerShell version's magic-byte sniff (see file_type.py),
-            # gates both capa eligibility and the FLOSS fallback below.
-            ft = file_type_mod.classify(path, hash_result.length)
-            record.CapaEligible = ft.capa_eligible
-            record.PossibleFalseNegative = file_type_mod.is_possible_false_negative(
-                ft, record.YaraHitCount, path
-            )
+                result: _WorkerFileResult = payload
+                records[result.record.Path] = result.record
+                imphashes[result.record.Path] = result.imphash
+                if result.ssdeep_hash:
+                    ssdeep_hashes[result.record.Path] = result.ssdeep_hash
+                if result.floss_static_strings:
+                    floss_static_strings[result.record.Path] = result.floss_static_strings
 
-            if capa_rules is not None and record.CapaEligible:
-                # scan_file_with_timeout(), not scan_file() directly: certain
-                # modern Windows binaries (confirmed 2026-07-30) get
-                # vivisect's aarch64 register-context construction stuck for
-                # 30-90+ seconds - a third-party bug that could otherwise
-                # stall an entire batch scan on one file. Reloads capa_rules
-                # from config.CapaRules in a child process rather than
-                # reusing the `capa_rules` RuleSet already loaded above,
-                # since that object can't be passed across the process
-                # boundary - see capa_scan.py's docstring for why.
-                capa_result = capa_scan.scan_file_with_timeout(path, config.CapaRules, is_shellcode=ft.is_shellcode)
-                record.CapaDetectionCount = capa_result.detection_count
-                record.CAPAOutput = capa_result.output or None
-                record.CapaShellcodeFormat = capa_result.shellcode_format
-            elif record.PossibleFalseNegative:
-                # Best-effort fallback for the PossibleFalseNegative case:
-                # capa couldn't run at all, so recover what we can via
-                # FLOSS's string extraction instead - same rationale as the
-                # PowerShell version's fallback at this exact branch.
-                floss_result = floss_scan.scan_file(path)
-                record.FlossStringCount = floss_result.string_count
-                if floss_result.static_strings:
-                    floss_static_strings[path] = floss_result.static_strings
-
-                # Mines the same FLOSS strings just extracted above for
-                # IOC-shaped values (IPs, URLs, domains, registry paths) -
-                # see iocs.py. Never a second FLOSS invocation, and never
-                # allowed to affect FlossStringCount above (same "best
-                # effort, mining failure isn't a scan failure" rationale
-                # as the PowerShell version).
-                ioc_result = iocs_mod.extract_iocs(floss_result.strings)
-                record.IocCount = ioc_result.count
-                record.ExtractedIOCs = ioc_result.display
-
-            imphashes[path] = imphash_mod.compute_imphash(path)
-            ssdeep_hash = ssdeep_cluster.compute_ssdeep_hash(path)
-            if ssdeep_hash:
-                ssdeep_hashes[path] = ssdeep_hash
-                record.SSDEEP = ssdeep_hash
-
-            record.Status = "Completed"
-        except Exception as exc:  # noqa: BLE001 - one bad file shouldn't abort the batch
-            record.Status = "Error"
-            record.Error = str(exc)
-            logger.exception("Error processing %s", path)
-
-        if progress_callback:
-            progress_callback(i + 1, len(paths), path, record)
+                completed += 1
+                if progress_callback:
+                    progress_callback(completed, len(paths), result.record.Path, result.record)
 
     if stopped_at is not None:
         for remaining_path in paths[stopped_at:]:
-            records[remaining_path].Status = "Cancelled"
+            # Only files that were never submitted to the pool are still at
+            # their default "Queued" status - guards against clobbering the
+            # status of a file that was already in flight or finished by
+            # the time the stop was noticed.
+            if records[remaining_path].Status == "Queued":
+                records[remaining_path].Status = "Cancelled"
+        cancelled = sum(1 for r in records.values() if r.Status == "Cancelled")
         logger.info(
             "Scan stopped by request - %d/%d file(s) were not processed.",
-            len(paths) - stopped_at, len(paths),
+            cancelled, len(paths),
         )
 
     # Post-scan clustering passes
