@@ -43,11 +43,13 @@ added complexity either way - don't "fix" this speculatively.
 from __future__ import annotations
 
 import logging
+import logging.handlers
 import multiprocessing
 import multiprocessing.pool
 import os
 import queue
 import signal
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -173,6 +175,40 @@ def _reap_capa_children(capa_pid_queue: "multiprocessing.Queue") -> None:
             pass  # already exited on its own, or never fully started - nothing to clean up
 
 
+# ================= Cross-process log forwarding (2026-08-04) =================
+_LOG_QUEUE_SENTINEL = None  # None is never a real LogRecord, safe as a stop signal
+
+
+def _drain_log_queue(log_queue: "multiprocessing.Queue") -> None:
+    """Runs in a background thread IN THE PARENT PROCESS for the lifetime of
+    the scan (started just before the pool is created, stopped/joined just
+    after it's torn down - see scan_directory()). Pulls LogRecords placed on
+    log_queue by any worker's QueueHandler (see _pool_worker_init()) and
+    re-dispatches each one through logging.getLogger(record.name).handle(),
+    which runs it back through the PARENT's own configured logging tree -
+    the same tree the GUI's QtLogHandler is already attached to (see
+    log_bridge.py) and that a headless CLI run would have a StreamHandler
+    on. This is the standard `logging` cookbook pattern for multiprocessing
+    (queue + QueueHandler in each producer, a listener loop in the
+    consumer) rather than anything BinSifter-specific - see
+    https://docs.python.org/3/howto/logging-cookbook.html for the same
+    recipe.
+
+    A plain thread (not logging.handlers.QueueListener) so it can be started
+    before the pool exists and stopped with an explicit sentinel from
+    exactly one place in scan_directory() - QueueListener works fine here
+    too, this is just as few moving parts as the job needs.
+    """
+    while True:
+        record = log_queue.get()
+        if record is _LOG_QUEUE_SENTINEL:
+            return
+        try:
+            logging.getLogger(record.name).handle(record)
+        except Exception:  # noqa: BLE001 - a malformed record shouldn't kill the whole drain thread
+            pass
+
+
 # ================= Concurrent scan pool: worker-process state =================
 # Set once per worker process by _pool_worker_init(), then reused for every
 # file that worker goes on to process - these are per-WORKER-PROCESS
@@ -182,7 +218,12 @@ def _reap_capa_children(capa_pid_queue: "multiprocessing.Queue") -> None:
 # shared with the parent process or other workers.
 _worker_config: BinSifterConfig | None = None
 _worker_yara_rules = None
-_worker_nsrl_hashes: set = set()
+# "set" here means the empty-set "not configured" sentinel - the real,
+# configured case holds an nsrl.NsrlIndex (mmap-backed, see nsrl.py's
+# module docstring for why this is no longer a parsed-and-handed-down
+# Python set of hashes). Both support `in`, so is_known_good() didn't need
+# to change.
+_worker_nsrl_hashes: "nsrl_mod.NsrlIndex | set" = set()
 _worker_blocklist_hashes: set = set()
 _worker_attack_db = None
 _worker_disposition_history: dict = {}
@@ -197,19 +238,33 @@ _worker_persistent_capa: "capa_scan.PersistentCapaWorker | None" = None
 
 def _pool_worker_init(
     config: BinSifterConfig,
-    nsrl_hashes: set,
+    nsrl_cache_path: str | None,
     blocklist_hashes: set,
     attack_db,
     disposition_history: dict,
     capa_pid_queue: "multiprocessing.Queue | None",
+    log_queue: "multiprocessing.Queue | None" = None,
 ) -> None:
     """Runs exactly once in each freshly-spawned worker process, before that
     worker picks up its first file (multiprocessing.Pool guarantees this).
 
-    nsrl_hashes/blocklist_hashes/attack_db/disposition_history are handed
-    down from the parent, which already loaded them once - no reason to
-    have every one of up to 16 workers separately re-parse the same
-    multi-thousand-line NSRL/blocklist file or STIX JSON bundle.
+    blocklist_hashes/attack_db/disposition_history are handed down from the
+    parent, which already loaded them once - no reason to have every one of
+    up to 16 workers separately re-parse the same multi-thousand-line
+    blocklist file or STIX JSON bundle. These are small enough (thousands,
+    not tens of millions, of entries) that pickling a copy per worker is a
+    non-issue.
+
+    nsrl_cache_path is deliberately NOT the parsed data - it's the path to
+    the binary cache file build_index() already wrote in the parent, and
+    each worker calls nsrl.open_index() on it independently here, once, at
+    worker startup (see nsrl.py's module docstring for why: NSRL sets are
+    routinely tens of millions of entries, and handing down a parsed Python
+    set the way the other three do would mean pickling/duplicating a
+    multi-GB object into every one of up to 16 processes). Memory-mapping
+    the same file from each worker shares the underlying OS page cache
+    instead of duplicating it, and degrades gracefully (page faults, not a
+    memory-demand failure) on a lower-RAM machine.
 
     YARA rules are the one exception: a compiled yara.Rules object wraps a
     native library handle that isn't safely shareable across a process
@@ -221,14 +276,37 @@ def _pool_worker_init(
     capa_pid_queue is handed straight through to PersistentCapaWorker so it
     can report its child's PID back to the parent process for cleanup -
     see _reap_capa_children() below for why that's necessary at all.
+
+    log_queue (2026-08-04): a spawned worker process has its OWN, entirely
+    separate `logging` module state - Python does not share logger/handler
+    configuration across a process boundary the way it does across threads.
+    Confirmed as a real gap, not a hypothetical: the GUI's QtLogHandler (see
+    log_bridge.py) is only ever attached in the parent/GUI process, so every
+    logger.info()/warning() call made from INSIDE a worker (capa failures,
+    per-file warnings in yara_scan/floss_scan/authenticode/etc.) was
+    silently going nowhere the GUI could see it - at best to that worker's
+    own stderr, invisible in a windowed app with no console attached. This
+    attaches a QueueHandler to the worker's ROOT logger so every log record
+    emitted anywhere in this process (any module, any level >= INFO) gets
+    put on log_queue instead, for the parent's _drain_log_queue() thread (see
+    scan_directory()) to re-inject into ITS OWN logging tree - which the GUI
+    already listens to. Root handlers are cleared first so records aren't
+    ALSO duplicated to this worker's own default stderr handler-of-last-
+    resort.
     """
     global _worker_config, _worker_yara_rules, _worker_nsrl_hashes
     global _worker_blocklist_hashes, _worker_attack_db, _worker_disposition_history
     global _worker_persistent_capa
 
+    if log_queue is not None:
+        root_logger = logging.getLogger()
+        root_logger.handlers.clear()
+        root_logger.addHandler(logging.handlers.QueueHandler(log_queue))
+        root_logger.setLevel(logging.INFO)
+
     _worker_config = config
     _worker_yara_rules = yara_scan.compile_rules(config.YaraRules) if config.YaraRules else None
-    _worker_nsrl_hashes = nsrl_hashes
+    _worker_nsrl_hashes = nsrl_mod.open_index(nsrl_cache_path) if nsrl_cache_path else set()
     _worker_blocklist_hashes = blocklist_hashes
     _worker_attack_db = attack_db
     _worker_disposition_history = disposition_history
@@ -255,6 +333,19 @@ class _WorkerFileResult:
     imphash: str | None
     ssdeep_hash: str | None
     floss_static_strings: list[str] | None
+    # Wall-clock seconds spent in each pipeline stage for THIS file, keyed by
+    # stage name ("hash", "authenticode", "yara", "capa", "floss_iocs",
+    # "imphash", "ssdeep") - only present for stages that actually ran.
+    # Added 2026-08-04 purely to answer "where did the time actually go" on
+    # a real scan (a 652-file batch went 36min on a fast workstation, 67min
+    # on a third-as-powerful PC - worse than either "CPU-bound, scales with
+    # cores" or "I/O-bound" alone predicts, and guessing further from source
+    # reading alone wasn't productive). Deliberately NOT added to FileRecord
+    # itself - this is scan-run diagnostic data, not a triage field, and
+    # FileRecord's shape is also the CSV report schema (see report.py) which
+    # this shouldn't perturb. Aggregated into a summary log line by
+    # scan_directory() after the batch finishes; never written to disk.
+    stage_seconds: dict[str, float]
 
 
 def _process_one_file(path: str) -> _WorkerFileResult:
@@ -282,8 +373,28 @@ def _process_one_file(path: str) -> _WorkerFileResult:
     imphash: str | None = None
     ssdeep_hash: str | None = None
     floss_static_strings: list[str] | None = None
+    stage_seconds: dict[str, float] = {}
+    file_start = time.perf_counter()
+
+    # Added 2026-08-04 alongside the log_queue/QueueHandler wiring in
+    # _pool_worker_init(): forwarding worker logs to the GUI is only half
+    # the fix if there's nothing to forward - before this, the only per-file
+    # log lines were WARNINGs on failure (capa timeout, etc.), so a clean
+    # run of hundreds of files produced no log activity at all for the
+    # entire scan. This start/finish pair is what actually answers "what is
+    # Loom working on right now" on the Logs page during a long scan.
+    logger.info("Scanning: %s", path)
+
+    def _stage_start() -> float:
+        return time.perf_counter()
+
+    def _stage_end(label: str, t0: float) -> None:
+        stage_seconds[label] = stage_seconds.get(label, 0.0) + (time.perf_counter() - t0)
+
     try:
+        t0 = _stage_start()
         hash_result = hashing.hash_and_score_file(path)
+        _stage_end("hash", t0)
         record.MD5 = hash_result.md5
         record.SHA1 = hash_result.sha1
         record.Entropy = hash_result.entropy
@@ -292,7 +403,9 @@ def _process_one_file(path: str) -> _WorkerFileResult:
         if prior_disposition:
             record.Disposition = prior_disposition
 
+        t0 = _stage_start()
         auth_result = authenticode.check_signature(path)
+        _stage_end("authenticode", t0)
         record.SignatureStatus = auth_result.status
         record.SignerName = auth_result.signer_name
 
@@ -303,7 +416,9 @@ def _process_one_file(path: str) -> _WorkerFileResult:
         ) if _worker_blocklist_hashes else ("", "")
 
         if _worker_yara_rules is not None:
+            t0 = _stage_start()
             yara_result = yara_scan.scan_file(_worker_yara_rules, path, attack_db=_worker_attack_db)
+            _stage_end("yara", t0)
             record.YaraMatches = "; ".join(yara_result.rule_names) or None
             record.YaraHitCount = yara_result.hit_count
             record.YaraSeverity = yara_result.severity
@@ -338,6 +453,7 @@ def _process_one_file(path: str) -> _WorkerFileResult:
             # noted on record.Error for transparency - not "this file's scan
             # failed"; every other already-computed field is left standing
             # and the file still finishes as Status="Completed" below.
+            t0 = _stage_start()
             try:
                 capa_result = _worker_persistent_capa.scan_file(
                     path, ft.is_shellcode, timeout_seconds=capa_scan.DEFAULT_TIMEOUT_SECONDS
@@ -348,7 +464,10 @@ def _process_one_file(path: str) -> _WorkerFileResult:
             except Exception as exc:  # noqa: BLE001 - capa's own failure, not this file's scan failing
                 record.Error = f"capa analysis did not complete: {exc}"
                 logger.warning("capa analysis failed for %s: %s", path, exc)
+            finally:
+                _stage_end("capa", t0)
         elif record.PossibleFalseNegative:
+            t0 = _stage_start()
             floss_result = floss_scan.scan_file(path)
             record.FlossStringCount = floss_result.string_count
             if floss_result.static_strings:
@@ -357,9 +476,15 @@ def _process_one_file(path: str) -> _WorkerFileResult:
             ioc_result = iocs_mod.extract_iocs(floss_result.strings)
             record.IocCount = ioc_result.count
             record.ExtractedIOCs = ioc_result.display
+            _stage_end("floss_iocs", t0)
 
+        t0 = _stage_start()
         imphash = imphash_mod.compute_imphash(path)
+        _stage_end("imphash", t0)
+
+        t0 = _stage_start()
         ssdeep_hash = ssdeep_cluster.compute_ssdeep_hash(path)
+        _stage_end("ssdeep", t0)
         if ssdeep_hash:
             record.SSDEEP = ssdeep_hash
 
@@ -369,8 +494,16 @@ def _process_one_file(path: str) -> _WorkerFileResult:
         record.Error = str(exc)
         logger.exception("Error processing %s", path)
 
+    logger.info(
+        "Finished: %s - %s (%.1fs)", path, record.Status, time.perf_counter() - file_start
+    )
+
     return _WorkerFileResult(
-        record=record, imphash=imphash, ssdeep_hash=ssdeep_hash, floss_static_strings=floss_static_strings
+        record=record,
+        imphash=imphash,
+        ssdeep_hash=ssdeep_hash,
+        floss_static_strings=floss_static_strings,
+        stage_seconds=stage_seconds,
     )
 
 
@@ -455,7 +588,25 @@ def scan_directory(
     submitted to the pool yet is marked Status="Cancelled" - same as the
     PowerShell version's "force-remaining to Cancelled" (line ~2941).
     """
+    # ================= Pre-scan setup - now narrated (2026-08-04) =================
+    # Every load/validation step below used to run completely silently before
+    # the worker pool started - confirmed (against a real 67-minute scan on
+    # slower hardware) to be the actual explanation for BinSifter appearing
+    # "frozen" for the first several minutes: no log line, no progress
+    # signal, and no file-queue row exists yet, all before a single byte of
+    # actual scanning has happened. NSRL hash-set loading is the prime
+    # suspect - a real-world NSRL RDS export can be tens of millions of rows,
+    # parsed here in pure Python (see nsrl.py) - but rather than guess which
+    # step is slow, every step now logs its own start/finish + elapsed time,
+    # so the Logs page shows real activity from the first second and the
+    # next slow run tells us exactly which step to optimize, not just "it
+    # was slow somewhere before the pool started."
+    setup_start = time.perf_counter()
+
+    logger.info("Enumerating files under %s...", config.SrcDir)
+    t0 = time.perf_counter()
     paths = enumerate_files(config.SrcDir)
+    logger.info("Found %d file(s) to scan (%.1fs).", len(paths), time.perf_counter() - t0)
     records: dict[str, FileRecord] = {p: FileRecord(Path=p) for p in paths}
 
     # One timestamp per scan, reused everywhere a filename needs to be
@@ -465,7 +616,37 @@ def scan_directory(
     # sorts/groups together.
     timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
 
-    nsrl_hashes = nsrl_mod.load_nsrl_hashes(config.NsrlPath) if config.NsrlPath else set()
+    # Cached, memory-mapped binary index (2026-08-04 rewrite) instead of a
+    # Python set loaded once and pickled into every worker - see nsrl.py's
+    # module docstring for the full "24.5-minute reparse + duplicated into
+    # up to 16 worker processes" story this replaces. What crosses the
+    # process boundary now is nsrl_cache_path, a plain string - each worker
+    # opens/mmaps it independently in _pool_worker_init() below.
+    nsrl_cache_path: str | None = None
+    if config.NsrlPath and Path(config.NsrlPath).is_file():
+        cache_path = nsrl_mod.get_cache_path(config.NsrlPath, config.ReportDirectory)
+        if nsrl_mod.cache_is_fresh(cache_path, config.NsrlPath):
+            logger.info("Loading NSRL from cache (fast path): %s...", cache_path)
+            t0 = time.perf_counter()
+            count = nsrl_mod.read_cached_count(cache_path)
+            logger.info("NSRL cache loaded: %d hash(es) indexed (%.1fs).", count, time.perf_counter() - t0)
+        else:
+            logger.info(
+                "Building NSRL cache from source %s (first run against this file - "
+                "subsequent scans will load from cache instead)...", config.NsrlPath,
+            )
+            t0 = time.perf_counter()
+            count = nsrl_mod.build_index(config.NsrlPath, cache_path)
+            logger.info(
+                "NSRL cache built: %d hash(es) indexed (%.1fs) - saved to %s.",
+                count, time.perf_counter() - t0, cache_path,
+            )
+        nsrl_cache_path = cache_path
+    elif config.NsrlPath:
+        logger.warning("Configured NSRL path does not exist, skipping: %s", config.NsrlPath)
+    else:
+        logger.info("No NSRL hash set configured - known-good lookup disabled for this scan.")
+
     # BlocklistPath (unlike NsrlPath/YaraRules/CapaRules) always has a real
     # default value - Reports/Attack/Blocklist default next to the install
     # even when the analyst never asked for blocklist checking - so guard
@@ -473,11 +654,17 @@ def scan_directory(
     # Otherwise every scan logs a "could not read blocklist" warning until
     # someone places a blocklist file there, which is misleading noise for
     # a feature that was never configured in the first place.
-    blocklist_hashes = (
-        blocklist_mod.load_blocklist_hashes(config.BlocklistPath)
-        if config.BlocklistPath and Path(config.BlocklistPath).is_file()
-        else set()
-    )
+    if config.BlocklistPath and Path(config.BlocklistPath).is_file():
+        logger.info("Loading known-bad hash blocklist from %s...", config.BlocklistPath)
+        t0 = time.perf_counter()
+        blocklist_hashes = blocklist_mod.load_blocklist_hashes(config.BlocklistPath)
+        logger.info(
+            "Blocklist loaded: %d hash(es) indexed (%.1fs).",
+            len(blocklist_hashes), time.perf_counter() - t0,
+        )
+    else:
+        blocklist_hashes = set()
+
     # Compiled/loaded here too (in the parent), even though the actual
     # per-file scanning happens in worker processes that each load their
     # own copy - this is deliberate fail-fast validation, so a bad YARA/capa
@@ -488,9 +675,15 @@ def scan_directory(
     # across the process boundary" per capa_scan.py's own docstring - so
     # these two locals exist purely for this validation pass.
     if config.YaraRules:
+        logger.info("Compiling YARA rules from %s...", config.YaraRules)
+        t0 = time.perf_counter()
         yara_scan.compile_rules(config.YaraRules)
+        logger.info("YARA rules compiled (%.1fs).", time.perf_counter() - t0)
     if config.CapaRules:
+        logger.info("Loading capa rules from %s (this can take a while for a large rule corpus)...", config.CapaRules)
+        t0 = time.perf_counter()
         capa_scan.load_rules(config.CapaRules)
+        logger.info("capa rules loaded (%.1fs).", time.perf_counter() - t0)
 
     # v1.3-proto1: prior triage dispositions, persisted by SHA-1 so
     # re-scanning the same files (or re-opening the same case directory
@@ -538,9 +731,24 @@ def scan_directory(
     # for 16 of them.
     if paths:
         worker_count = max(1, min(worker_count, len(paths)))
-    logger.info("Scanning %d file(s) with %d worker process(es).", len(paths), worker_count)
+    logger.info(
+        "Setup complete (%.1fs). Scanning %d file(s) with %d worker process(es)...",
+        time.perf_counter() - setup_start, len(paths), worker_count,
+    )
 
     stopped_at: int | None = None
+
+    # Diagnostic-only timing (2026-08-04, see _WorkerFileResult.stage_seconds
+    # docstring for why this exists at all). total_stage_seconds sums each
+    # stage's cost ACROSS every file, including files processed concurrently
+    # in different worker processes - this is aggregate CPU-seconds spent in
+    # that stage, not wall-clock time, so it tells you relative SHARE of
+    # total work per stage, not how many minutes it added to the clock.
+    # pool_wall_seconds (measured below) is the actual wall-clock time the
+    # concurrent section took, for comparison against the aggregate.
+    total_stage_seconds: dict[str, float] = {}
+    stage_file_counts: dict[str, int] = {}
+    pool_wall_start = time.perf_counter()
 
     if paths:
         result_queue: "queue.Queue" = queue.Queue()
@@ -549,6 +757,15 @@ def scan_directory(
         # this is needed (pool.terminate() kills workers abruptly, which
         # does NOT kill those workers' own children).
         capa_pid_queue: "multiprocessing.Queue" = multiprocessing.get_context("spawn").Queue()
+
+        # Every worker's QueueHandler (see _pool_worker_init) puts its
+        # LogRecords here; _drain_log_queue (running in this thread, in the
+        # parent) re-injects them into the parent's own logging tree so the
+        # GUI's Logs page actually shows per-file worker activity instead of
+        # going dark for the whole scan - see that function's docstring.
+        log_queue: "multiprocessing.Queue" = multiprocessing.get_context("spawn").Queue()
+        log_drain_thread = threading.Thread(target=_drain_log_queue, args=(log_queue,), daemon=True)
+        log_drain_thread.start()
 
         def _on_result(result: _WorkerFileResult) -> None:
             # Runs in a Pool-internal result-handler thread inside THIS
@@ -571,7 +788,10 @@ def scan_directory(
         with _NoDaemonPool(
             processes=worker_count,
             initializer=_pool_worker_init,
-            initargs=(config, nsrl_hashes, blocklist_hashes, attack_db, disposition_history, capa_pid_queue),
+            initargs=(
+                config, nsrl_cache_path, blocklist_hashes, attack_db, disposition_history,
+                capa_pid_queue, log_queue,
+            ),
         ) as pool:
             submitted = 0
             for i, path in enumerate(paths):
@@ -629,6 +849,9 @@ def scan_directory(
                     ssdeep_hashes[result.record.Path] = result.ssdeep_hash
                 if result.floss_static_strings:
                     floss_static_strings[result.record.Path] = result.floss_static_strings
+                for stage, seconds in result.stage_seconds.items():
+                    total_stage_seconds[stage] = total_stage_seconds.get(stage, 0.0) + seconds
+                    stage_file_counts[stage] = stage_file_counts.get(stage, 0) + 1
 
                 completed += 1
                 if progress_callback:
@@ -640,6 +863,16 @@ def scan_directory(
         # every worker has had a chance to report one (or more, across
         # respawns) via capa_pid_queue.
         _reap_capa_children(capa_pid_queue)
+
+        # Every worker is gone (pool.terminate() above), so no more
+        # LogRecords can arrive on log_queue - safe to stop the drain
+        # thread. Records already queued but not yet drained are still
+        # picked up: the sentinel is only processed after everything ahead
+        # of it in the queue.
+        log_queue.put(_LOG_QUEUE_SENTINEL)
+        log_drain_thread.join(timeout=5)
+
+    pool_wall_seconds = time.perf_counter() - pool_wall_start
 
     if stopped_at is not None:
         for remaining_path in paths[stopped_at:]:
@@ -655,7 +888,14 @@ def scan_directory(
             cancelled, len(paths),
         )
 
-    # Post-scan clustering passes
+    # Post-scan clustering passes - unlike the per-file stages above, this
+    # runs single-threaded in the PARENT process, after every worker has
+    # already finished, so it's a pure serial addition to wall-clock time
+    # with zero benefit from the worker pool. Timed separately (not folded
+    # into total_stage_seconds) since it's real wall time, not aggregate
+    # per-file CPU time like the stages above.
+    cluster_wall_start = time.perf_counter()
+
     imphash_clusters = imphash_mod.cluster_by_imphash(imphashes)
     for path, (cluster_id, cluster_size) in imphash_clusters.items():
         records[path].ImphashClusterId = cluster_id
@@ -669,7 +909,34 @@ def scan_directory(
             records[path].SsdeepHasHighSimilarity = info.has_high_similarity
             records[path].SsdeepMatches = info.matches_summary or None
 
+    cluster_wall_seconds = time.perf_counter() - cluster_wall_start
+
     record_list = list(records.values())
+
+    # ================= Stage-timing summary (diagnostic only) =================
+    # Logged at INFO so it shows up in the normal log file/console without
+    # needing debug logging enabled - this is exactly the data needed to
+    # answer "where did the N minutes go" on a real scan without guessing
+    # from source reading. total_stage_seconds values are SUMMED across
+    # however many files ran that stage, potentially across up to
+    # worker_count concurrent processes - divide by pool_wall_seconds to see
+    # how many "worker-equivalents" of wall time a stage represents, not a
+    # literal wall-clock duration for that stage alone.
+    if total_stage_seconds:
+        grand_total = sum(total_stage_seconds.values()) or 1.0
+        logger.info(
+            "Scan stage timing (aggregate CPU-seconds across %d worker process(es), "
+            "pool wall-clock = %.1fs, post-scan clustering wall-clock = %.1fs):",
+            worker_count, pool_wall_seconds, cluster_wall_seconds,
+        )
+        for stage, total in sorted(total_stage_seconds.items(), key=lambda kv: kv[1], reverse=True):
+            count = stage_file_counts.get(stage, 0)
+            avg_ms = (total / count * 1000) if count else 0.0
+            pct = total / grand_total * 100
+            logger.info(
+                "  %-14s %8.1fs total  (%5.1f%%)  over %5d file(s)  -  avg %7.1f ms/file",
+                stage, total, pct, count, avg_ms,
+            )
 
     # ================= Draft YARA rule generation (v1.3-proto1) =================
     # Best-effort and gracefully skipped on error - this is the same inner
@@ -716,5 +983,23 @@ def scan_directory(
         logger.info("Capa-compatible list saved: %s", report_paths.capa_compatible)
     else:
         logger.info("No ReportDirectory configured - skipping CSV report writing.")
+
+    # ================= Grand-total summary (2026-08-04) =================
+    # Everything above (setup timing, per-file stage timing, pool/clustering
+    # wall time) is broken out piece by piece - this is the one line that
+    # ties it back to "how long did the WHOLE thing take", plus os.cpu_count()
+    # so a machine-to-machine comparison (e.g. this PC vs. a faster
+    # workstation) doesn't depend on remembering to check Task Manager /
+    # System Info separately - it's just in the log next to everything else.
+    total_elapsed = time.perf_counter() - setup_start
+    completed_count = sum(1 for r in record_list if r.Status == "Completed")
+    error_count = sum(1 for r in record_list if r.Status == "Error")
+    cancelled_count = sum(1 for r in record_list if r.Status == "Cancelled")
+    logger.info(
+        "Scan finished: %d file(s) total - %d completed, %d error, %d cancelled - "
+        "%.1fs elapsed (%.1f min) - %d CPU core(s) detected, %d worker process(es) used.",
+        len(record_list), completed_count, error_count, cancelled_count,
+        total_elapsed, total_elapsed / 60.0, os.cpu_count() or 0, worker_count,
+    )
 
     return ScanResult(records=record_list, report_paths=report_paths)

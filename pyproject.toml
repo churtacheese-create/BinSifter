@@ -64,6 +64,13 @@ dependencies = [
                            # NOTE: BinSifter doesn't populate a real root CA trust store yet, so
                            # every signature currently comes back "NotTrusted" rather than "Valid" -
                            # see core/authenticode.py's TODO before treating that status as final.
+    "numpy>=1.24",         # Added 2026-08-04 for core/nsrl.py's cached binary NSRL index - a
+                           # one-time C-level sort of tens of millions of 20-byte SHA-1 digests
+                           # (np.sort on a 'V20' dtype view) plus np.memmap for shared, per-process
+                           # lookups without duplicating a multi-GB structure into every worker.
+                           # Prebuilt wheels exist for Windows/Linux/macOS/ARM64, so this doesn't
+                           # reintroduce the "needs a compiler on the target machine" problem the
+                           # ppdeep/pure-Python choices elsewhere in this file were made to avoid.
 ]
 
 [project.optional-dependencies]

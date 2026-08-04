@@ -18,7 +18,7 @@ import logging
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Qt, QThread, Signal
+from PySide6.QtCore import QObject, Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QFrame,
@@ -140,6 +140,23 @@ class MainWindow(QMainWindow):
         self._scan_control: _ScanControl | None = None
         self._scan_start_time: float | None = None
         self._scan_total_files = 0
+        self._scan_done_count = 0
+
+        # Ticks every second for the entire duration of a scan, independent
+        # of progress_callback firing - added 2026-08-04 because the
+        # pre-scan setup phase (file enumeration, NSRL/blocklist/YARA/capa
+        # loading - see engine.py's scan_directory()) and long individual
+        # files (capa's own per-file analysis can legitimately take up to
+        # its 120s timeout) both produce real gaps where NO progress signal
+        # arrives at all. Without an independent heartbeat, the "Scanning..."
+        # status text - the ONLY thing on screen during those gaps before
+        # this fix - just sits there unchanged, which is indistinguishable
+        # from the app having actually frozen. This is the single most
+        # direct fix for that: the status text now visibly counts up every
+        # second no matter what stage of the scan is running underneath it.
+        self._scan_timer = QTimer(self)
+        self._scan_timer.setInterval(1000)
+        self._scan_timer.timeout.connect(self._on_scan_tick)
 
         central = QWidget()
         central_layout = QHBoxLayout(central)
@@ -322,9 +339,21 @@ class MainWindow(QMainWindow):
 
         self.scan_queue_page.reset()
         self.scan_queue_page.set_running(True)
-        self._set_status("Scanning...", self.theme.Warning)
+        # Everything below happens the INSTANT Start is clicked, before the
+        # background thread has done anything at all - this is what closes
+        # the gap between "user clicked Start" and "user sees ANY evidence
+        # something happened", which used to be however long file
+        # enumeration + NSRL/blocklist/YARA/capa loading took (real-world
+        # observed: several minutes on a large NSRL set) with literally
+        # nothing on screen changing in that entire window.
+        self._set_status("Scanning... (00:00:00)", self.theme.Warning)
+        self.scan_queue_page.set_indeterminate("Starting scan - enumerating files...")
+        self.scan_queue_page.set_summary("Starting scan...")
+        self.scan_queue_page.set_eta("")
         self._scan_start_time = time.monotonic()
         self._scan_total_files = 0
+        self._scan_done_count = 0
+        self._scan_timer.start()
 
         self._scan_control = _ScanControl()
         self._scan_thread = QThread(self)
@@ -336,13 +365,30 @@ class MainWindow(QMainWindow):
         self._scan_worker.failed.connect(self._on_scan_failed)
         self._scan_thread.start()
 
+    def _on_scan_tick(self) -> None:
+        """Fires every second for the whole scan - see the QTimer setup in
+        __init__ for why this needs to be independent of progress_callback.
+        Deliberately does NOT touch scan_queue_page.summary_label or the
+        overall progress bar/percentage - those reflect real file-level
+        progress from _on_scan_progress() and shouldn't be overwritten with
+        stale done/total numbers on a tick where nothing new actually
+        happened. This only owns the top-bar status text's elapsed clock."""
+        if self._scan_start_time is None:
+            return
+        elapsed = _format_elapsed(time.monotonic() - self._scan_start_time)
+        if self._scan_control is not None and self._scan_control.is_paused:
+            self._set_status(f"Paused ({elapsed})", self.theme.Warning)
+        else:
+            self._set_status(f"Scanning... ({elapsed})", self.theme.Warning)
+
     def _on_pause_toggled(self, paused: bool) -> None:
         if self._scan_control is not None:
             self._scan_control.is_paused = paused
-        if paused:
-            self._set_status("Paused", self.theme.Warning)
-        elif self._scan_thread is not None:
-            self._set_status("Scanning...", self.theme.Warning)
+        # _on_scan_tick() (fires every second regardless) already keeps the
+        # status text's Paused/Scanning wording in sync with elapsed time -
+        # this just gives instant feedback on the click itself rather than
+        # waiting up to a second for the next tick.
+        self._on_scan_tick()
 
     def _on_stop_clicked(self) -> None:
         if self._scan_control is not None:
@@ -354,24 +400,63 @@ class MainWindow(QMainWindow):
         self.scan_queue_page.upsert_record(record)
 
         if record.Status not in _TERMINAL_STATUSES:
-            return  # the mid-file "Scanning" callback only needs the grid row above
+            # Submission-phase callback: `done` counts files DISPATCHED to
+            # the worker pool so far, not completed - still real, immediate
+            # feedback (in particular, the file TOTAL becomes known and
+            # visible here for the first time, before this a user had no
+            # idea if they'd pointed BinSifter at 5 files or 50,000).
+            # Deliberately not fed into the overall progress bar's
+            # percentage - that tracks completions below, and submission
+            # happens in one fast burst (see scan_directory()'s own
+            # docstring), so showing it on the same bar would make the bar
+            # jump to ~100% and then drop back to 0% seconds later as
+            # completions start, which reads as a glitch, not progress.
+            self.scan_queue_page.set_progress(0, total)
+            self.scan_queue_page.set_summary(f"{total} file(s) queued - dispatching to worker pool...")
+            return
 
-        elapsed = _format_elapsed(time.monotonic() - self._scan_start_time) if self._scan_start_time else "00:00:00"
+        self._scan_done_count = done
+        elapsed_seconds = time.monotonic() - self._scan_start_time if self._scan_start_time else 0.0
+        elapsed = _format_elapsed(elapsed_seconds)
+        self.scan_queue_page.set_progress(done, total)
         self.dashboard_page.summary_label.setText(f"Scanning: {done} / {total} files - elapsed {elapsed}")
         self.scan_queue_page.set_summary(f"{total} files total - {done} completed - elapsed {elapsed}")
+        self._update_eta(elapsed_seconds, done, total)
+
+    def _update_eta(self, elapsed_seconds: float, done: int, total: int) -> None:
+        """Simple average-time-per-completed-file projection, recomputed on
+        every completion so it naturally adapts as the mix of fast (NSRL-
+        known, skip capa) and slow (full capa/vivisect analysis) files
+        changes over the course of a batch. Deliberately not fancier
+        (e.g. weighting recent files more) - this is meant to give a rough
+        or-of-magnitude sense of time remaining, not a precise countdown;
+        capa's own per-file cost varies too much file-to-file for a tight
+        estimate to be honest."""
+        if done <= 0 or total <= 0:
+            self.scan_queue_page.set_eta("ETA: calculating...")
+            return
+        remaining = total - done
+        if remaining <= 0:
+            self.scan_queue_page.set_eta("")
+            return
+        eta_seconds = (elapsed_seconds / done) * remaining
+        self.scan_queue_page.set_eta(f"ETA: ~{_format_elapsed(eta_seconds)} remaining")
 
     def _on_scan_finished(self, result: ScanResult) -> None:
         self.dashboard_page.update_from_records(result.records)
         self.results_page.set_records(result.records)
         completed = sum(1 for r in result.records if r.Status == "Completed")
         self.scan_queue_page.set_summary(f"Scan finished. {completed} / {len(result.records)} files completed.")
+        self.scan_queue_page.set_eta("")
         self._set_status("Ready", self.theme.Success)
         self.scan_queue_page.set_running(False)
+        self._scan_timer.stop()
         self._teardown_scan_thread()
 
     def _on_scan_failed(self, message: str) -> None:
         self._set_status("Error", self.theme.Danger)
         self.scan_queue_page.set_running(False)
+        self._scan_timer.stop()
         self._teardown_scan_thread()
         QMessageBox.critical(self, "Scan failed", message)
 

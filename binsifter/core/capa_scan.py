@@ -69,20 +69,45 @@ from binsifter.core.subprocess_timeout import run_with_timeout
 # stuck for 30-90+ seconds inside envi's own code (a third-party bug, not
 # something in this module).
 #
-# Raised from 60 to 120 on 2026-08-03: a real 652-file scan against a mixed
-# real-world corpus (large C++ libraries like xerces-c, xul.dll, and
-# similar) showed a meaningful share of files hitting the 60s cutoff while
-# still doing real, forward-progress vivisect analysis on a genuinely
-# complex binary - not the stuck-forever pattern above, just slow. 120s
-# still keeps one pathological file from stalling a batch scan
-# indefinitely (each file has its own worker process, so a slow file no
-# longer blocks the others the way it would have in a single-threaded
-# scan), while giving legitimately large/complex files room to actually
-# finish rather than erroring out. If files are still timing out
-# frequently against a given corpus, that's a signal this may need to go
-# higher still, or that vivisect's per-file cost is the real bottleneck
-# worth addressing directly rather than papering over with a bigger number.
-DEFAULT_TIMEOUT_SECONDS = 120
+# Raised from 60 to 120 on 2026-08-03 on the theory that files hitting the
+# 60s cutoff were still making real, forward-progress vivisect analysis on
+# genuinely complex binaries (large C++ libraries like xerces-c, xul.dll)
+# and just needed more room to finish.
+#
+# Lowered back to 60 on 2026-08-04, and this wasn't a guess - a real
+# 652-file scan run at 120s (Loom_scanLogs_08042026.txt) gave the data to
+# check the 08-03 theory directly. Stage-timing summary from that run:
+# capa = 31,082.7 CPU-seconds total (93.6% of all stage time), and of the
+# 549 files capa ran against, 186 (28.5%) hit the full 120s timeout and
+# produced nothing. Those 186 timeouts alone account for 22,320 of the
+# 31,082.7 capa-seconds - ~72% of all capa time spent on files that
+# ultimately yield zero result. Meanwhile the 363 files that *did* finish
+# averaged only ~24s each (8,762.7s / 363) - real successes cluster well
+# under even the old 60s ceiling, so the 08-03 theory (more room helps
+# borderline-but-progressing files) isn't what the data shows for this
+# corpus: the files timing out at 120s look like they'd time out at any
+# reasonable ceiling, not files that were one more minute from finishing.
+# Doubling the timeout doubled the number of workers can waste per stuck
+# file without measurably rescuing more of them.
+#
+# Raised to 90 on 2026-08-04 (same day, second pass), after the 60s run
+# (Loom_scanLogs_08042026-1641.txt) showed the 08-03 theory wasn't fully
+# wrong after all. Total scan time did drop hard - 4192.7s to 1539.5s
+# (-63%), capa CPU time 31,082.7s to 18,075.1s - but timeout count went UP,
+# not down: 186/652 at 120s to 252/652 at 60s. Of the 549 files capa runs
+# against, completion rate fell from 66.1% (363/549) to 54.1% (297/549) -
+# 66 more files got zero capa result than at 120s. That's direct evidence
+# some files genuinely need the 60-120s window and weren't just stuck -
+# the 08-04 note above overcorrected by treating every 60s-cutoff file as
+# equivalent to a 120s-cutoff file, which this run disproved.
+#
+# 90s is a deliberate split, not a new theory: keep most of the 08-04
+# wall-clock win while clawing back some of the completion-rate loss.
+# Check the next real scan's stage-timing summary against both prior runs
+# (120s: 186/549 timeout, 31,082.7 capa-s, 4192.7s total; 60s: 252/549
+# timeout, 18,075.1 capa-s, 1539.5s total) to see where 90s actually lands
+# on both axes before treating it as settled.
+DEFAULT_TIMEOUT_SECONDS = 90
 
 
 @dataclass

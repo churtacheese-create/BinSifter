@@ -1,17 +1,17 @@
 <#
-Creates a Desktop shortcut that launches BinSifter_v1.3.0-alpha.2.ps1 under PowerShell 7 (pwsh.exe).
+Creates a Desktop shortcut that launches BinSifter_v1.3.0-beta.1.ps1 under PowerShell 7 (pwsh.exe).
 
 Run this ONCE, on whichever machine you want the icon on (e.g. your FRED workstation),
-from the same folder you copied BinSifter_v1.3.0-alpha.2.ps1 into. It does not need admin rights.
+from the same folder you copied BinSifter_v1.3.0-beta.1.ps1 into. It does not need admin rights.
 
     pwsh.exe -ExecutionPolicy Bypass -File .\Create-BinSifterShortcut.ps1
 #>
 
 $ErrorActionPreference = 'Stop'
 
-$scriptPath = Join-Path $PSScriptRoot 'BinSifter_v1.3.0-alpha.2.ps1'
+$scriptPath = Join-Path $PSScriptRoot 'BinSifter_v1.3.0-beta.1.ps1'
 if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
-    throw "BinSifter_v1.3.0-alpha.2.ps1 was not found next to this script ($PSScriptRoot). Copy them into the same folder, or edit `$scriptPath below."
+    throw "BinSifter_v1.3.0-beta.1.ps1 was not found next to this script ($PSScriptRoot). Copy them into the same folder, or edit `$scriptPath below."
 }
 
 # BinSifter uses .NET 5+ APIs (Convert.ToHexString, etc.), so it needs PowerShell 7+

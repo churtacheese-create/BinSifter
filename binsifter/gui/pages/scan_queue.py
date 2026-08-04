@@ -78,6 +78,7 @@ class ScanQueuePage(QWidget):
         root.setSpacing(0)
 
         root.addWidget(self._build_toolbar())
+        root.addWidget(self._build_progress_row())
 
         self.summary_label = QLabel("No files queued.")
         self.summary_label.setContentsMargins(2, 8, 0, 8)
@@ -90,6 +91,74 @@ class ScanQueuePage(QWidget):
         root.addWidget(self.table, 1)
 
     # ---------- construction ----------
+
+    def _build_progress_row(self) -> QWidget:
+        """Overall scan progress (added 2026-08-04) - separate from the
+        per-row progress bars in the table (col 2, one per file), which only
+        ever show 0% or 100% for that single file and don't answer "how far
+        along is the WHOLE batch". This is the first thing a user sees
+        change on scan start, before the table has any rows yet - see
+        set_progress()/set_indeterminate() below, called from MainWindow's
+        immediate "starting scan" feedback and from every progress signal
+        after that, not just file completions."""
+        theme = self._theme
+        row = QFrame()
+        row.setFixedHeight(40)
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(2, 4, 2, 4)
+        layout.setSpacing(10)
+
+        self.overall_progress = QProgressBar()
+        self.overall_progress.setRange(0, 100)
+        self.overall_progress.setValue(0)
+        self.overall_progress.setTextVisible(True)
+        self.overall_progress.setFormat("Idle")
+        self.overall_progress.setStyleSheet(
+            f"QProgressBar {{ background-color: {qcolor_to_css(theme.ButtonBack)}; "
+            f"color: {qcolor_to_css(theme.Fore)}; border: 1px solid {qcolor_to_css(theme.Border)}; "
+            f"border-radius: 3px; text-align: center; }}"
+            f"QProgressBar::chunk {{ background-color: {qcolor_to_css(theme.Accent)}; }}"
+        )
+        layout.addWidget(self.overall_progress, 1)
+
+        self.eta_label = QLabel("")
+        self.eta_label.setStyleSheet(f"color: {accent_to_css(theme.MutedFore)}; border: none; background: transparent;")
+        self.eta_label.setFixedWidth(260)
+        layout.addWidget(self.eta_label)
+
+        return row
+
+    def set_progress(self, done: int, total: int) -> None:
+        """done/total here are SUBMITTED-or-completed counts (whatever the
+        caller is currently tracking), not just terminal-status completions
+        - the bar should visibly move the moment files start being
+        dispatched to the worker pool, not sit at 0% until the first one
+        finishes minutes later."""
+        if total <= 0:
+            self.overall_progress.setRange(0, 100)
+            self.overall_progress.setValue(0)
+            self.overall_progress.setFormat("Idle")
+            return
+        if self.overall_progress.maximum() == 0:
+            # Coming out of set_indeterminate()'s busy/marquee mode - restore
+            # a real range now that we actually know a file total.
+            self.overall_progress.setRange(0, 100)
+        pct = int(done / total * 100)
+        self.overall_progress.setValue(pct)
+        self.overall_progress.setFormat(f"{done} / {total} files ({pct}%)")
+
+    def set_indeterminate(self, label: str) -> None:
+        """Range (0, 0) makes a QProgressBar render as a busy/marquee
+        indicator instead of a fixed percentage - used for the pre-scan
+        setup phase (file enumeration, NSRL/blocklist/YARA/capa loading),
+        where MainWindow doesn't yet know a file total to compute a real
+        percentage against. Real range/value is restored by the first
+        set_progress() call once the pool actually starts."""
+        self.overall_progress.setRange(0, 0)
+        self.overall_progress.setFormat(label)
+
+    def set_eta(self, text: str) -> None:
+        self.eta_label.setText(text)
 
     def _build_toolbar(self) -> QWidget:
         theme = self._theme
@@ -188,6 +257,8 @@ class ScanQueuePage(QWidget):
         self.table.setRowCount(0)
         self._row_by_path.clear()
         self.summary_label.setText("No files queued.")
+        self.set_progress(0, 0)
+        self.set_eta("")
 
     def clear_completed(self) -> None:
         """Removes rows whose Status is a terminal state - same 3-state set

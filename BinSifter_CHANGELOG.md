@@ -35,6 +35,10 @@
 - Draft YARA rule auto-generation per SSDEEP cluster (common-string based, written to a `generated_rules` folder for manual review).
 - Per-file triage disposition (Untriaged/Benign/Suspicious/Escalated), editable in the Results grid and persisted across scans by SHA-1.
 
+## v1.3.0-beta.1 (promoted from alpha.2, 2026-08-04)
+- No functional changes from alpha.2 - promoted after real-casework validation on a FRED forensic workstation and confirmation it's working as intended. The "still unvalidated, first real run pending" caveat on the alpha.2 entry below no longer applies.
+- File renamed `BinSifter_v1.3.0-alpha.2.ps1` -> `BinSifter_v1.3.0-beta.1.ps1`; `$AppVersion` bumped to match. All shortcut scripts and README references updated accordingly.
+
 ## v1.3.0-alpha.2 (merge of proto1 + selected proto2 features - still unvalidated, first real run pending)
 
 ### Deep-analysis actions ported from a second v1.3 prototype branch (proto2)

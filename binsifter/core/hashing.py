@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+from collections import Counter
 from dataclasses import dataclass
 
 _CHUNK_SIZE = 1024 * 1024  # 1 MiB - matches the PowerShell version's read buffer size
@@ -30,11 +31,22 @@ def hash_and_score_file(path: str) -> HashResult:
     """Single streaming read - hashes and a byte-frequency table are built
     in the same pass, same as the PowerShell version's rationale ("free
     once the file is already being read for SHA-1/MD5").
+
+    Byte-frequency counting uses Counter.update(chunk) instead of a manual
+    `for b in chunk: byte_counts[b] += 1` Python-level loop - the latter was
+    confirmed (2026-08-03, profiling a slow real-world scan) to be a
+    meaningful, entirely avoidable cost paid on EVERY file regardless of
+    config, since this is the one stage every file goes through
+    unconditionally. Counter.update() on a bytes object hits CPython's
+    C-accelerated _count_elements path (collections/__init__.py imports it
+    from the _collections extension module when available), so the actual
+    counting loop runs in C instead of the Python interpreter loop - same
+    result, no new dependency, meaningfully faster on large files.
     """
     md5 = hashlib.md5()
     sha1 = hashlib.sha1()
     sha256 = hashlib.sha256()
-    byte_counts = [0] * 256
+    byte_counts: Counter = Counter()
     total = 0
 
     with open(path, "rb") as fh:
@@ -46,8 +58,7 @@ def hash_and_score_file(path: str) -> HashResult:
             sha1.update(chunk)
             sha256.update(chunk)
             total += len(chunk)
-            for b in chunk:
-                byte_counts[b] += 1
+            byte_counts.update(chunk)
 
     entropy = _shannon_entropy(byte_counts, total)
     return HashResult(
@@ -59,15 +70,16 @@ def hash_and_score_file(path: str) -> HashResult:
     )
 
 
-def _shannon_entropy(byte_counts: list[int], total_length: int) -> float:
+def _shannon_entropy(byte_counts: Counter, total_length: int) -> float:
     """0.0-8.0 bits/byte. -1 for a zero-length file (undefined, not zero -
-    matches the PowerShell version's -1 "not computed" sentinel elsewhere)."""
+    matches the PowerShell version's -1 "not computed" sentinel elsewhere).
+    byte_counts only holds keys for byte values actually seen (a Counter,
+    not a dense 256-slot list), so there's no zero-count entries to skip
+    here anymore - every value iterated is a real, present byte value."""
     if total_length == 0:
         return -1.0
     entropy = 0.0
-    for count in byte_counts:
-        if count == 0:
-            continue
+    for count in byte_counts.values():
         p = count / total_length
         entropy -= p * math.log2(p)
     return entropy

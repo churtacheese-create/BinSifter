@@ -5960,7 +5960,7 @@ For repeatable case work, preserve the report directory (Reports\ next to BinSif
 # ================= Bootstrap =================
 # Bump this on every new version file - it's the only place the displayed
 # version number needs to change now (status bar + About page both read it).
-$AppVersion = 'v1.3.0-alpha.2'
+$AppVersion = 'v1.3.0-beta.1'
 $isDarkMode = Test-SystemDarkMode
 $threadLimit = [Math]::Min(16, [Math]::Max(2, [Environment]::ProcessorCount * 2))
 $logoHorizontal = if ($isDarkMode) {

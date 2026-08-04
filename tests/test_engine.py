@@ -162,3 +162,37 @@ def test_prior_disposition_carries_into_next_scan(tmp_path):
     second_pass = scan_directory(config)
     assert second_pass.records[0].Disposition == "Escalated"
     assert second_pass.records[0].SHA1 == sha1
+
+
+def test_nsrl_match_through_real_worker_pool(tmp_path):
+    """End-to-end check for the 2026-08-04 NSRL rewrite (see nsrl.py's
+    module docstring): scan_directory() hands each pool worker a cache file
+    PATH, not a parsed set, and each worker opens/mmaps it independently in
+    _pool_worker_init(). A unit test against nsrl.py alone can't catch a
+    bug in that wiring (e.g. the wrong thing crossing the multiprocessing
+    initargs boundary, or a worker failing to open the cache) - this runs a
+    real two-file scan through the real multiprocessing.Pool and checks
+    both the known-good and known-unknown outcomes actually reach
+    FileRecord.NsrlMatch correctly.
+    """
+    import hashlib
+
+    src_dir = _make_files(tmp_path, 2)  # file0.bin, file1.bin
+    known_sha1 = hashlib.sha1(b"not a real PE, file 0").hexdigest()
+
+    report_dir = tmp_path / "reports"
+    report_dir.mkdir()
+    nsrl_path = tmp_path / "nsrl.txt"
+    # Mix of upper/lowercase and a decoy hash, same tolerance the real NSRL
+    # parser is expected to handle.
+    nsrl_path.write_text(f"{known_sha1.upper()}\n" + "a" * 40 + "\n", encoding="utf-8")
+
+    config = BinSifterConfig(SrcDir=src_dir, ReportDirectory=str(report_dir), NsrlPath=str(nsrl_path))
+    result = scan_directory(config)
+
+    known_record = next(r for r in result.records if r.SHA1 == known_sha1)
+    unknown_records = [r for r in result.records if r.SHA1 != known_sha1]
+
+    assert known_record.NsrlMatch is True
+    assert len(unknown_records) == 1
+    assert unknown_records[0].NsrlMatch is False

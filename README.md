@@ -6,7 +6,7 @@ BinSifter is a binary triage tool built for forensic examiners who need to make 
 
 ## Status
 
-The shipped version (`BinSifter_v1.3.0-alpha.2.ps1`) is a PowerShell 7 + WinForms desktop app. It's functional and has been run against real casework on a FRED forensic workstation, but it's still pre-1.0 and Windows-only.
+The shipped version (`BinSifter_v1.3.0-beta.1.ps1`) is a PowerShell 7 + WinForms desktop app. It's functional and has been run against real casework on a FRED forensic workstation, but it's still pre-1.0 and Windows-only.
 
 A full rewrite in Python and PySide6 is underway (see the `binsifter/` package), mainly to get BinSifter off Windows-only WinForms and onto something that can eventually run on Linux too. The scan engine itself is in good shape: hashing/entropy, NSRL, blocklist, YARA with MITRE ATT&CK enrichment, CAPA, FLOSS, Speakeasy emulation, Authenticode verification, IOC extraction, SSDEEP/imphash clustering, draft YARA rule generation, and CSV reporting are all real, working, and tested. The GUI is still just a placeholder shell while the real pages get built one at a time. `pip install -e ".[dev]"` then `binsifter` launches that shell, and `binsifter-scan --src-dir ... --yara-rules ... --nsrl-path ...` runs a full headless scan today. See `BinSifter_CHANGELOG.md` for the PowerShell version's history.
 
@@ -35,7 +35,7 @@ A full rewrite in Python and PySide6 is underway (see the `binsifter/` package),
 
 ## Getting started
 
-Run `Create-BinSifterShortcut.ps1` once to generate a desktop shortcut, or launch `BinSifter_v1.3.0-alpha.2.ps1` directly with `pwsh.exe -File`. Full configuration details are in the in-app Help page.
+Run `Create-BinSifterShortcut.ps1` once to generate a desktop shortcut, or launch `BinSifter_v1.3.0-beta.1.ps1` directly with `pwsh.exe -File`. Full configuration details are in the in-app Help page.
 
 ## License
 

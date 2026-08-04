@@ -3,17 +3,16 @@ alpha.2.ps1, lines ~4696-4740 for the page, ~5513-5609 for BtnBrowse/
 BtnReloadPreview). Path label, Browse, Reload Now, and a big known-good
 hash count.
 
-Deliberate simplification from the original, not a missing feature: the
-PowerShell version's Reload Now maintains its own on-disk binary cache
-(length + mtime ticks header, one 20-byte record per hash) so repeat
-reloads of the same unchanged file skip re-parsing the whole CSV. This
-port's core.nsrl.load_nsrl_hashes() has no such cache - it parses fresh
-every time, same as the PowerShell version's own cache-miss path. Still
-runs on a background QThread (not inline) since a large NSRL file's parse
-can take real time and shouldn't freeze the window - just without the
-original's persistent speed-up for repeat loads. Worth adding a real cache
-to core/nsrl.py later if reload latency on a large file turns out to
-matter in practice; not invented speculatively here.
+Updated 2026-08-04: core.nsrl now has the cache this module's docstring
+used to flag as missing (a real 72-million-row NSRL file made "parses
+fresh every time" cost 24.5 minutes on its own, not a theoretical gap
+anymore - see nsrl.py's module docstring for the full story). Reload Now
+uses the same get_cache_path/cache_is_fresh/build_index/read_cached_count
+functions scan_directory() does, so a repeat reload of an unchanged file is
+a fast cache-hit here too, not a second full reparse. Still runs on a
+background QThread - even a cache-hit mmap open plus header read shouldn't
+block the window, and a genuine cache MISS (first load of a new/changed
+file) still needs the real build.
 """
 
 from __future__ import annotations
@@ -45,17 +44,22 @@ class _NsrlLoadWorker(QObject):
     finished = Signal(int)  # hash count
     failed = Signal(str)
 
-    def __init__(self, path: str) -> None:
+    def __init__(self, path: str, report_directory: str) -> None:
         super().__init__()
         self._path = path
+        self._report_directory = report_directory
 
     def run(self) -> None:
         try:
-            hashes = nsrl_mod.load_nsrl_hashes(self._path)
+            cache_path = nsrl_mod.get_cache_path(self._path, self._report_directory)
+            if nsrl_mod.cache_is_fresh(cache_path, self._path):
+                count = nsrl_mod.read_cached_count(cache_path)
+            else:
+                count = nsrl_mod.build_index(self._path, cache_path)
         except Exception as exc:  # noqa: BLE001 - report to the UI instead of crashing the thread
             self.failed.emit(str(exc))
             return
-        self.finished.emit(len(hashes))
+        self.finished.emit(count)
 
 
 class NsrlPage(QWidget):
@@ -146,7 +150,7 @@ class NsrlPage(QWidget):
         self.reload_button.setText("Loading...")
 
         self._thread = QThread(self)
-        self._worker = _NsrlLoadWorker(path)
+        self._worker = _NsrlLoadWorker(path, self._config.ReportDirectory)
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
         self._worker.finished.connect(self._on_load_finished)
