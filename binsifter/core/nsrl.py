@@ -42,7 +42,7 @@ objects - benchmarked at ~2.3s for 5,000,000 records, extrapolating to
 roughly 30-60s for 72 million, versus multiple minutes the naive approach
 would cost on top of the parse itself.
 
-Cross-reference: the PowerShell version (BinSifter_v1.3.0-alpha.2.ps1,
+Cross-reference: the PowerShell version (BinSifter-Rowan_v1.3.0-beta.1.ps1,
 BinSifter.NsrlLoader, ~line 147) already does something similar - parse
 once, cache a flat 20-byte-record file, fast-load from cache on repeat
 runs - and that's a real, legitimate contributor to its faster NSRL
@@ -119,7 +119,7 @@ class NsrlIndex:
 def _cache_path_for(nsrl_path: str, report_directory: str) -> str:
     """Cache lives under report_directory/.bsifter-nsrl-cache/, NOT beside
     the NSRL source file - mirrors the PowerShell version's own reasoning
-    (BinSifter_v1.3.0-alpha.2.ps1, ~line 2656): NSRL reference sets are
+    (BinSifter-Rowan_v1.3.0-beta.1.ps1, ~line 2656): NSRL reference sets are
     routinely staged on read-only or write-blocked evidentiary drives, and
     a cache-write failure there shouldn't be able to affect the scan even
     though the NSRL data itself parsed fine. Named by a hash of the

@@ -1,4 +1,4 @@
-"""Scan Queue page - port of New-ScanQueuePage (BinSifter_v1.3.0-alpha.2.ps1,
+"""Scan Queue page - port of New-ScanQueuePage (BinSifter-Rowan_v1.3.0-beta.1.ps1,
 lines ~3945-4088): a toolbar (Start Scan/Pause/Stop/Clear Completed), a
 summary label, and a per-file grid with a live status glyph, a real
 progress bar, and color-highlighted YARA/Capa/NSRL cells.

@@ -1,6 +1,6 @@
 """YARA scanning - imported as a library (yara-python) instead of shelling
 out to yara64.exe. Direct port of the C# SeverityScorer class and
-Get-SeverityRank function from BinSifter_v1.3.0-alpha.2.ps1 (lines ~601-653
+Get-SeverityRank function from BinSifter-Rowan_v1.3.0-beta.1.ps1 (lines ~601-653
 and ~1986-1995) - the severity bucketing logic is copied faithfully since
 getting it subtly wrong would silently change what counts as "Critical" on
 the dashboard.
@@ -8,7 +8,7 @@ the dashboard.
 MITRE ATT&CK technique enrichment (YaraAttackTechniques) resolves each
 matched rule's meta values against an optional AttackDb (see attack_db.py)
 in the same per-match loop severity is computed in - direct port of
-BinSifter_v1.3.0-alpha.2.ps1 lines ~2234-2256, which builds both
+BinSifter-Rowan_v1.3.0-beta.1.ps1 lines ~2234-2256, which builds both
 bestSeverity and attackHits from the same $yaraMatches loop.
 """
 

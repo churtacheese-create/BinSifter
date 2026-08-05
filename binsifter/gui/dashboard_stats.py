@@ -1,6 +1,6 @@
 """Dashboard aggregate statistics - pure-Python (no Qt import) port of the
 per-file metric accumulation and SSDEEP-metrics computation in the
-PowerShell version (BinSifter_v1.3.0-alpha.2.ps1, lines ~5663-5691 for the
+PowerShell version (BinSifter-Rowan_v1.3.0-beta.1.ps1, lines ~5663-5691 for the
 UiTotals metrics, ~3117-3174 for SsdeepMetrics). Kept separate from the Qt
 page widget so these aggregations are unit-testable without a display.
 
@@ -123,7 +123,7 @@ class DashboardStats:
         # each cluster's first-encountered-in-scan order, same as the
         # PowerShell version's Dictionary enumeration) - so on a tie, the
         # cluster that was FIRST seen during this scan wins, same
-        # tie-break as BinSifter_v1.3.0-alpha.2.ps1 lines ~3118-3123
+        # tie-break as BinSifter-Rowan_v1.3.0-beta.1.ps1 lines ~3118-3123
         # (`foreach ($kvp in $clusterSizes.GetEnumerator()) { if
         # ($kvp.Value -gt $largestClusterSize) ... }`), not just "whichever
         # dict.values() happens to return max() for".

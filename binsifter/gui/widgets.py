@@ -1,6 +1,6 @@
 """Reusable themed widgets - direct ports of the PowerShell version's
 New-StatTile, nav-button construction, and severity-chart Paint handler
-(BinSifter_v1.3.0-alpha.2.ps1, lines ~3532-3589 for tiles, ~3675-3749 for
+(BinSifter-Rowan_v1.3.0-beta.1.ps1, lines ~3532-3589 for tiles, ~3675-3749 for
 the chart, ~5018-5062 for nav buttons, ~1549-1562 for the heat-map color
 scale). Coordinates/sizes are copied 1:1 rather than re-derived, and each
 tile/chart is built with fixed child positions (setGeometry), matching the

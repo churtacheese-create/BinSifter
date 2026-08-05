@@ -1,6 +1,6 @@
 """Bridges Python's `logging` module into the GUI's Logs page - the Python
 port's equivalent of the PowerShell version's $LogQueue/Add-Log/750ms drain
-timer (BinSifter_v1.3.0-alpha.2.ps1 lines ~1881-1885 for Add-Log, ~5611-5628
+timer (BinSifter-Rowan_v1.3.0-beta.1.ps1 lines ~1881-1885 for Add-Log, ~5611-5628
 for the drain). Same "[HH:MM:SS] message" line format.
 
 Real, not cosmetic: engine.py and its collaborators already log through

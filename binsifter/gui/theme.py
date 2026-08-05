@@ -1,5 +1,5 @@
 """Color theme - direct port of the PowerShell version's Get-ThemePalette
-function (BinSifter_v1.3.0-alpha.2.ps1, lines ~1339-1377). Same RGB values,
+function (BinSifter-Rowan_v1.3.0-beta.1.ps1, lines ~1339-1377). Same RGB values,
 same field names (kept PascalCase to match 1:1, same convention as
 models.py's FileRecord) - this is the exact palette the BinSifter_Dash.png
 screenshot was rendered with, so matching it precisely is the whole point.

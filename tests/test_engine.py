@@ -196,3 +196,59 @@ def test_nsrl_match_through_real_worker_pool(tmp_path):
     assert known_record.NsrlMatch is True
     assert len(unknown_records) == 1
     assert unknown_records[0].NsrlMatch is False
+
+
+def test_nsrl_match_skips_imphash_ssdeep_unknown_file_still_gets_them(tmp_path):
+    """2026-08-05 gating fix: a file NSRL already resolved as known-good
+    should skip imphash/ssdeep (and YARA/capa/FLOSS) entirely - see
+    engine.py's 2026-08-05 comment above the `if not record.NsrlMatch:`
+    block, and BinSifter-Rowan_v1.3.0-beta.1.ps1:2208 for the reference
+    behavior. ssdeep is the cleanest observable signal here: ppdeep
+    produces a real fuzzy hash even for tiny non-PE content (confirmed
+    directly - '3:fFQEqQqV:tnu' for this exact test corpus's file
+    content), so SSDEEP being populated vs. staying at its None default is
+    a direct read on whether the stage ran at all, not just what it found.
+    """
+    import hashlib
+
+    src_dir = _make_files(tmp_path, 2)  # file0.bin, file1.bin
+    known_sha1 = hashlib.sha1(b"not a real PE, file 0").hexdigest()
+
+    report_dir = tmp_path / "reports"
+    report_dir.mkdir()
+    nsrl_path = tmp_path / "nsrl.txt"
+    nsrl_path.write_text(f"{known_sha1.upper()}\n", encoding="utf-8")
+
+    config = BinSifterConfig(SrcDir=src_dir, ReportDirectory=str(report_dir), NsrlPath=str(nsrl_path))
+    result = scan_directory(config)
+
+    known_record = next(r for r in result.records if r.SHA1 == known_sha1)
+    unknown_record = next(r for r in result.records if r.SHA1 != known_sha1)
+
+    assert known_record.NsrlMatch is True
+    assert known_record.SSDEEP is None  # stage skipped, not "ran and found nothing"
+    assert unknown_record.NsrlMatch is False
+    assert unknown_record.SSDEEP is not None  # stage actually ran for the non-match
+
+
+def test_capa_not_invoked_without_a_yara_hit(tmp_path):
+    """2026-08-05 gating fix: CapaEligible must only ever get computed -
+    and capa only ever run - inside a real YARA hit, matching Rowan's
+    nesting (BinSifter-Rowan_v1.3.0-beta.1.ps1:2257-2459, CapaEligible is set
+    INSIDE the "if ($yaraText not empty)" branch). No YaraRules are
+    configured here, so YaraHitCount stays 0 for every file regardless of
+    format - _make_files() writes plain '.bin' files, which file_type.classify()
+    would call capa-eligible via the shellcode heuristic (small file,
+    extension in the (".raw", ".bin") branch) if the YARA gate weren't in
+    the way, so this genuinely exercises the gate rather than just
+    "non-PE files were never eligible anyway".
+    """
+    src_dir = _make_files(tmp_path, 1)
+    config = BinSifterConfig(SrcDir=src_dir, CapaRules=str(tmp_path))  # CapaRules configured; no YaraRules
+    result = scan_directory(config)
+
+    record = result.records[0]
+    assert record.YaraHitCount == 0
+    assert record.CapaEligible is False  # never computed - stays at the dataclass default
+    assert record.CapaDetectionCount == 0
+    assert record.CAPAOutput is None

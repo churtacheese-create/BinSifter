@@ -382,7 +382,7 @@ def _process_one_file(path: str) -> _WorkerFileResult:
     # log lines were WARNINGs on failure (capa timeout, etc.), so a clean
     # run of hundreds of files produced no log activity at all for the
     # entire scan. This start/finish pair is what actually answers "what is
-    # Loom working on right now" on the Logs page during a long scan.
+    # Winnow working on right now" on the Logs page during a long scan.
     logger.info("Scanning: %s", path)
 
     def _stage_start() -> float:
@@ -415,78 +415,100 @@ def _process_one_file(path: str) -> _WorkerFileResult:
             hash_result.md5, hash_result.sha1, hash_result.sha256, _worker_blocklist_hashes
         ) if _worker_blocklist_hashes else ("", "")
 
-        if _worker_yara_rules is not None:
+        # 2026-08-05: restored the NSRL-known-good gate that was missing
+        # here - imphash, ssdeep, YARA (and, nested further in, capa/FLOSS)
+        # all skip entirely for a file NSRL already resolved as known-good,
+        # matching Rowan's actual implementation (BinSifter-Rowan_v1.3.0-
+        # beta.1.ps1:2208, "if (-not $isKnownGood) {...}") and the intended
+        # design: there's nothing left to triage once NSRL has vouched for
+        # a file. Before this fix, imphash/ssdeep/YARA ran unconditionally
+        # on every file regardless of NsrlMatch - confirmed against a real
+        # 652-file scan (2026-08-04 logs) where all 652 files, including
+        # the 103 NSRL matches, went through YARA.
+        if not record.NsrlMatch:
             t0 = _stage_start()
-            yara_result = yara_scan.scan_file(_worker_yara_rules, path, attack_db=_worker_attack_db)
-            _stage_end("yara", t0)
-            record.YaraMatches = "; ".join(yara_result.rule_names) or None
-            record.YaraHitCount = yara_result.hit_count
-            record.YaraSeverity = yara_result.severity
-            record.YaraSeverityScore = yara_result.severity_score
-            record.YaraAttackTechniques = yara_result.attack_techniques
+            imphash = imphash_mod.compute_imphash(path)
+            _stage_end("imphash", t0)
 
-        ft = file_type_mod.classify(path, hash_result.length)
-        record.CapaEligible = ft.capa_eligible
-        record.PossibleFalseNegative = file_type_mod.is_possible_false_negative(
-            ft, record.YaraHitCount, path
-        )
-
-        if config.CapaRules and record.CapaEligible:
-            # _worker_persistent_capa keeps ONE capa child process warm for
-            # this worker's entire lifetime instead of spawning a fresh one
-            # (and re-importing capa/vivisect from scratch) for every single
-            # file - see capa_scan.PersistentCapaWorker's docstring. The
-            # hang-safety net is unchanged: a stuck file still times out and
-            # gets a fresh replacement child on the next call, it just no
-            # longer costs a respawn for every well-behaved file too.
-            #
-            # This call is wrapped in its OWN try/except, separate from the
-            # outer one - confirmed 2026-08-03 against a real 652-file scan
-            # that capa timing out (its own hang-safety-net, not a bug in
-            # this code) is common enough on a real-world corpus that it was
-            # wiping out the WHOLE file's results: hashing, YARA, NSRL,
-            # signature status all already succeeded and were sitting on
-            # `record` by this point, but the outer except caught capa's
-            # TimeoutError and marked the entire file Status="Error" anyway,
-            # discarding everything already learned about it. A capa
-            # failure now only means "capa specifically didn't finish" -
-            # noted on record.Error for transparency - not "this file's scan
-            # failed"; every other already-computed field is left standing
-            # and the file still finishes as Status="Completed" below.
             t0 = _stage_start()
-            try:
-                capa_result = _worker_persistent_capa.scan_file(
-                    path, ft.is_shellcode, timeout_seconds=capa_scan.DEFAULT_TIMEOUT_SECONDS
+            ssdeep_hash = ssdeep_cluster.compute_ssdeep_hash(path)
+            _stage_end("ssdeep", t0)
+            if ssdeep_hash:
+                record.SSDEEP = ssdeep_hash
+
+            if _worker_yara_rules is not None:
+                t0 = _stage_start()
+                yara_result = yara_scan.scan_file(_worker_yara_rules, path, attack_db=_worker_attack_db)
+                _stage_end("yara", t0)
+                record.YaraMatches = "; ".join(yara_result.rule_names) or None
+                record.YaraHitCount = yara_result.hit_count
+                record.YaraSeverity = yara_result.severity
+                record.YaraSeverityScore = yara_result.severity_score
+                record.YaraAttackTechniques = yara_result.attack_techniques
+
+            # 2026-08-05: restored the YARA-hit gate around CapaEligible/
+            # capa/FLOSS that was also missing - Rowan only ever computes
+            # CapaEligible INSIDE its "if ($yaraText not empty)" branch
+            # (same file, lines ~2257-2459), so capa never runs against a
+            # file YARA didn't flag. Before this fix, CapaEligible was
+            # computed - and capa invoked - for every format-eligible file
+            # regardless of YaraHitCount: on the same 652-file/1-YARA-hit
+            # scan referenced above, capa ran on 549 files instead of at
+            # most 1, which is what every capa-timeout-tuning pass that day
+            # (120s/90s/60s) was actually measuring the cost of.
+            if record.YaraHitCount > 0:
+                ft = file_type_mod.classify(path, hash_result.length)
+                record.CapaEligible = ft.capa_eligible
+                record.PossibleFalseNegative = file_type_mod.is_possible_false_negative(
+                    ft, record.YaraHitCount, path
                 )
-                record.CapaDetectionCount = capa_result.detection_count
-                record.CAPAOutput = capa_result.output or None
-                record.CapaShellcodeFormat = capa_result.shellcode_format
-            except Exception as exc:  # noqa: BLE001 - capa's own failure, not this file's scan failing
-                record.Error = f"capa analysis did not complete: {exc}"
-                logger.warning("capa analysis failed for %s: %s", path, exc)
-            finally:
-                _stage_end("capa", t0)
-        elif record.PossibleFalseNegative:
-            t0 = _stage_start()
-            floss_result = floss_scan.scan_file(path)
-            record.FlossStringCount = floss_result.string_count
-            if floss_result.static_strings:
-                floss_static_strings = floss_result.static_strings
 
-            ioc_result = iocs_mod.extract_iocs(floss_result.strings)
-            record.IocCount = ioc_result.count
-            record.ExtractedIOCs = ioc_result.display
-            _stage_end("floss_iocs", t0)
+                if config.CapaRules and record.CapaEligible:
+                    # _worker_persistent_capa keeps ONE capa child process warm for
+                    # this worker's entire lifetime instead of spawning a fresh one
+                    # (and re-importing capa/vivisect from scratch) for every single
+                    # file - see capa_scan.PersistentCapaWorker's docstring. The
+                    # hang-safety net is unchanged: a stuck file still times out and
+                    # gets a fresh replacement child on the next call, it just no
+                    # longer costs a respawn for every well-behaved file too.
+                    #
+                    # This call is wrapped in its OWN try/except, separate from the
+                    # outer one - confirmed 2026-08-03 against a real 652-file scan
+                    # that capa timing out (its own hang-safety-net, not a bug in
+                    # this code) is common enough on a real-world corpus that it was
+                    # wiping out the WHOLE file's results: hashing, YARA, NSRL,
+                    # signature status all already succeeded and were sitting on
+                    # `record` by this point, but the outer except caught capa's
+                    # TimeoutError and marked the entire file Status="Error" anyway,
+                    # discarding everything already learned about it. A capa
+                    # failure now only means "capa specifically didn't finish" -
+                    # noted on record.Error for transparency - not "this file's scan
+                    # failed"; every other already-computed field is left standing
+                    # and the file still finishes as Status="Completed" below.
+                    t0 = _stage_start()
+                    try:
+                        capa_result = _worker_persistent_capa.scan_file(
+                            path, ft.is_shellcode, timeout_seconds=capa_scan.DEFAULT_TIMEOUT_SECONDS
+                        )
+                        record.CapaDetectionCount = capa_result.detection_count
+                        record.CAPAOutput = capa_result.output or None
+                        record.CapaShellcodeFormat = capa_result.shellcode_format
+                    except Exception as exc:  # noqa: BLE001 - capa's own failure, not this file's scan failing
+                        record.Error = f"capa analysis did not complete: {exc}"
+                        logger.warning("capa analysis failed for %s: %s", path, exc)
+                    finally:
+                        _stage_end("capa", t0)
+                elif record.PossibleFalseNegative:
+                    t0 = _stage_start()
+                    floss_result = floss_scan.scan_file(path)
+                    record.FlossStringCount = floss_result.string_count
+                    if floss_result.static_strings:
+                        floss_static_strings = floss_result.static_strings
 
-        t0 = _stage_start()
-        imphash = imphash_mod.compute_imphash(path)
-        _stage_end("imphash", t0)
-
-        t0 = _stage_start()
-        ssdeep_hash = ssdeep_cluster.compute_ssdeep_hash(path)
-        _stage_end("ssdeep", t0)
-        if ssdeep_hash:
-            record.SSDEEP = ssdeep_hash
+                    ioc_result = iocs_mod.extract_iocs(floss_result.strings)
+                    record.IocCount = ioc_result.count
+                    record.ExtractedIOCs = ioc_result.display
+                    _stage_end("floss_iocs", t0)
 
         record.Status = "Completed"
     except Exception as exc:  # noqa: BLE001 - one bad file shouldn't abort the batch
@@ -582,7 +604,7 @@ def scan_directory(
 
     should_pause()/should_stop(), if given, are polled BETWEEN submissions,
     mirroring the PowerShell dispatcher's own cooperative gate
-    (BinSifter_v1.3.0-alpha.2.ps1 lines ~2895/2867: pause blocks starting new
+    (BinSifter-Rowan_v1.3.0-beta.1.ps1 lines ~2895/2867: pause blocks starting new
     files, already-dispatched ones finish; stop aborts before the next file
     is submitted, never mid-file). On stop, every file that hadn't been
     submitted to the pool yet is marked Status="Cancelled" - same as the
@@ -690,7 +712,7 @@ def scan_directory(
     # later) keeps earlier Benign/Suspicious/Escalated calls instead of
     # resetting everything to Untriaged - written by the Results page's
     # Disposition column edits, read back here once per scan (see
-    # BinSifter_v1.3.0-alpha.2.ps1 lines ~2775-2782).
+    # BinSifter-Rowan_v1.3.0-beta.1.ps1 lines ~2775-2782).
     disposition_history = disposition_mod.load_disposition_history(config.ReportDirectory)
 
     # MITRE ATT&CK mapping is optional, same as the PowerShell version - a
@@ -700,7 +722,7 @@ def scan_directory(
     # catches AttackDb.Load() failures (bad/partial JSON, wrong schema) and
     # logs "TTP mapping disabled for this scan" rather than aborting the
     # whole scan over an optional enrichment feature - see
-    # BinSifter_v1.3.0-alpha.2.ps1 lines ~2799-2811.
+    # BinSifter-Rowan_v1.3.0-beta.1.ps1 lines ~2799-2811.
     attack_db = None
     if config.AttackDataPath and Path(config.AttackDataPath).is_file():
         try:
@@ -941,7 +963,7 @@ def scan_directory(
     # ================= Draft YARA rule generation (v1.3-proto1) =================
     # Best-effort and gracefully skipped on error - this is the same inner
     # try/except scope the PowerShell version used around just this block
-    # (BinSifter_v1.3.0-alpha.2.ps1 lines ~3233/3317-3320), separate from
+    # (BinSifter-Rowan_v1.3.0-beta.1.ps1 lines ~3233/3317-3320), separate from
     # the CSV report writing below, which is NOT similarly swallowed.
     records_by_cluster: dict[int, list[FileRecord]] = {}
     for r in record_list:
@@ -970,7 +992,7 @@ def scan_directory(
     # a report-write failure (disk full, permissions) was a real
     # scan-ending error in the PowerShell version too (its try/catch sat
     # one level up, around this and the rule-gen block together, but only
-    # rule-gen had its own inner catch - see BinSifter_v1.3.0-alpha.2.ps1
+    # rule-gen had its own inner catch - see BinSifter-Rowan_v1.3.0-beta.1.ps1
     # lines ~3322-3338 vs. ~3340). Skipped (not raised) only when
     # ReportDirectory itself is blank - same "optional, off by default
     # absence" treatment as every other Config path field.

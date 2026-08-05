@@ -1,5 +1,5 @@
 """Settings page - port of New-SettingsPage and its Save handler
-(BinSifter_v1.3.0-alpha.2.ps1, lines ~4498-4606 for the page, ~5087-5218
+(BinSifter-Rowan_v1.3.0-beta.1.ps1, lines ~4498-4606 for the page, ~5087-5218
 for wiring). Same 6 fields, same 3-column (label / textbox / Browse...)
 row layout, same validation-then-save flow.
 

@@ -1,5 +1,5 @@
 """CSV report writing - direct port of the C# CsvWriter class embedded in
-BinSifter_v1.3.0-alpha.2.ps1 (lines ~431-499).
+BinSifter-Rowan_v1.3.0-beta.1.ps1 (lines ~431-499).
 
 Deliberately NOT a generic "dump every FileRecord field" writer - the
 original hand-picks a specific 36-column list, in a specific order, and

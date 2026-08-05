@@ -1,7 +1,7 @@
 """IOC extraction from FLOSS string output - regex-mined IP addresses,
 URLs, domains, and registry paths.
 
-Direct port of BinSifter_v1.3.0-alpha.2.ps1, lines ~2329-2365 (the
+Direct port of BinSifter-Rowan_v1.3.0-beta.1.ps1, lines ~2329-2365 (the
 v1.3-proto1 IOC mining step) - same four regexes, same case-insensitive
 dedup, same 50-item display cap, since this is exactly the kind of "match
 the original precisely" logic per project convention (see file_type.py's
@@ -44,7 +44,7 @@ import re
 from dataclasses import dataclass
 
 # Same four patterns as the PowerShell version, translated 1:1 - see
-# BinSifter_v1.3.0-alpha.2.ps1 lines 2349-2352. No re.IGNORECASE on any of
+# BinSifter-Rowan_v1.3.0-beta.1.ps1 lines 2349-2352. No re.IGNORECASE on any of
 # them, matching the original's lack of a RegexOptions.IgnoreCase - see the
 # module docstring for why that's deliberate, not an oversight here.
 _IP_RE = re.compile(

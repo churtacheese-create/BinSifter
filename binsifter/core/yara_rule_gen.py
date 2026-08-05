@@ -1,5 +1,5 @@
 """Draft YARA rule auto-generation per SSDEEP cluster - direct port of the
-v1.3-proto1 PowerShell logic (BinSifter_v1.3.0-alpha.2.ps1, lines
+v1.3-proto1 PowerShell logic (BinSifter-Rowan_v1.3.0-beta.1.ps1, lines
 ~3225-3320).
 
 Best-effort, clearly-labeled-as-draft rules built from strings common to

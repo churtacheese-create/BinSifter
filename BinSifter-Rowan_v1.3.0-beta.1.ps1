@@ -3393,7 +3393,7 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
 
         # ================= Main form shell =================
         $form = New-Object System.Windows.Forms.Form
-        $form.Text = 'BinSifter'
+        $form.Text = 'BinSifter - Rowan'
         $form.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
         $form.Size = New-Object System.Drawing.Size(1400, 900)
         $form.Font = New-Object System.Drawing.Font('Segoe UI', 10)
@@ -3516,7 +3516,7 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
         $lblStatusBar.Font = New-Object System.Drawing.Font('Segoe UI', 9)
         $lblStatusBar.ForeColor = $theme.MutedFore
         $lblStatusBar.Location = New-Object System.Drawing.Point(24, 11)
-        $lblStatusBar.Text = "BinSifter $AppVersion"
+        $lblStatusBar.Text = "BinSifter Rowan $AppVersion"
         $statusBar.Controls.Add($lblStatusBar)
 
         $content = New-Object System.Windows.Forms.Panel
@@ -4977,7 +4977,7 @@ For repeatable case work, preserve the report directory (Reports\ next to BinSif
             $lblVersion.Font = New-Object System.Drawing.Font('Segoe UI', 12, [System.Drawing.FontStyle]::Bold)
             $lblVersion.ForeColor = $theme.Fore
             $lblVersion.Location = New-Object System.Drawing.Point(6, 155)
-            $lblVersion.Text = "BinSifter $AppVersion"
+            $lblVersion.Text = "BinSifter Rowan $AppVersion"
 
             $lblDesc = New-Object System.Windows.Forms.Label
             $lblDesc.AutoSize = $true

@@ -1,5 +1,5 @@
 """Regression tests for binsifter.core.report - the CSV report writer
-ported from the C# CsvWriter class (BinSifter_v1.3.0-alpha.2.ps1, lines
+ported from the C# CsvWriter class (BinSifter-Rowan_v1.3.0-beta.1.ps1, lines
 ~431-499). Pins down the exact column set/order and blank-if-default
 formatting, since this is a user-facing file format, not an internal data
 shape.

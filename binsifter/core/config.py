@@ -2,7 +2,7 @@
 
 Ports $BinSifterRoot / $ToolFileNames / Find-ToolPath /
 Set-ToolPathsFromDirectory and the default Reports/Attack/Blocklist
-location logic from the PowerShell version (BinSifter_v1.3.0-alpha.2.ps1,
+location logic from the PowerShell version (BinSifter-Rowan_v1.3.0-beta.1.ps1,
 roughly lines 1694-1830).
 
 Field names below are kept in PascalCase, matching the PowerShell $Config
@@ -29,7 +29,7 @@ def get_binsifter_root() -> Path:
     console-script entry point, unlike PowerShell's $PSScriptRoot /
     $MyInvocation.MyCommand.Path, which came back empty under VS Code's
     "Run and Debug" on the FRED and needed a defensive fallback chain (see
-    BinSifter_v1.3.0-alpha.2.ps1's $BinSifterRoot block for that whole
+    BinSifter-Rowan_v1.3.0-beta.1.ps1's $BinSifterRoot block for that whole
     saga). No equivalent fallback chain should be needed here under normal
     packaging/installation - if this ever needs one too, that's worth
     flagging rather than quietly working around.

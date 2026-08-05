@@ -1,5 +1,7 @@
 # BinSifter Changelog
 
+This changelog covers Rowan, BinSifter's PowerShell + WinForms variant. Entries below predate the codename (adopted 2026-08-05) and were written against the plain version numbers current at the time - left as-is rather than rewritten, same as every other historical entry here.
+
 ## v1.2.2 (prototype additions)
 - Shannon entropy scored for every file (free byproduct of the existing hash read loop) - a structural signal that survives even when a file can't be parsed as PE/ELF.
 - Capa's shellcode path now passes `-f sc32/sc64` explicitly instead of relying on format auto-detection, which can't work on headerless input.
@@ -38,6 +40,9 @@
 ## v1.3.0-beta.1 (promoted from alpha.2, 2026-08-04)
 - No functional changes from alpha.2 - promoted after real-casework validation on a FRED forensic workstation and confirmation it's working as intended. The "still unvalidated, first real run pending" caveat on the alpha.2 entry below no longer applies.
 - File renamed `BinSifter_v1.3.0-alpha.2.ps1` -> `BinSifter_v1.3.0-beta.1.ps1`; `$AppVersion` bumped to match. All shortcut scripts and README references updated accordingly.
+
+## Codename: Rowan (2026-08-05)
+- This variant (the PowerShell + WinForms one, versioned above as v1.3.0-beta.1) is now codenamed **Rowan**, distinguishing it from Winnow (the Python/PySide6 rewrite) and Ingot (a planned future Rust variant) now that BinSifter is heading toward multiple public variants. No functional changes - file renamed again, `BinSifter_v1.3.0-beta.1.ps1` -> `BinSifter-Rowan_v1.3.0-beta.1.ps1`, with in-app status bar/About/window-title text updated to show "Rowan" alongside the version number.
 
 ## v1.3.0-alpha.2 (merge of proto1 + selected proto2 features - still unvalidated, first real run pending)
 

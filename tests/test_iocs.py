@@ -1,5 +1,5 @@
 """Regression tests for binsifter.core.iocs - the regex-based IOC mining
-ported from BinSifter_v1.3.0-alpha.2.ps1's v1.3-proto1 IOC extraction step.
+ported from BinSifter-Rowan_v1.3.0-beta.1.ps1's v1.3-proto1 IOC extraction step.
 Pins down the exact patterns/dedup/cap behavior so this stays a faithful
 port, not an "improved" reimplementation - see iocs.py's own docstring for
 why some of these quirks (case sensitivity in particular) are intentional.

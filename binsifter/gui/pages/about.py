@@ -1,4 +1,4 @@
-"""About page - port of New-AboutPage (BinSifter_v1.3.0-alpha.2.ps1, lines
+"""About page - port of New-AboutPage (BinSifter-Rowan_v1.3.0-beta.1.ps1, lines
 ~4933-4971). Logo, version line, short description, integrated-tools line.
 
 Version now comes from binsifter.__version__ (this port's real single
@@ -40,7 +40,7 @@ class AboutPage(QWidget):
 
         root.addSpacing(16)
 
-        version_label = QLabel(f"BinSifter {__version__}")
+        version_label = QLabel(f"BinSifter Winnow {__version__}")
         font = version_label.font()
         font.setFamily("Segoe UI")
         font.setPointSize(12)

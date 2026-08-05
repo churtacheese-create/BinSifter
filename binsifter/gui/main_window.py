@@ -1,5 +1,5 @@
 """Main window shell - port of the PowerShell version's top-level WinForms
-layout (BinSifter_v1.3.0-alpha.2.ps1: sidebar construction ~5018-5075, top
+layout (BinSifter-Rowan_v1.3.0-beta.1.ps1: sidebar construction ~5018-5075, top
 bar ~4970-5017, status bar ~5080-5099, overall form assembly ~5100-5140).
 Sidebar width/nav order, top bar height/button widths, and status bar height
 are copied 1:1 from that source rather than re-derived, same fidelity goal
@@ -130,7 +130,7 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.theme: ThemePalette = DARK
-        self.setWindowTitle(f"BinSifter {__version__}")
+        self.setWindowTitle(f"BinSifter Winnow {__version__}")
         self.resize(1400, 900)
         self.setStyleSheet(f"QMainWindow {{ background-color: {qcolor_to_css(self.theme.WindowBack)}; }}")
 
@@ -268,7 +268,7 @@ class MainWindow(QMainWindow):
 
         self._topbar_buttons: dict[str, QPushButton] = {}
         # Flat, borderless text-plus-glyph buttons - matches the PowerShell
-        # version's New-TopBarButton exactly (BinSifter_v1.3.0-alpha.2.ps1
+        # version's New-TopBarButton exactly (BinSifter-Rowan_v1.3.0-beta.1.ps1
         # lines ~3456-3473): FlatStyle.Flat, FlatAppearance.BorderSize = 0,
         # BackColor == the bar's own HeaderBack (so there's no visible
         # "chip" behind the label, just colored text), same three glyphs
@@ -327,7 +327,7 @@ class MainWindow(QMainWindow):
         # No folder picker here - SrcDir is a Settings-page field, already
         # on self.config once Settings has been saved. Same required-fields
         # gate as the PowerShell version's BtnStart.Add_Click
-        # (BinSifter_v1.3.0-alpha.2.ps1 lines ~5221-5239): warn and jump to
+        # (BinSifter-Rowan_v1.3.0-beta.1.ps1 lines ~5221-5239): warn and jump to
         # Settings if anything required is still blank, instead of silently
         # prompting for (and overwriting SrcDir with) a directory inline.
         required = ("SrcDir", "NsrlPath", "YaraRules", "CapaRules", "ToolsDir")
@@ -528,7 +528,7 @@ class MainWindow(QMainWindow):
         # Update-YaraRulesContent/Update-CapaRulesList calls after a save);
         # NSRL only gets its label text resynced, not an automatic reload -
         # the original doesn't auto-reload the hash count on Settings save
-        # either (BinSifter_v1.3.0-alpha.2.ps1 lines ~5212-5217), since a
+        # either (BinSifter-Rowan_v1.3.0-beta.1.ps1 lines ~5212-5217), since a
         # reload can be a real multi-second parse the analyst should ask
         # for explicitly via Reload Now.
         self.yara_rules_page.rules_path_changed.connect(

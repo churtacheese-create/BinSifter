@@ -1,5 +1,5 @@
-"""Logs page - port of New-LogsPage and its wiring (BinSifter_v1.3.0-
-alpha.2.ps1, lines ~4743-4770 for the page, ~5612 for BtnClear). A
+"""Logs page - port of New-LogsPage and its wiring (BinSifter-Rowan_v1.3.0-
+beta.1.ps1, lines ~4743-4770 for the page, ~5612 for BtnClear). A
 read-only, auto-scrolling view of whatever binsifter's own loggers emit -
 see gui/log_bridge.py for how those log records get here.
 """

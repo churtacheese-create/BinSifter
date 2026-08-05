@@ -1,5 +1,5 @@
 """Regression tests for binsifter.core.yara_rule_gen - the draft-YARA-
-rule-per-SSDEEP-cluster generator ported from BinSifter_v1.3.0-alpha.2.ps1
+rule-per-SSDEEP-cluster generator ported from BinSifter-Rowan_v1.3.0-beta.1.ps1
 (lines ~3225-3320).
 """
 

@@ -1,7 +1,7 @@
 """Speakeasy isolated code emulation - real library integration.
 
 Direct port of the PowerShell version's "Run isolated Speakeasy emulation"
-Results-grid quick-launch action (BinSifter_v1.3.0-alpha.2.ps1, lines
+Results-grid quick-launch action (BinSifter-Rowan_v1.3.0-beta.1.ps1, lines
 ~4407-4473): confirmation-gated (execution-adjacent), a longer timeout than
 other captured tools (emulation of a nontrivial sample routinely runs past
 30s), and a best-effort summary (API call count, file operations, network

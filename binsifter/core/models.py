@@ -1,7 +1,7 @@
 """Data models for the scan engine.
 
 FileRecord below is a field-for-field port of the C# `BinSifter.FileRecord`
-class embedded in the PowerShell version (BinSifter_v1.3.0-alpha.2.ps1,
+class embedded in the PowerShell version (BinSifter-Rowan_v1.3.0-beta.1.ps1,
 around line 262). Field names are kept in PascalCase (not idiomatic Python)
 and in the original order, deliberately - the whole point of this pass is a
 close, low-risk 1:1 port with the old version open side by side, so extra

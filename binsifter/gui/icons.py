@@ -1,5 +1,5 @@
 """Procedural line-icon drawing - direct port of the PowerShell version's
-New-LineIconBitmap function (BinSifter_v1.3.0-alpha.2.ps1, lines
+New-LineIconBitmap function (BinSifter-Rowan_v1.3.0-beta.1.ps1, lines
 ~1384-1522). Same 64x64 canvas, same 4px round-cap/round-join pen, same
 coordinates for every shape - icons are drawn at runtime rather than
 loaded from bundled image files, same self-contained rationale as the

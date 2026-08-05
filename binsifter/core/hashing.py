@@ -1,7 +1,7 @@
 """Hashing and Shannon entropy - the one pass every scanned file goes
 through regardless of what else is configured.
 
-Port of the C# hashing/entropy code embedded in BinSifter_v1.3.0-alpha.2.ps1
+Port of the C# hashing/entropy code embedded in BinSifter-Rowan_v1.3.0-beta.1.ps1
 (BinSifter.EntropyAnalyzer + the streaming MD5/SHA-1 read loop). Real,
 working implementation - unlike the tool-integration stubs elsewhere in
 core/, this has no external dependency and no ambiguous library API to get

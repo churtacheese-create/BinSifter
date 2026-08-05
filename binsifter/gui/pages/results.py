@@ -1,5 +1,5 @@
-"""Results page - port of New-ResultsPage's core grid (BinSifter_v1.3.0-
-alpha.2.ps1, lines ~4091-4494) and its wiring (Update-ResultsGrid,
+"""Results page - port of New-ResultsPage's core grid (BinSifter-Rowan_v1.3.0-
+beta.1.ps1, lines ~4091-4494) and its wiring (Update-ResultsGrid,
 Show-FilteredResults, the Disposition CellValueChanged handler, and the
 free-text filter's debounce timer - lines ~5300-5443), plus the right-click
 quick-launch context menu (PS lines ~4206-4490), built now that Settings

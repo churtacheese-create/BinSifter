@@ -1,6 +1,6 @@
 """Authenticode signature verification - Python port of the PowerShell
 version's Get-AuthenticodeSignature-based SignatureStatus/SignerName fields
-(see BinSifter_v1.3.0-alpha.2.ps1, around line 2141 - "run unconditionally
+(see BinSifter-Rowan_v1.3.0-beta.1.ps1, around line 2141 - "run unconditionally
 like entropy... since 'signed' vs 'unsigned' is meaningful regardless of
 hash reputation").
 

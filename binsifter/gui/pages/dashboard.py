@@ -1,4 +1,4 @@
-"""Dashboard page - port of New-DashboardPage (BinSifter_v1.3.0-alpha.2.ps1,
+"""Dashboard page - port of New-DashboardPage (BinSifter-Rowan_v1.3.0-beta.1.ps1,
 lines ~3514-3920). Visual order top-to-bottom matches the reference
 screenshot (BinSifter_Dash.png) exactly: Enrichment Summary (two tile
 rows), SSDEEP Cluster Heat Map (one tile row), YARA Severity Breakdown

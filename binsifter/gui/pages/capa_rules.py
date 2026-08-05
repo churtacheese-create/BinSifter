@@ -1,5 +1,5 @@
 """Capa Rules page - port of New-CapaRulesPage and its wiring
-(BinSifter_v1.3.0-alpha.2.ps1, lines ~4654-4693 for the page, ~5485-5511
+(BinSifter-Rowan_v1.3.0-beta.1.ps1, lines ~4654-4693 for the page, ~5485-5511
 for Update-CapaRulesList/BtnBrowse/BtnRefresh/BtnOpenFolder). Lists every
 rule file found under config.CapaRules - no rule content preview/editing
 (unlike YARA Rules, which is a single file; capa's rules are a whole

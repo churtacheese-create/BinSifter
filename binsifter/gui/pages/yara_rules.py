@@ -1,5 +1,5 @@
 """YARA Rules page - port of New-YaraRulesPage and its wiring
-(BinSifter_v1.3.0-alpha.2.ps1, lines ~4609-4651 for the page, ~5445-5482
+(BinSifter-Rowan_v1.3.0-beta.1.ps1, lines ~4609-4651 for the page, ~5445-5482
 for Update-YaraRulesContent/BtnBrowse/BtnReload/BtnSave). A simple raw-text
 editor over whatever single file config.YaraRules points at - no rule
 parsing/validation, same as the original (BinSifter never lints the rules

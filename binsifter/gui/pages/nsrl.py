@@ -1,5 +1,5 @@
-"""NSRL page - port of New-NsrlPage and its wiring (BinSifter_v1.3.0-
-alpha.2.ps1, lines ~4696-4740 for the page, ~5513-5609 for BtnBrowse/
+"""NSRL page - port of New-NsrlPage and its wiring (BinSifter-Rowan_v1.3.0-
+beta.1.ps1, lines ~4696-4740 for the page, ~5513-5609 for BtnBrowse/
 BtnReloadPreview). Path label, Browse, Reload Now, and a big known-good
 hash count.
 

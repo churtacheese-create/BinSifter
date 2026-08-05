@@ -3,7 +3,7 @@ URLs found in a matched YARA rule's meta values to the ATT&CK technique(s)
 they map to.
 
 Direct port of the C# `BinSifter.AttackDb` class embedded in
-BinSifter_v1.3.0-alpha.2.ps1 (lines ~655-860). Loads MITRE's public
+BinSifter-Rowan_v1.3.0-beta.1.ps1 (lines ~655-860). Loads MITRE's public
 STIX 2.x "enterprise-attack.json" bundle once per scan (config.AttackDataPath
 - optional, same "leave the folder empty to skip this feature" convention as
 NSRL/blocklist/YARA/capa) and builds three lookup tables:

@@ -1,5 +1,5 @@
 """Footer tool-version metadata - port of Start-ToolMetadataRefresh and the
-status bar text it produces (BinSifter_v1.3.0-alpha.2.ps1: the function at
+status bar text it produces (BinSifter-Rowan_v1.3.0-beta.1.ps1: the function at
 lines ~1895-1965, the joined "Engine: X | YARA: X | ..." string built at
 lines ~5818-5825).
 

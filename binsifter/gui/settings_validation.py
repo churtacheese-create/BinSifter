@@ -1,7 +1,7 @@
 """Settings-Save validation - pure Python (no Qt import), split out from the
 page widget so it's unit-testable without a display. Ports the validation
 block from the PowerShell version's $settings.BtnSave.Add_Click handler
-(BinSifter_v1.3.0-alpha.2.ps1, lines ~5092-5178).
+(BinSifter-Rowan_v1.3.0-beta.1.ps1, lines ~5092-5178).
 
 One deliberate deviation from the original, not a bug: the PowerShell
 version additionally requires yara64.exe/capa.exe/ssdeep.exe to be found
