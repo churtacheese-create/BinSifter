@@ -1,0 +1,123 @@
+name: Build and release installers
+
+# Added 2026-08-08, per Steve's request for real GitHub Releases carrying
+# full installers for both variants - see installer/README.md for what
+# each installer actually does, and this file's own comments for why CI
+# (not a local build) is the right place to run PyInstaller/Inno Setup.
+#
+# The dev environment these installer scripts were originally written in
+# is Linux-only with no Windows machine to compile/test on, and separately
+# has no GitHub push/release credentials at all - this workflow solves
+# both at once: it runs on GitHub's own windows-latest runners (a real
+# Windows machine, authenticated automatically via the built-in
+# GITHUB_TOKEN, no credentials anyone needs to manage by hand) whenever a
+# version tag gets pushed.
+#
+# Two ways to trigger:
+#   1. workflow_dispatch (the "Run workflow" button on this workflow's
+#      Actions page, or `gh workflow run release-installers.yml`) - builds
+#      both installers and uploads them as downloadable Actions artifacts,
+#      but does NOT create a GitHub Release (no tag to release against).
+#      Use this FIRST, to confirm the PyInstaller/Inno Setup build actually
+#      succeeds - see installer/README.md's honest caveat that neither
+#      installer has been compiled even once yet.
+#   2. Pushing a tag matching v* (e.g. `git tag v2.0.0-beta.1 && git push
+#      origin v2.0.0-beta.1`) - builds both installers AND publishes a
+#      GitHub Release for that tag, marked as a pre-release, with both
+#      .exe installers attached as downloadable assets.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write  # needed only by the release job, to create the GitHub Release + upload assets
+
+jobs:
+  build-winnow:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"  # any 3.10+ satisfies pyproject.toml's requires-python; 3.11 is a stable, well-supported pick
+
+      - name: Install BinSifter + PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          python -m pip install pyinstaller
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: PyInstaller freeze (--onedir - see installer/winnow.spec's comments)
+        run: pyinstaller installer\winnow.spec --distpath installer\dist --workpath installer\build --noconfirm
+
+      - name: Compile Winnow installer
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path -LiteralPath $iscc)) { throw "ISCC.exe not found after choco install - Inno Setup's install location may have changed." }
+          & $iscc installer\Winnow.iss
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BinSifter-Winnow-Setup
+          path: installer\Output\BinSifter-Winnow-Setup.exe
+          if-no-files-found: error
+
+  build-rowan:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Compile Rowan installer
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path -LiteralPath $iscc)) { throw "ISCC.exe not found after choco install - Inno Setup's install location may have changed." }
+          & $iscc installer\Rowan.iss
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BinSifter-Rowan-Setup
+          path: installer\Output\BinSifter-Rowan-Setup.exe
+          if-no-files-found: error
+
+  release:
+    # Only runs for a real tag push, not workflow_dispatch - see the
+    # trigger comment above. A workflow_dispatch run still exercises both
+    # build jobs (and their uploaded artifacts are downloadable from the
+    # Actions run page), it just doesn't publish anything.
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [build-winnow, build-rowan]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            "artifacts/BinSifter-Winnow-Setup/BinSifter-Winnow-Setup.exe" \
+            "artifacts/BinSifter-Rowan-Setup/BinSifter-Rowan-Setup.exe" \
+            --title "BinSifter ${{ github.ref_name }}" \
+            --prerelease \
+            --notes "Beta release - both variants below.
+
+          **BinSifter-Winnow-Setup.exe** - Python/PySide6 variant, self-contained (no separate Python install needed).
+          **BinSifter-Rowan-Setup.exe** - PowerShell 7 + WinForms variant, needs PowerShell 7 (pwsh.exe) already installed; the installer will tell you if it's missing.
+
+          Both installers: no administrator rights required, Start Menu shortcut, optional desktop icon (asked during setup, off by default). See the repo README for setup/configuration (NSRL, YARA rules, capa rules, etc.) after installing.
+
+          This is a beta - please report anything that looks wrong rather than assuming it's expected."
