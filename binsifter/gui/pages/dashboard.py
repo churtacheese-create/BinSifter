@@ -47,12 +47,27 @@ class DashboardPage(QWidget):
         enrichment_row = QGridLayout()
         enrichment_row.setSpacing(16)
         self.tile_imphash = StatTile(theme, "Imphash Clusters", theme.Accent, "layers", compact=True)
-        self.tile_unsigned = StatTile(theme, "Unsigned", theme.Warning, "check", compact=True)
+        # 2026-08-06: went "Unsigned" (SignatureStatus != Valid, one tile) ->
+        # "Not Signed" + "Not Verifiable" (two tiles, broke the 5-tile row
+        # alignment with the row below) -> back to one tile, per Steve:
+        # report the positive "Signed" count instead of explaining every way
+        # a file can fail to be Valid. Simpler to read, and every status
+        # that isn't "Valid" is implicitly "not signed or not verified"
+        # without needing its own tile.
+        # 2026-08-06: Signed and NSRL Matches (below) both recolored to
+        # theme.Success (green) - both are "this file is accounted for/
+        # trustworthy" signals, not neutral-info like Imphash Clusters, so
+        # they get the same treatment as the "Ready"/"Completed" status
+        # indicators elsewhere in the app rather than sharing Accent blue
+        # with everything else. Files With IOCs recolored to theme.Warning
+        # to match YARA Hits - both are "found something worth a look"
+        # signals of the same weight.
+        self.tile_signed = StatTile(theme, "Signed", theme.Success, "check", compact=True)
         self.tile_known_bad = StatTile(theme, "Known-Bad", theme.Danger, "target", compact=True)
-        self.tile_iocs = StatTile(theme, "Files With IOCs", theme.Accent, "document", compact=True)
+        self.tile_iocs = StatTile(theme, "Files With IOCs", theme.Warning, "document", compact=True)
         self.tile_escalated = StatTile(theme, "Escalated", theme.Danger, "trend", compact=True)
         for i, tile in enumerate(
-            (self.tile_imphash, self.tile_unsigned, self.tile_known_bad, self.tile_iocs, self.tile_escalated)
+            (self.tile_imphash, self.tile_signed, self.tile_known_bad, self.tile_iocs, self.tile_escalated)
         ):
             tile.setMinimumHeight(120)
             enrichment_row.addWidget(tile, 0, i)
@@ -64,7 +79,7 @@ class DashboardPage(QWidget):
         self.tile_yara = StatTile(theme, "YARA Hits", theme.Warning, "target", "Matching rules found")
         self.tile_capa_scans = StatTile(theme, "Capa Scans", theme.Accent, "layers", "Files analyzed")
         self.tile_capa = StatTile(theme, "Capa Rule Detections", theme.Accent, "check", "Capabilities identified")
-        self.tile_nsrl = StatTile(theme, "NSRL Matches", theme.Accent, "database", "Known file matches")
+        self.tile_nsrl = StatTile(theme, "NSRL Matches", theme.Success, "database", "Known file matches")
         for i, tile in enumerate(
             (self.tile_files, self.tile_yara, self.tile_capa_scans, self.tile_capa, self.tile_nsrl)
         ):
@@ -124,7 +139,7 @@ class DashboardPage(QWidget):
             "Capa Rule Detections": (self.tile_capa, lambda r: r.CapaDetectionCount > 0),
             "NSRL Matches": (self.tile_nsrl, lambda r: r.NsrlMatch),
             "Imphash clusters (2+ files)": (self.tile_imphash, lambda r: r.ImphashClusterId >= 0 and r.ImphashClusterSize >= 2),
-            "Unsigned / invalid signature": (self.tile_unsigned, lambda r: r.SignatureStatus and r.SignatureStatus != "Valid"),
+            "Signed": (self.tile_signed, lambda r: r.SignatureStatus == "Valid"),
             "Known-bad (blocklist match)": (self.tile_known_bad, lambda r: r.ReputationStatus == "KnownBad"),
             "Files with extracted IOCs": (self.tile_iocs, lambda r: r.IocCount > 0),
             "Disposition: Escalated": (self.tile_escalated, lambda r: r.Disposition == "Escalated"),
@@ -165,7 +180,7 @@ class DashboardPage(QWidget):
         self.tile_capa.set_value(stats.capa_hits)
         self.tile_nsrl.set_value(stats.nsrl_matches)
         self.tile_imphash.set_value(stats.imphash_clustered)
-        self.tile_unsigned.set_value(stats.unsigned)
+        self.tile_signed.set_value(stats.signed)
         self.tile_known_bad.set_value(stats.known_bad)
         self.tile_iocs.set_value(stats.with_iocs)
         self.tile_escalated.set_value(stats.escalated)

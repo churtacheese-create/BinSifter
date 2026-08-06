@@ -48,7 +48,7 @@ from binsifter.gui.pages.results import ResultsPage
 from binsifter.gui.pages.scan_queue import ScanQueuePage
 from binsifter.gui.pages.settings import SettingsPage
 from binsifter.gui.pages.yara_rules import YaraRulesPage
-from binsifter.gui.theme import DARK, ThemePalette, qcolor_to_css
+from binsifter.gui.theme import ThemePalette, detect_os_dark_mode, get_theme_palette, logo_horizontal_filename, qcolor_to_css
 from binsifter.gui.widgets import NavButton, accent_to_css
 
 # (label, icon_name) - order and icon choice match the sidebar's 7 entries
@@ -66,7 +66,10 @@ _NAV_ITEMS = (
 _SIDEBAR_WIDTH = 300
 _TOPBAR_HEIGHT = 72
 _STATUSBAR_HEIGHT = 40
-_LOGO_FILENAME = "BinSifter-Logo-Horizontal-Dark.png"
+# 2026-08-06: was a single hardcoded dark-mode filename - see
+# theme.logo_horizontal_filename() for why this is now theme-dependent
+# (BinSifter now actually detects OS dark/light mode instead of always
+# looking dark regardless of the setting).
 
 _TERMINAL_STATUSES = ("Completed", "Error", "Cancelled")
 
@@ -127,9 +130,17 @@ class _ScanWorker(QObject):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self) -> None:
+    def __init__(self, theme: ThemePalette | None = None) -> None:
         super().__init__()
-        self.theme: ThemePalette = DARK
+        # 2026-08-06: was hardcoded to DARK unconditionally - Winnow always
+        # looked dark no matter the OS setting, unlike Rowan (which reads
+        # AppsUseLightTheme once at startup via Test-SystemDarkMode). `theme`
+        # is an optional constructor param (rather than always detecting
+        # internally) so __main__.py can detect once and share the same
+        # result with the app-wide QMessageBox stylesheet too - detecting
+        # separately in two places risks them disagreeing if this ever
+        # becomes more than a one-time startup check.
+        self.theme: ThemePalette = theme if theme is not None else get_theme_palette(detect_os_dark_mode())
         self.setWindowTitle(f"BinSifter Winnow {__version__}")
         self.resize(1400, 900)
         self.setStyleSheet(f"QMainWindow {{ background-color: {qcolor_to_css(self.theme.WindowBack)}; }}")
@@ -190,7 +201,7 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 18, 0, 0)
         layout.setSpacing(0)
 
-        logo_path = Path(__file__).resolve().parent.parent.parent / _LOGO_FILENAME
+        logo_path = Path(__file__).resolve().parent.parent.parent / logo_horizontal_filename(theme)
         logo_label = QLabel()
         logo_label.setContentsMargins(12, 0, 12, 0)
         if logo_path.is_file():

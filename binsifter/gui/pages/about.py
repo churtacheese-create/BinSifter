@@ -15,10 +15,8 @@ from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from binsifter import __version__
-from binsifter.gui.theme import ThemePalette, qcolor_to_css
+from binsifter.gui.theme import ThemePalette, logo_horizontal_filename, qcolor_to_css
 from binsifter.gui.widgets import accent_to_css
-
-_LOGO_FILENAME = "BinSifter-Logo-Horizontal-Dark.png"
 
 
 class AboutPage(QWidget):
@@ -30,7 +28,9 @@ class AboutPage(QWidget):
         root.setContentsMargins(28, 24, 28, 24)
         root.setSpacing(0)
 
-        logo_path = Path(__file__).resolve().parent.parent.parent.parent / _LOGO_FILENAME
+        # 2026-08-06: was a hardcoded dark-mode filename, same fix/reasoning
+        # as main_window.py's sidebar logo - see theme.logo_horizontal_filename().
+        logo_path = Path(__file__).resolve().parent.parent.parent.parent / logo_horizontal_filename(theme)
         if logo_path.is_file():
             logo_label = QLabel()
             pixmap = QPixmap(str(logo_path))

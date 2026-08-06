@@ -50,16 +50,25 @@ def test_capa_scans_and_nsrl_matches_count_booleans():
     assert stats.nsrl_matches == 2
 
 
-def test_unsigned_excludes_valid_and_empty_but_includes_other_statuses():
+def test_signed_only_counts_valid_status():
+    # 2026-08-06: went "Unsigned" (one tile) -> "Not Signed"/"Not
+    # Verifiable" (two tiles) -> back to one tile reporting the positive
+    # "Signed" count instead, per Steve. Every other status (empty,
+    # NotSigned, NotTrusted, HashMismatch, NotSupportedFileFormat,
+    # UnknownError) is implicitly "not signed or not verified" and doesn't
+    # get counted here.
     records = [
         _rec("a", SignatureStatus="Valid"),
-        _rec("b", SignatureStatus=""),
-        _rec("c", SignatureStatus="NotSigned"),
-        _rec("d", SignatureStatus="NotTrusted"),
-        _rec("e", SignatureStatus="UnknownError"),
+        _rec("b", SignatureStatus="Valid"),
+        _rec("c", SignatureStatus=""),
+        _rec("d", SignatureStatus="NotSigned"),
+        _rec("e", SignatureStatus="NotTrusted"),
+        _rec("f", SignatureStatus="UnknownError"),
+        _rec("g", SignatureStatus="NotSupportedFileFormat"),
+        _rec("h", SignatureStatus="HashMismatch"),
     ]
     stats = DashboardStats.from_records(records)
-    assert stats.unsigned == 3
+    assert stats.signed == 2
 
 
 def test_known_bad_with_iocs_escalated_imphash_clustered():

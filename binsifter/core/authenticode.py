@@ -37,12 +37,44 @@ version's SignatureStatus enum (Valid/NotSigned/HashMismatch/NotTrusted/
 NotSupportedFileFormat/UnknownError) wherever there's a reasonable
 correspondence - see _STATUS_MAP - but this is a best-effort mapping, not a
 guarantee of identical verdicts: signify validates against its own trust
-store (which BinSifter does not yet populate with a real root CA bundle -
-see the TODO at the bottom of this file), while Get-AuthenticodeSignature
-validated against Windows' own certificate store. Until BinSifter ships a
-real trust store, expect every otherwise-valid signature to come back as
-"NotTrusted" rather than "Valid" - this is a known, deliberate gap, not a
-bug.
+store rather than the OS's, so edge-case verdicts can still diverge from
+what Get-AuthenticodeSignature would have said on the same file.
+
+CORRECTION (2026-08-06): this module previously documented "BinSifter
+doesn't populate a real root CA trust store, so expect every otherwise-
+valid signature to come back as NotTrusted" as a known, deliberate gap.
+That was wrong - re-verified by reading signify 0.9.2's own source rather
+than re-assuming the earlier claim:
+  - `AuthenticodeSignature.verify()` (signify/authenticode/signed_data.py)
+    has `trusted_certificate_store: CertificateStore = TRUSTED_CERTIFICATE_STORE`
+    as its DEFAULT parameter - and TRUSTED_CERTIFICATE_STORE is a real,
+    populated CombinedCertificateStore built from the `mscerts` package,
+    which bundles Microsoft's actual official Authenticode Certificate
+    Trust List (authroot.stl) and cacert.pem.
+  - check_signature() below calls `explain_verify()` with no arguments,
+    which flows through with no override at any point in the call chain -
+    so `trusted_certificate_store` stays at that default. Nothing in
+    BinSifter needs to change to get real trust-chain validation for
+    embedded signatures.
+  - Confirmed independently via signify's own test suite (not just source
+    reading): `tests/authenticode/file_types/test_pe.py::test_valid_signature`
+    calls `pefile.verify()` with zero arguments against a list of real-
+    world, genuinely Microsoft/vendor-signed executables (SoftwareUpdate.exe,
+    SolarWinds.exe, whois.exe, sigcheck.exe, etc.) and asserts no exception
+    is raised - i.e. signify's own tests rely on this same zero-argument
+    default resolving to "Valid" against real signed binaries.
+  - Not yet independently reproduced against a real signed sample inside
+    BinSifter itself (no genuinely Authenticode-signed PE was available in
+    the sandbox this was checked from - Linux, no Windows binaries handy
+    beyond unsigned stub launchers). Worth a quick spot-check against a
+    known-signed .exe on the FRED workstation to be certain, but the
+    combination of the source default and signify's own passing test suite
+    is strong enough that the *design* is no longer in question - only
+    final on-real-hardware confirmation is outstanding.
+
+The separate catalog-signing gap noted at the bottom of this file (system
+binaries validated via .cat files rather than an embedded signature) is
+unaffected by this correction and is still real.
 """
 
 from __future__ import annotations
@@ -54,6 +86,7 @@ logger = logging.getLogger(__name__)
 
 try:
     from signify.authenticode import AuthenticodeFile, AuthenticodeVerificationResult  # noqa: F401
+    from signify.exceptions import ParseError as _SignifyParseError
 
     _SIGNIFY_AVAILABLE = True
 except ImportError:  # signify not installed - degrade to UnknownError, don't crash the scan
@@ -99,6 +132,22 @@ def check_signature(path: str) -> AuthenticodeResult:
 
             signer_name = _resolve_signer_name(signed_file, path)
             return AuthenticodeResult(status=status, signer_name=signer_name)
+    except _SignifyParseError as exc:
+        # 2026-08-06: AuthenticodeFile.from_stream() raises this (not
+        # explain_verify()'s own PARSE_ERROR -> NotSupportedFileFormat path,
+        # which never gets reached) when the file isn't a format signify
+        # recognizes at all - confirmed against a real scan where plain
+        # scripts (.bat/.cmd/.ps1) and Office macro docs (.docm) all hit
+        # this exact path, since neither is a PE/MSI/flat-signature
+        # container signify knows how to open. Was previously falling
+        # through to the generic except below and coming back
+        # "UnknownError", which reads as "the tool failed" rather than the
+        # more accurate "this file type can't carry an Authenticode
+        # signature signify checks for" - NotSupportedFileFormat already
+        # exists in _STATUS_MAP for exactly this case, just wasn't reachable
+        # from here before.
+        logger.debug("Authenticode: unrecognized file format for %s: %s", path, exc)
+        return AuthenticodeResult(status="NotSupportedFileFormat", signer_name="")
     except Exception as exc:  # noqa: BLE001 - matches the PowerShell catch-all -> UnknownError
         logger.debug("Authenticode check failed for %s: %s", path, exc)
         return AuthenticodeResult(status="UnknownError", signer_name="")
@@ -133,18 +182,18 @@ def _resolve_signer_name(signed_file, path: str) -> str:
         return ""
 
 
-# TODO: BinSifter doesn't populate a real root CA trust store yet, so every
-# chain currently resolves as untrusted even for genuinely Microsoft-signed
-# system binaries - expect SignatureStatus="NotTrusted" across the board
-# until this is addressed, not "Valid". Options once this matters for real
-# triage: (1) point a FileSystemCertificateStore at the OS's own trusted-root
-# bundle (platform-specific: Windows cert store export vs. Linux ca-
-# certificates), or (2) ship a bundled root store similar to how browsers do.
-# Deliberately not guessed at here - needs a real decision on which roots to
-# trust and how they get onto disk, same "ask before assuming" pattern as
-# every other open design question in this codebase.
+# RESOLVED 2026-08-06 (see the CORRECTION in the module docstring above):
+# this TODO used to say BinSifter doesn't populate a real root CA trust
+# store, so every chain resolves as untrusted even for genuinely Microsoft-
+# signed binaries. That was based on an unverified assumption, not a check
+# of signify's actual behavior - signify's own AuthenticodeSignature.verify()
+# already defaults `trusted_certificate_store` to TRUSTED_CERTIFICATE_STORE,
+# a real Microsoft root bundle shipped via the `mscerts` package, and
+# check_signature() below never overrides that default. No FileSystemCertif-
+# icateStore/OS-cert-store wiring needed for embedded signatures - that
+# would have been solving an already-solved problem.
 #
-# SEPARATE, likely more visible gap: a large fraction of Windows' own inbox
+# SEPARATE, still-open, likely more visible gap: a large fraction of Windows' own inbox
 # system binaries (notepad.exe, calc.exe, etc.) are NOT embedded-signed at
 # all - they're validated against a system catalog file (.cat, under
 # C:\Windows\System32\CatRoot\) instead. Get-AuthenticodeSignature checks

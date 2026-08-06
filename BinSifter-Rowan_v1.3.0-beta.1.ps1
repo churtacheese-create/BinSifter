@@ -1883,7 +1883,11 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             # v1.3-proto1 enrichment-summary tile totals - tracked the same
             # incremental way as everything above (see the dirty-queue diff loop
             # in the refresh timer).
-            ImphashClustered = 0; Unsigned = 0; KnownBad = 0; WithIocs = 0; Escalated = 0
+            # 2026-08-06: Unsigned (SignatureStatus -ne 'Valid') renamed/inverted
+            # to Signed (SignatureStatus -eq 'Valid') - see the tile-definition
+            # comment below for why. Ported to Winnow first, replicated back here
+            # to keep both variants' dashboards consistent.
+            ImphashClustered = 0; Signed = 0; KnownBad = 0; WithIocs = 0; Escalated = 0
         }
 
         $ScanControl = [hashtable]::Synchronized(@{
@@ -3623,7 +3627,10 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             $tileYara = New-StatTile -Caption 'YARA Hits' -AccentColor $theme.Warning -IconName 'target' -Subtitle 'Matching rules found'
             $tileCapaScans = New-StatTile -Caption 'Capa Scans' -AccentColor $theme.Accent -IconName 'layers' -Subtitle 'Files analyzed'
             $tileCapa = New-StatTile -Caption 'Capa Rule Detections' -AccentColor $theme.Accent -IconName 'check' -Subtitle 'Capabilities identified'
-            $tileNsrl = New-StatTile -Caption 'NSRL Matches' -AccentColor $theme.Accent -IconName 'database' -Subtitle 'Known file matches'
+            # 2026-08-06: recolored to $theme.Success (green) - a known-good
+            # file is the same "trustworthy/accounted for" signal as Signed
+            # above, not neutral Accent-blue info.
+            $tileNsrl = New-StatTile -Caption 'NSRL Matches' -AccentColor $theme.Success -IconName 'database' -Subtitle 'Known file matches'
 
             $tileRow.Controls.Add($tileFiles.Card, 0, 0)
             $tileRow.Controls.Add($tileYara.Card, 1, 0)
@@ -3914,14 +3921,30 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                 $null = $enrichmentRow.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, (100.0 / 5))))
             }
 
+            # 2026-08-06: was $tileUnsigned (Caption 'Unsigned', $theme.Warning,
+            # predicate SignatureStatus -ne 'Valid') - reworked twice on the
+            # Winnow side before landing here: first split into two tiles
+            # (Not Signed / Not Verifiable) after a real scan showed the old
+            # predicate lumped genuinely-unsigned files, unparseable formats,
+            # and real verify errors into one misleading number; that split
+            # broke the 5-tile row's column alignment with the row below it
+            # and didn't look good, so reverted to a single tile reporting the
+            # positive "Signed" count instead (SignatureStatus -eq 'Valid') -
+            # simpler to read, and every non-Valid status is implicitly "not
+            # signed or not verified" without its own tile. Recolored to
+            # $theme.Success (green) to match: this is a "trustworthy/
+            # accounted for" signal, same family as the Ready/Completed status
+            # indicators elsewhere, not neutral info like Imphash Clusters.
+            # $tileIocs recolored to $theme.Warning to match $tileYara - both
+            # are "found something worth a look" signals of the same weight.
             $tileImphash    = New-StatTile -Caption 'Imphash Clusters' -AccentColor $theme.Accent -IconName 'layers' -Compact
-            $tileUnsigned   = New-StatTile -Caption 'Unsigned' -AccentColor $theme.Warning -IconName 'check' -Compact
+            $tileSigned     = New-StatTile -Caption 'Signed' -AccentColor $theme.Success -IconName 'check' -Compact
             $tileKnownBad   = New-StatTile -Caption 'Known-Bad' -AccentColor $theme.Danger -IconName 'target' -Compact
-            $tileIocs       = New-StatTile -Caption 'Files With IOCs' -AccentColor $theme.Accent -IconName 'document' -Compact
+            $tileIocs       = New-StatTile -Caption 'Files With IOCs' -AccentColor $theme.Warning -IconName 'document' -Compact
             $tileEscalated  = New-StatTile -Caption 'Escalated' -AccentColor $theme.Danger -IconName 'trend' -Compact
 
             $enrichmentRow.Controls.Add($tileImphash.Card, 0, 0)
-            $enrichmentRow.Controls.Add($tileUnsigned.Card, 1, 0)
+            $enrichmentRow.Controls.Add($tileSigned.Card, 1, 0)
             $enrichmentRow.Controls.Add($tileKnownBad.Card, 2, 0)
             $enrichmentRow.Controls.Add($tileIocs.Card, 3, 0)
             $enrichmentRow.Controls.Add($tileEscalated.Card, 4, 0)
@@ -3929,8 +3952,8 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
 
             Add-DashboardTileClick -Tile $tileImphash -FilterLabel 'Imphash clusters (2+ files)' `
                 -Predicate { param($r) $r.ImphashClusterId -ge 0 -and $r.ImphashClusterSize -ge 2 }
-            Add-DashboardTileClick -Tile $tileUnsigned -FilterLabel 'Unsigned / invalid signature' `
-                -Predicate { param($r) $r.SignatureStatus -and $r.SignatureStatus -ne 'Valid' }
+            Add-DashboardTileClick -Tile $tileSigned -FilterLabel 'Signed' `
+                -Predicate { param($r) $r.SignatureStatus -eq 'Valid' }
             Add-DashboardTileClick -Tile $tileKnownBad -FilterLabel 'Known-bad (blocklist match)' `
                 -Predicate { param($r) $r.ReputationStatus -eq 'KnownBad' }
             Add-DashboardTileClick -Tile $tileIocs -FilterLabel 'Files with extracted IOCs' `
@@ -3965,7 +3988,7 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                 HeatAbove85 = $heatAbove85.Value
                 HeatPreviouslySeen = $heatPreviouslySeen.Value
                 TileImphash = $tileImphash.Value
-                TileUnsigned = $tileUnsigned.Value
+                TileSigned = $tileSigned.Value
                 TileKnownBad = $tileKnownBad.Value
                 TileIocs = $tileIocs.Value
                 TileEscalated = $tileEscalated.Value
@@ -4385,6 +4408,19 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                         '-import', "`"$targetPath`"",
                         '-overwrite', '-analysisTimeoutPerFile', '300'
                     )
+                    # 2026-08-06: was silent on success - only the error paths
+                    # above ever showed a MessageBox, so a successful click
+                    # looked identical to nothing happening at all. Reported
+                    # directly by Steve, fixed identically on the Winnow side
+                    # (results.py's _launch_ghidra). Headless analysis still
+                    # runs unattended with no further feedback by design - this
+                    # is a one-time "yes, it started" acknowledgment, not a
+                    # progress indicator.
+                    [System.Windows.Forms.MessageBox]::Show(
+                        $grid.FindForm(),
+                        "Ghidra headless analysis started for $([IO.Path]::GetFileName($targetPath)).`r`n`r`nThis can take several minutes. Results will be saved under:`r`n$(Join-Path $ghidraProjectsDir $projectName)",
+                        'BinSifter',
+                        [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
                 }
                 catch {
                     [System.Windows.Forms.MessageBox]::Show(
@@ -5691,7 +5727,7 @@ For repeatable case work, preserve the report directory (Reports\ next to BinSif
                 $r = $FileRecords[$path]
                 $previous = if ($UiSnapshots.ContainsKey($path)) { $UiSnapshots[$path] } else { $null }
                 if ($previous) {
-                    foreach ($metricKey in @('Completed','YaraHits','CapaHits','CapaScans','NsrlMatches','Critical','High','Medium','Low','Unknown','ImphashClustered','Unsigned','KnownBad','WithIocs','Escalated')) {
+                    foreach ($metricKey in @('Completed','YaraHits','CapaHits','CapaScans','NsrlMatches','Critical','High','Medium','Low','Unknown','ImphashClustered','Signed','KnownBad','WithIocs','Escalated')) {
                         $UiTotals[$metricKey] -= $previous[$metricKey]
                     }
                 }
@@ -5708,7 +5744,10 @@ For repeatable case work, preserve the report directory (Reports\ next to BinSif
                     # dispatcher re-enqueues every clustered path once that pass
                     # finishes, same as any other per-file state change).
                     ImphashClustered = [int]($r.ImphashClusterId -ge 0 -and $r.ImphashClusterSize -ge 2)
-                    Unsigned = [int]($r.SignatureStatus -and $r.SignatureStatus -ne 'Valid')
+                    # 2026-08-06: was Unsigned = [int]($r.SignatureStatus -and
+                    # $r.SignatureStatus -ne 'Valid') - see the tile-definition
+                    # comment above for why this became the positive Signed count.
+                    Signed = [int]($r.SignatureStatus -eq 'Valid')
                     KnownBad = [int]($r.ReputationStatus -eq 'KnownBad')
                     WithIocs = [int]($r.IocCount -gt 0)
                     Escalated = [int]($r.Disposition -eq 'Escalated')
@@ -5717,7 +5756,7 @@ For repeatable case work, preserve the report directory (Reports\ next to BinSif
                     $severityKey = if ($r.YaraSeverity -in @('Critical','High','Medium','Low')) { $r.YaraSeverity } else { 'Unknown' }
                     $snapshot[$severityKey] = 1
                 }
-                foreach ($metricKey in @('Completed','YaraHits','CapaHits','CapaScans','NsrlMatches','Critical','High','Medium','Low','Unknown','ImphashClustered','Unsigned','KnownBad','WithIocs','Escalated')) {
+                foreach ($metricKey in @('Completed','YaraHits','CapaHits','CapaScans','NsrlMatches','Critical','High','Medium','Low','Unknown','ImphashClustered','Signed','KnownBad','WithIocs','Escalated')) {
                     $UiTotals[$metricKey] += $snapshot[$metricKey]
                 }
                 $UiSnapshots[$path] = $snapshot
@@ -5744,7 +5783,7 @@ For repeatable case work, preserve the report directory (Reports\ next to BinSif
             $dashboard.TileCapa.Text = "$($UiTotals.CapaHits)"
             $dashboard.TileNsrl.Text = "$($UiTotals.NsrlMatches)"
             $dashboard.TileImphash.Text = "$($UiTotals.ImphashClustered)"
-            $dashboard.TileUnsigned.Text = "$($UiTotals.Unsigned)"
+            $dashboard.TileSigned.Text = "$($UiTotals.Signed)"
             $dashboard.TileKnownBad.Text = "$($UiTotals.KnownBad)"
             $dashboard.TileIocs.Text = "$($UiTotals.WithIocs)"
             $dashboard.TileEscalated.Text = "$($UiTotals.Escalated)"

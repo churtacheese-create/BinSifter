@@ -59,11 +59,17 @@ dependencies = [
                            # which matters a lot for the Linux + installer goals (the real "ssdeep" PyPI
                            # package requires libfuzzy to be compiled/available on the target machine).
     "pefile>=2023.2.7",   # PE parsing (imphash, Rich header) - pure Python, no external tool needed at all.
-    "signify>=0.8",       # Authenticode/PKCS#7 verification, pure Python and cross-platform -
+    "signify[msi]>=0.8",   # Authenticode/PKCS#7 verification, pure Python and cross-platform -
                            # replaces the PowerShell version's Windows-only Get-AuthenticodeSignature.
-                           # NOTE: BinSifter doesn't populate a real root CA trust store yet, so
-                           # every signature currently comes back "NotTrusted" rather than "Valid" -
-                           # see core/authenticode.py's TODO before treating that status as final.
+                           # Already validates against a real, populated Microsoft trust store by
+                           # default (see core/authenticode.py's module docstring, 2026-08-06
+                           # correction) - "Valid" is the expected result for a genuinely signed
+                           # file with an intact chain, not "NotTrusted". The [msi] extra pulls in
+                           # olefile, without which signify can't even attempt to parse .msi
+                           # installers at all (AuthenticodeFile.from_stream() raises ParseError
+                           # before ever reaching a real signed/unsigned verdict) - found 2026-08-06
+                           # via a real scan where 75 .msi files all landed in "UnknownError" for
+                           # exactly this reason.
     "numpy>=1.24",         # Added 2026-08-04 for core/nsrl.py's cached binary NSRL index - a
                            # one-time C-level sort of tens of millions of 20-byte SHA-1 digests
                            # (np.sort on a 'V20' dtype view) plus np.memmap for shared, per-process

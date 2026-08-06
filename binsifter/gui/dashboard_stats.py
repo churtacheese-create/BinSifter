@@ -42,7 +42,7 @@ class DashboardStats:
     capa_hits: int = 0
     nsrl_matches: int = 0
     imphash_clustered: int = 0
-    unsigned: int = 0
+    signed: int = 0
     known_bad: int = 0
     with_iocs: int = 0
     escalated: int = 0
@@ -88,12 +88,21 @@ class DashboardStats:
 
             if r.ImphashClusterId >= 0 and r.ImphashClusterSize >= 2:
                 stats.imphash_clustered += 1
-            # "Unsigned" per the original: any non-empty status that isn't
-            # exactly "Valid" - NotSigned/NotTrusted/HashMismatch/
-            # UnknownError all count, same as the PowerShell version's
-            # `$r.SignatureStatus -and $r.SignatureStatus -ne 'Valid'`.
-            if r.SignatureStatus and r.SignatureStatus != "Valid":
-                stats.unsigned += 1
+            # 2026-08-06: was a single "Unsigned" tile (any non-empty status
+            # != "Valid", per the PowerShell original's
+            # `$r.SignatureStatus -and $r.SignatureStatus -ne 'Valid'`),
+            # then briefly a 2-way split (Not Signed / Not Verifiable) after
+            # a real scan showed that predicate lumping three different
+            # meanings (genuinely unsigned, unparseable format, real check
+            # failure) into one number. Reverted per Steve: rather than
+            # explaining what's wrong with the non-Valid files, just report
+            # how many files ARE cleanly signed and verified - simpler to
+            # read, and every SignatureStatus that isn't "Valid" (NotSigned,
+            # NotSupportedFileFormat, NotTrusted, HashMismatch,
+            # UnknownError, or empty) is implicitly "not signed or not
+            # verified" without needing its own tile or bucket.
+            if r.SignatureStatus == "Valid":
+                stats.signed += 1
             if r.ReputationStatus == "KnownBad":
                 stats.known_bad += 1
             if r.IocCount > 0:

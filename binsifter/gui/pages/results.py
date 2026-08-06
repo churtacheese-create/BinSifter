@@ -568,6 +568,23 @@ class ResultsPage(QWidget):
                     "-overwrite", "-analysisTimeoutPerFile", "300",
                 ]
             )
+            # 2026-08-06: was truly silent on success - Rowan's original is
+            # identical (Start-Process with no follow-up on the happy path,
+            # only MessageBoxes on the error paths above), so this wasn't a
+            # regression from the port, but Steve reported it directly:
+            # right-clicking and choosing this looked like nothing happened
+            # at all, with no window, message, or hint of where to look.
+            # Headless analysis genuinely can run for minutes with no
+            # further UI feedback by design (it's not tracked/polled), so
+            # this is a one-time "yes, it started" acknowledgment, not a
+            # progress indicator - dismissed immediately, doesn't block
+            # anything.
+            QMessageBox.information(
+                self, "BinSifter",
+                f"Ghidra headless analysis started for {Path(target_path).name}.\n\n"
+                f"This can take several minutes. Results will be saved under:\n"
+                f"{ghidra_projects_dir / project_name}",
+            )
         except OSError as exc:
             QMessageBox.critical(self, "BinSifter", f"Could not launch Ghidra: {exc}")
 
@@ -596,23 +613,62 @@ class ResultsPage(QWidget):
     def _start_captured_tool(self, worker: QObject, title: str) -> None:
         """Shared thread plumbing for Sigcheck/Speakeasy - both report their
         result via a report popup (Show-ToolReportWindow's role) and share
-        the same success/failure signal shapes."""
+        the same success/failure signal shapes.
+
+        2026-08-06, round 1: worker.finished/worker.failed connected to
+        plain lambdas with no explicit connection type - PySide6 couldn't
+        auto-detect the cross-thread receiver through a lambda (no QObject
+        to introspect thread affinity from), fell back to a
+        DirectConnection, and everything downstream (thread.wait(),
+        QDialog/QMessageBox construction) ran on the background worker
+        thread instead of the main thread. First attempted fix: add
+        `type=Qt.ConnectionType.QueuedConnection` explicitly to those same
+        lambda .connect() calls.
+
+        2026-08-06, round 2: that first fix did NOT hold - Steve hit the
+        identical crash again running Sigcheck (which shares this exact
+        method), plus new `QBasicTimer::stop` spam on top. Root cause of
+        the first fix's failure: an explicit connection-type override still
+        needs Qt to resolve a *receiver* to determine which thread's event
+        loop to queue onto - and a lambda still isn't a QObject, so there
+        was never a reliable receiver for PySide6 to hang a queued
+        connection off, override or not. Real fix: stop connecting to
+        lambdas entirely. worker.finished/failed now connect directly to
+        genuine bound methods of `self` (a QWidget that unambiguously lives
+        on the main thread) - this is the one connection shape PySide6's
+        auto-connection-type detection is actually documented to handle
+        correctly, no explicit override needed. Since a single pair of
+        slots now serves every concurrent tool run, `self.sender()` (Qt's
+        standard way to identify which QObject emitted the signal currently
+        being handled) recovers which worker fired, and the worker's own
+        `title` attribute (set below, before the thread ever starts, so no
+        cross-thread write) carries what used to be smuggled through the
+        lambda's closure.
+        """
         self.setCursor(Qt.CursorShape.WaitCursor)
         thread = QThread(self)
+        worker.title = title  # plain Python attribute - fine on a QObject, set before moveToThread/start
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
-        worker.finished.connect(lambda body, t=title, th=thread, w=worker: self._on_captured_tool_finished(t, body, th, w))
-        worker.failed.connect(lambda msg, t=title, th=thread, w=worker: self._on_captured_tool_failed(t, msg, th, w))
+        worker.finished.connect(self._on_captured_tool_finished)
+        worker.failed.connect(self._on_captured_tool_failed)
         self._tool_threads.append((thread, worker))
         thread.start()
 
-    def _on_captured_tool_finished(self, title: str, body: str, thread: QThread, worker: QObject) -> None:
-        self._teardown_tool_thread(thread, worker)
-        self._show_tool_report(title, body)
+    def _thread_for_worker(self, worker: QObject) -> QThread | None:
+        return next((t for t, w in self._tool_threads if w is worker), None)
 
-    def _on_captured_tool_failed(self, title: str, message: str, thread: QThread, worker: QObject) -> None:
+    def _on_captured_tool_finished(self, body: str) -> None:
+        worker = self.sender()
+        thread = self._thread_for_worker(worker)
         self._teardown_tool_thread(thread, worker)
-        tool_name = title.split(" - ", 1)[0]
+        self._show_tool_report(worker.title, body)
+
+    def _on_captured_tool_failed(self, message: str) -> None:
+        worker = self.sender()
+        thread = self._thread_for_worker(worker)
+        self._teardown_tool_thread(thread, worker)
+        tool_name = worker.title.split(" - ", 1)[0]
         QMessageBox.critical(self, "BinSifter", f"Could not run {tool_name}: {message}")
 
     def _teardown_tool_thread(self, thread: QThread, worker: QObject) -> None:
