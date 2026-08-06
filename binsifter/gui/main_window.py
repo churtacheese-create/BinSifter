@@ -15,6 +15,7 @@ still a placeholder; that's been removed now that Scan Queue is real.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from pathlib import Path
 
@@ -33,10 +34,11 @@ from PySide6.QtWidgets import (
 )
 
 from binsifter import __version__
-from binsifter.core.config import build_default_config
+from binsifter.core.config import build_default_config, get_binsifter_root
 from binsifter.core.engine import ScanResult, scan_directory
 from binsifter.core.models import FileRecord
 from binsifter.core.tool_metadata import format_status_line, refresh_tool_metadata
+from binsifter.gui.archive_password_dialog import ArchivePasswordDialog
 from binsifter.gui.log_bridge import QtLogHandler
 from binsifter.gui.pages.about import AboutPage
 from binsifter.gui.pages.capa_rules import CapaRulesPage
@@ -106,11 +108,29 @@ class _ScanWorker(QObject):
     progress = Signal(int, int, str, object)  # done, total, path, FileRecord
     finished = Signal(object)  # ScanResult
     failed = Signal(str)
+    # 2026-08-07: emitted at most once per scan, from INSIDE
+    # scan_directory()'s archive-expansion pre-scan step (see engine.py) if
+    # core/archive.py's pass 1 found any password-protected archives under
+    # SrcDir - carries that list of locked archive paths. run() (below)
+    # blocks on _password_event right after emitting this, until
+    # provide_passwords() is called back from the GUI thread - see
+    # MainWindow._on_password_needed(), which shows ArchivePasswordDialog
+    # and calls provide_passwords() once it closes. This is the same "block
+    # a background thread, let the GUI thread answer" pattern _scan_control
+    # already uses for pause/stop, just for a one-shot answer instead of a
+    # continuously-polled flag - safe here specifically because this is a
+    # QThread in the SAME process as the GUI, not a separate
+    # multiprocessing.Pool worker process (which is what made password
+    # prompting look like an unsolved architecture problem when TODO.md
+    # first scoped this feature - see engine.py's module docstring).
+    password_needed = Signal(list)
 
     def __init__(self, config, scan_control: _ScanControl) -> None:
         super().__init__()
         self._config = config
         self._scan_control = scan_control
+        self._password_event = threading.Event()
+        self._password_map: dict[str, str] = {}
 
     def run(self) -> None:
         try:
@@ -119,6 +139,7 @@ class _ScanWorker(QObject):
                 progress_callback=self._on_progress,
                 should_pause=lambda: self._scan_control.is_paused,
                 should_stop=lambda: self._scan_control.stop_requested,
+                password_prompt_callback=self._prompt_for_passwords,
             )
         except Exception as exc:  # noqa: BLE001 - report to the UI instead of crashing the thread
             self.failed.emit(str(exc))
@@ -127,6 +148,37 @@ class _ScanWorker(QObject):
 
     def _on_progress(self, done: int, total: int, current_path: str, record: FileRecord) -> None:
         self.progress.emit(done, total, current_path, record)
+
+    def _prompt_for_passwords(self, locked_archives: list[str]) -> dict[str, str]:
+        """Runs on THIS worker's background QThread, called synchronously
+        from inside engine.scan_directory()'s archive-expansion step (it's
+        handed to scan_directory() as password_prompt_callback above) -
+        blocks until MainWindow's _on_password_needed() slot (running on
+        the GUI thread) has shown ArchivePasswordDialog and called
+        provide_passwords() back on this object. A plain
+        threading.Event, not just the signal emit itself, because this
+        call needs to actually WAIT for an answer before returning -
+        Signal.emit() doesn't block for a receiver's return value on its
+        own.
+        """
+        self._password_event.clear()
+        self.password_needed.emit(list(locked_archives))
+        self._password_event.wait()
+        return self._password_map
+
+    def provide_passwords(self, password_map: dict[str, str]) -> None:
+        """Called from the GUI thread (MainWindow._on_password_needed(),
+        right after ArchivePasswordDialog closes) - hands the answer back
+        and unblocks _prompt_for_passwords() above. Safe to touch
+        _password_map/_password_event from the GUI thread here: the worker
+        thread is guaranteed to be parked in _password_event.wait() (not
+        concurrently reading _password_map) until .set() below runs, so
+        there's a real happens-before ordering, the same guarantee
+        threading.Event is designed to provide for exactly this producer/
+        consumer handoff shape.
+        """
+        self._password_map = password_map
+        self._password_event.set()
 
 
 class MainWindow(QMainWindow):
@@ -201,7 +253,10 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 18, 0, 0)
         layout.setSpacing(0)
 
-        logo_path = Path(__file__).resolve().parent.parent.parent / logo_horizontal_filename(theme)
+        # get_binsifter_root() (not a __file__-relative parent chain
+        # computed here directly) so this keeps resolving correctly under a
+        # frozen/installed exe too - see that function's 2026-08-08 note.
+        logo_path = get_binsifter_root() / logo_horizontal_filename(theme)
         logo_label = QLabel()
         logo_label.setContentsMargins(12, 0, 12, 0)
         if logo_path.is_file():
@@ -374,6 +429,13 @@ class MainWindow(QMainWindow):
         self._scan_worker.progress.connect(self._on_scan_progress)
         self._scan_worker.finished.connect(self._on_scan_finished)
         self._scan_worker.failed.connect(self._on_scan_failed)
+        # Connected to a genuine bound method of `self` (a real QWidget),
+        # not a lambda - Qt's cross-thread auto-detection only reliably
+        # resolves the receiver's thread through a bound-method slot like
+        # this, the same lesson learned (the hard way, twice) fixing
+        # results.py's Speakeasy/Sigcheck thread-safety bug earlier this
+        # session.
+        self._scan_worker.password_needed.connect(self._on_password_needed)
         self._scan_thread.start()
 
     def _on_scan_tick(self) -> None:
@@ -405,6 +467,20 @@ class MainWindow(QMainWindow):
         if self._scan_control is not None:
             self._scan_control.stop_requested = True
         self._set_status("Stopping...", self.theme.Warning)
+
+    def _on_password_needed(self, locked_archives: list[str]) -> None:
+        """Slot for _ScanWorker.password_needed - runs on the GUI thread
+        (Qt safely queues the cross-thread signal here since it's connected
+        to this genuine bound method, not a lambda - see the connection
+        site in _on_start_scan_clicked()). Shows one batch dialog for every
+        password-protected archive core/archive.py's pass 1 found, then
+        hands the answer straight back to the worker thread, which has been
+        parked in _prompt_for_passwords()'s .wait() this whole time."""
+        self._set_status("Waiting for archive password(s)...", self.theme.Warning)
+        dialog = ArchivePasswordDialog(self.theme, locked_archives, self)
+        dialog.exec()
+        if self._scan_worker is not None:
+            self._scan_worker.provide_passwords(dialog.password_map())
 
     def _on_scan_progress(self, done: int, total: int, current_path: str, record: FileRecord) -> None:
         self._scan_total_files = total

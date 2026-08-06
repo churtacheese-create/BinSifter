@@ -121,6 +121,12 @@ _COLUMNS = (
     ("ExtractedIOCs", "Extracted IOCs", 200),
     ("ReputationStatus", "Reputation", 90),
     ("Error", "Error", 160),
+    # 2026-08-07: blank for a file found directly under SrcDir; the
+    # containing archive's path for a file extracted from one - see
+    # models.py's FileRecord.SourceArchive / core/archive.py's module
+    # docstring for the "own rows + source-archive column" design Steve
+    # confirmed.
+    ("SourceArchive", "Source Archive", 260),
 )
 _DISPOSITION_COL = len(_COLUMNS)
 _DISPOSITION_CHOICES = ("Untriaged", "Benign", "Suspicious", "Escalated")
@@ -155,6 +161,7 @@ def _row_values(r: FileRecord) -> list[str]:
         r.ExtractedIOCs,
         r.ReputationStatus,
         r.Error or "",
+        r.SourceArchive or "",
     ]
 
 

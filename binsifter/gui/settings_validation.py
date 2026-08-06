@@ -20,11 +20,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 # (field key, required PathType) - SrcDir/CapaRules/ToolsDir must be
-# directories, NsrlPath/YaraRules must be files. GhidraDir is handled
-# separately below since blank is valid for it (optional feature) but not
-# for any of these five.
+# directories, NsrlPath/YaraRules must be files. GhidraDir and
+# CatalogDirectory are handled separately below since blank is valid for
+# both (optional features) but not for any of these five.
 _REQUIRED_DIR_FIELDS = ("SrcDir", "CapaRules", "ToolsDir")
 _REQUIRED_FILE_FIELDS = ("NsrlPath", "YaraRules")
+
+# (field key, blank-is-valid PathType) - same "optional but must be real if
+# given" rule as GhidraDir, factored out so CatalogDirectory doesn't need
+# its own hand-copied if/elif block.
+_OPTIONAL_DIR_FIELDS = ("GhidraDir", "CatalogDirectory")
 
 
 @dataclass
@@ -39,8 +44,10 @@ class SettingsValidationResult:
 
 def validate_settings(values: dict[str, str], report_directory: str) -> SettingsValidationResult:
     """values must have keys for all of SrcDir/NsrlPath/YaraRules/CapaRules/
-    ToolsDir/GhidraDir (GhidraDir may be blank/whitespace - every other key
-    must be a non-blank, existing path of the right type)."""
+    ToolsDir/GhidraDir/CatalogDirectory (GhidraDir/CatalogDirectory may be
+    blank/whitespace - every other key must be a non-blank, existing path
+    of the right type). A missing CatalogDirectory key (e.g. an older
+    caller/test that predates this field) is treated the same as blank."""
     invalid: list[str] = []
     candidate: dict[str, str] = {}
 
@@ -58,13 +65,14 @@ def validate_settings(values: dict[str, str], report_directory: str) -> Settings
         else:
             candidate[key] = str(Path(value).resolve())
 
-    ghidra_value = values.get("GhidraDir", "").strip()
-    if not ghidra_value:
-        candidate["GhidraDir"] = ""
-    elif Path(ghidra_value).is_dir():
-        candidate["GhidraDir"] = str(Path(ghidra_value).resolve())
-    else:
-        invalid.append("GhidraDir")
+    for key in _OPTIONAL_DIR_FIELDS:
+        value = values.get(key, "").strip()
+        if not value:
+            candidate[key] = ""
+        elif Path(value).is_dir():
+            candidate[key] = str(Path(value).resolve())
+        else:
+            invalid.append(key)
 
     if invalid:
         return SettingsValidationResult(ok=False, error_message=f"Invalid or missing: {', '.join(invalid)}")

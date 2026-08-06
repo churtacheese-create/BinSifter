@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "binsifter"
-version = "2.0.0a1"
+version = "2.0.0b1"
 description = "Winnow - BinSifter's Python/PySide6 variant, a forensic binary triage tool for bulk assessment"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -77,6 +77,33 @@ dependencies = [
                            # Prebuilt wheels exist for Windows/Linux/macOS/ARM64, so this doesn't
                            # reintroduce the "needs a compiler on the target machine" problem the
                            # ppdeep/pure-Python choices elsewhere in this file were made to avoid.
+    "py7zr>=1.1",          # Added 2026-08-07 for core/archive.py's 7z support - one of the 4
+                           # archive formats confirmed with Steve (zip/tar/gzip are all Python
+                           # stdlib via zipfile/tarfile/gzip, no dependency needed for those 3;
+                           # 7z has no stdlib equivalent at all). Prebuilt wheels exist for
+                           # Windows/Linux/macOS, same "no compiler needed on the target machine"
+                           # bar as every other dependency in this file. RAR was explicitly NOT
+                           # added - needs an external unrar/unar binary (same footprint as
+                           # Sigcheck/Ghidra's exe-discovery model, not a pip-installable library),
+                           # deferred until there's a confirmed real need for it.
+    "pyzipper>=0.3",       # Added 2026-08-08: found via a real scan against Malware Bazaar zips
+                           # (which use WinZip AE-x/AES-256 encryption, not legacy ZipCrypto) that
+                           # Python's stdlib `zipfile` cannot decrypt AES-encrypted entries at all -
+                           # it can list/open the archive fine (central-directory reads don't need
+                           # the key) but raises NotImplementedError("That compression method is
+                           # not supported") the instant it tries to actually decompress an AE-x
+                           # entry (compress_type 99, which stdlib zipfile's _check_compression()
+                           # doesn't recognize), regardless of whether the supplied password is
+                           # correct. `pyzipper.AESZipFile` is a drop-in superset of
+                           # `zipfile.ZipFile` (same extract()/infolist()/setpassword() API) that
+                           # adds real AE-1/AE-2 AES decryption - core/archive.py's _extract_zip()
+                           # now uses it instead. Confirmed this diagnosis both by reading stdlib
+                           # zipfile's source directly and by reproducing the exact error message
+                           # against a synthetic AES-encrypted zip before applying the fix, not
+                           # just assumed. Rowan needed no equivalent change - it shells out to
+                           # 7z.exe for all archive formats, and 7-Zip has native AES-zip support
+                           # built in (confirmed by Steve's own earlier Rowan test against the same
+                           # kind of Malware Bazaar zips, which extracted successfully).
 ]
 
 [project.optional-dependencies]

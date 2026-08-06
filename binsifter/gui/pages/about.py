@@ -8,13 +8,12 @@ rather than the PowerShell original's $AppVersion script variable.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from binsifter import __version__
+from binsifter.core.config import get_binsifter_root
 from binsifter.gui.theme import ThemePalette, logo_horizontal_filename, qcolor_to_css
 from binsifter.gui.widgets import accent_to_css
 
@@ -30,7 +29,10 @@ class AboutPage(QWidget):
 
         # 2026-08-06: was a hardcoded dark-mode filename, same fix/reasoning
         # as main_window.py's sidebar logo - see theme.logo_horizontal_filename().
-        logo_path = Path(__file__).resolve().parent.parent.parent.parent / logo_horizontal_filename(theme)
+        # 2026-08-08: switched from a __file__-relative parent chain to
+        # get_binsifter_root(), which resolves correctly under a frozen/
+        # installed exe too (see that function's docstring).
+        logo_path = get_binsifter_root() / logo_horizontal_filename(theme)
         if logo_path.is_file():
             logo_label = QLabel()
             pixmap = QPixmap(str(logo_path))

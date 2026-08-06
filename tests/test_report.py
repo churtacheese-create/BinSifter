@@ -27,6 +27,7 @@ def test_column_header_matches_original_order_exactly():
         "Compiler", "Imphash", "RichHash", "ImphashClusterId",
         "ImphashClusterSize", "SignatureStatus", "SignerName", "IocCount",
         "ExtractedIOCs", "ReputationStatus", "ReputationSource", "Disposition",
+        "SourceArchive",
     ]
 
 

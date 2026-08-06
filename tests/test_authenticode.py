@@ -90,6 +90,131 @@ def test_unparseable_format_is_not_supported_not_unknown_error(tmp_path):
     assert result.signer_name == ""
 
 
+# ---------- parse_catalogs() / check_signature()'s catalogs param (2026-08-08) ----------
+#
+# No genuine .cat file was obtainable for this pass - no Windows machine in
+# this sandbox, and GitHub's raw/API/codeload endpoints (the most likely
+# source: signify's own test fixtures) are all blocked by this
+# environment's network allowlist; see authenticode.py's RESOLVED
+# 2026-08-08 note. These tests cover the plumbing - parse_catalogs()'s
+# directory handling, and check_signature()'s add_catalog() wiring/error
+# handling - against synthetic/mocked data rather than a real catalog.
+# Genuinely exercising catalog verification end-to-end is still pending a
+# real .cat landing in Catalogs/ (gitignored - see .gitignore and
+# Catalogs/README.txt).
+
+def test_parse_catalogs_blank_directory_returns_empty_list():
+    assert authenticode.parse_catalogs("") == []
+
+
+def test_parse_catalogs_missing_directory_returns_empty_list(tmp_path):
+    missing = tmp_path / "does-not-exist"
+    assert authenticode.parse_catalogs(str(missing)) == []
+
+
+def test_parse_catalogs_empty_directory_returns_empty_list(tmp_path):
+    assert authenticode.parse_catalogs(str(tmp_path)) == []
+
+
+def test_parse_catalogs_ignores_non_cat_files(tmp_path):
+    (tmp_path / "notes.txt").write_text("not a catalog")
+    assert authenticode.parse_catalogs(str(tmp_path)) == []
+
+
+def test_parse_catalogs_skips_malformed_cat_file_without_raising(tmp_path):
+    # A .cat file is a PKCS#7/ASN.1 envelope - garbage bytes should be
+    # logged and skipped, not crash the whole scan over one bad file.
+    (tmp_path / "broken.cat").write_bytes(b"this is not a valid PKCS7 envelope")
+    assert authenticode.parse_catalogs(str(tmp_path)) == []
+
+
+def test_parse_catalogs_path_that_is_a_file_not_a_directory_returns_empty_list(tmp_path):
+    a_file = tmp_path / "some.cat"
+    a_file.write_bytes(b"irrelevant")
+    # CatalogDirectory is documented as a directory, not a single file -
+    # passing a file path should degrade gracefully (empty list), not raise.
+    assert authenticode.parse_catalogs(str(a_file)) == []
+
+
+class _FakeCatalogResult:
+    def __init__(self, name):
+        self.name = name
+
+
+class _FakeSignedFile:
+    """Stands in for a real AuthenticodeFile - just enough surface
+    (add_catalog/explain_verify) for check_signature() to run its full
+    control flow without needing a genuine PE/PKCS7 parse."""
+
+    def __init__(self, explain_result="NOT_SIGNED", raise_on_catalog=None):
+        self.added_catalogs = []
+        self._explain_result = explain_result
+        self._raise_on_catalog = raise_on_catalog
+        self.signatures = []
+
+    def add_catalog(self, catalog, check=False):
+        if self._raise_on_catalog is not None and catalog is self._raise_on_catalog:
+            raise RuntimeError("simulated add_catalog failure")
+        self.added_catalogs.append((catalog, check))
+
+    def explain_verify(self):
+        return _FakeCatalogResult(self._explain_result), None
+
+
+def test_check_signature_offers_every_provided_catalog(tmp_path, monkeypatch):
+    target = tmp_path / "sample.exe"
+    target.write_bytes(b"MZ" + b"\x00" * 62)
+
+    fake_file = _FakeSignedFile(explain_result="OK")
+    monkeypatch.setattr(
+        authenticode.AuthenticodeFile, "from_stream", staticmethod(lambda f: fake_file)
+    )
+
+    catalog_a = object()
+    catalog_b = object()
+    result = authenticode.check_signature(str(target), catalogs=[catalog_a, catalog_b])
+
+    assert result.status == "Valid"
+    assert fake_file.added_catalogs == [(catalog_a, True), (catalog_b, True)]
+
+
+def test_check_signature_survives_a_catalog_that_raises(tmp_path, monkeypatch):
+    target = tmp_path / "sample.exe"
+    target.write_bytes(b"MZ" + b"\x00" * 62)
+
+    bad_catalog = object()
+    good_catalog = object()
+    fake_file = _FakeSignedFile(explain_result="NOT_SIGNED", raise_on_catalog=bad_catalog)
+    monkeypatch.setattr(
+        authenticode.AuthenticodeFile, "from_stream", staticmethod(lambda f: fake_file)
+    )
+
+    # Should not raise even though bad_catalog's add_catalog() blows up -
+    # the good catalog should still get offered, and check_signature()
+    # should still return a real result rather than folding into
+    # UnknownError over one bad catalog.
+    result = authenticode.check_signature(str(target), catalogs=[bad_catalog, good_catalog])
+
+    assert result.status == "NotSigned"
+    assert fake_file.added_catalogs == [(good_catalog, True)]
+
+
+def test_check_signature_with_no_catalogs_argument_is_unchanged(tmp_path, monkeypatch):
+    """catalogs defaults to None - existing callers (and the pre-2026-08-08
+    behavior) must be unaffected."""
+    target = tmp_path / "sample.exe"
+    target.write_bytes(b"MZ" + b"\x00" * 62)
+
+    fake_file = _FakeSignedFile(explain_result="OK")
+    monkeypatch.setattr(
+        authenticode.AuthenticodeFile, "from_stream", staticmethod(lambda f: fake_file)
+    )
+
+    result = authenticode.check_signature(str(target))
+    assert result.status == "Valid"
+    assert fake_file.added_catalogs == []
+
+
 def test_default_trust_store_is_actually_populated():
     """2026-08-06: regression guard for the trust-store correction described
     in authenticode.py's module docstring. check_signature() relies entirely

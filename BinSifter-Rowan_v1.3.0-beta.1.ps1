@@ -45,6 +45,75 @@ function Test-SystemDarkMode {
     }
 }
 
+function Add-DefenderExclusionPath {
+    <#
+      Adds $Path to Windows Defender's scan-exclusion list, prompting for UAC
+      elevation via a separate elevated process - added 2026-08-08 after a
+      real scan against live Malware Bazaar samples showed Defender's
+      real-time protection racing BinSifter's own extraction/scan pipeline:
+      files got quarantined between extraction and BinSifter reading them
+      (see TODO.md's archive-support entries; Winnow hit the equivalent
+      OSError, this is the same underlying problem). Mirrors
+      binsifter/core/defender.py's Winnow implementation - same design, same
+      reasoning - just native PowerShell here since Rowan already runs
+      inside a PowerShell process and doesn't need to shell out to a
+      sub-process the way Winnow does to get one.
+
+      Deliberately opt-in only, never called from the scan pipeline itself -
+      see the Settings page's $settings.BtnAddDefenderExclusion.Add_Click
+      handler for the confirmation-dialog-gated call site. BinSifter's own
+      process never gains admin rights - Process.Start() with Verb='runas'
+      launches a SEPARATE elevated powershell.exe, which is what Windows'
+      UAC prompt actually elevates.
+
+      Throws a plain, human-readable exception on any failure (UAC
+      declined, Add-MpPreference itself failing, the elevated process
+      failing to launch at all, or timing out) - callers show
+      $_.Exception.Message directly in a MessageBox, no further translation
+      needed.
+    #>
+    param([Parameter(Mandatory)][string]$Path)
+
+    $escapedPath = $Path -replace "'", "''"
+    # try/catch + explicit exit 0/1 here (not just letting PowerShell's
+    # default error-to-exit-code behavior handle it) so the elevated
+    # process's exit code reliably tells us whether Add-MpPreference itself
+    # succeeded - matches Winnow's identical reasoning in defender.py.
+    $innerScript = "try { Add-MpPreference -ExclusionPath '$escapedPath'; exit 0 } catch { exit 1 }"
+    # -EncodedCommand takes base64 of UTF-16LE text - avoids the quoting
+    # nightmare of nesting a quoted command inside ProcessStartInfo's own
+    # Arguments string.
+    $encoded = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($innerScript))
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = 'powershell.exe'
+    $psi.Arguments = "-NoProfile -NonInteractive -EncodedCommand $encoded"
+    $psi.Verb = 'runas'
+    $psi.UseShellExecute = $true
+
+    try {
+        $proc = [System.Diagnostics.Process]::Start($psi)
+    }
+    catch [System.ComponentModel.Win32Exception] {
+        # NativeErrorCode 1223 is the real Win32 ERROR_CANCELLED - what
+        # Process.Start() throws when the user clicks "No" on the UAC
+        # prompt, since the elevated process never actually launches.
+        if ($_.Exception.NativeErrorCode -eq 1223) {
+            throw 'UAC elevation was declined - no changes were made.'
+        }
+        throw "Could not launch the elevated process: $($_.Exception.Message)"
+    }
+
+    $completed = $proc.WaitForExit(120000)
+    if (-not $completed) {
+        throw 'Timed out waiting for the elevated Add-MpPreference process (120s) - the UAC prompt may still be waiting for a response on screen.'
+    }
+
+    if ($proc.ExitCode -ne 0) {
+        throw 'Add-MpPreference failed. This usually means Windows Defender is not the active antivirus product, its real-time protection is off, or Tamper Protection is blocking preference changes.'
+    }
+}
+
 function New-STARunspace {
     $iss = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
     $runspace = [System.Management.Automation.Runspaces.RunspaceFactory]::CreateRunspace($iss)
@@ -373,6 +442,25 @@ namespace BinSifter
         // Start-ScanEngine / the Results grid's disposition column handler) so
         // re-opening a case or re-scanning the same files keeps prior calls.
         public string Disposition = "Untriaged";
+
+        // ===== Archive/compressed-file support (2026-08-07) =====
+
+        // "" (the default) = this file was found directly under SrcDir, not
+        // extracted from an archive. Non-empty = the path of the archive this
+        // file was extracted from - the immediate CONTAINING archive if
+        // archives are nested (a zip inside a zip), not necessarily the
+        // top-level one under SrcDir. Set once, at record-creation time in
+        // Start-ScanEngine's dispatcher, before the record is ever handed to a
+        // worker - safe to do that early here (unlike Winnow's Python port,
+        // where the equivalent field had to be re-applied AFTER the
+        // multiprocessing pool finished, see core/archive.py's module
+        // docstring): PowerShell runspaces share one process's memory, so
+        // every worker mutates this SAME FileRecord object in place
+        // ($FileRecords[$FilePath] in the worker script block) rather than
+        // building and returning a separate copy the way a spawned Python
+        // worker PROCESS has to - there's no "results come back and clobber
+        // the placeholder" step to guard against here.
+        public string SourceArchive = "";
     }
 
     public class EnumerationResult
@@ -436,7 +524,7 @@ namespace BinSifter
         {
             using (var writer = new StreamWriter(path, false, new UTF8Encoding(true), 1 << 20))
             {
-                writer.Write("FilePath,SHA1,MD5,SSDEEP,IsKnownGood,YaraHitCount,YaraMatches,YaraSeverity,YaraSeverityScore,AttackTechniques,CapaEligible,PossibleFalseNegative,CapaDetections,Status,Error,Entropy,CapaShellcodeFormat,FlossStringCount,SsdeepMatches,SsdeepClusterId,SsdeepClusterSize,SsdeepHighSimilarity,SsdeepPreviouslySeen,PackerDetected,Compiler,Imphash,RichHash,ImphashClusterId,ImphashClusterSize,SignatureStatus,SignerName,IocCount,ExtractedIOCs,ReputationStatus,ReputationSource,Disposition\r\n");
+                writer.Write("FilePath,SHA1,MD5,SSDEEP,IsKnownGood,YaraHitCount,YaraMatches,YaraSeverity,YaraSeverityScore,AttackTechniques,CapaEligible,PossibleFalseNegative,CapaDetections,Status,Error,Entropy,CapaShellcodeFormat,FlossStringCount,SsdeepMatches,SsdeepClusterId,SsdeepClusterSize,SsdeepHighSimilarity,SsdeepPreviouslySeen,PackerDetected,Compiler,Imphash,RichHash,ImphashClusterId,ImphashClusterSize,SignatureStatus,SignerName,IocCount,ExtractedIOCs,ReputationStatus,ReputationSource,Disposition,SourceArchive\r\n");
 
                 foreach (var r in records)
                 {
@@ -464,7 +552,7 @@ namespace BinSifter
                         r.SignatureStatus, r.SignerName,
                         r.IocCount > 0 ? r.IocCount.ToString() : "",
                         r.ExtractedIOCs, r.ReputationStatus, r.ReputationSource,
-                        r.Disposition);
+                        r.Disposition, r.SourceArchive);
                 }
             }
         }
@@ -1680,6 +1768,139 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             $reportForm.Dispose()
         }
 
+        # Batch password-prompt dialog for archive expansion (2026-08-07) - shown
+        # at most once per scan, when Expand-Archives' pass 1 (see
+        # Start-ScanEngine's "Archive expansion" section) finds one or more
+        # password-protected archives under SrcDir. Direct port of Winnow's
+        # ArchivePasswordDialog: ALL locked archives are prompted for at once, in
+        # a single dialog, rather than interrupting the scan once per archive -
+        # Steve's confirmed design (2026-08-06/07, via AskUserQuestion). Called
+        # from $refreshTimer.Add_Tick on the UI thread (see below), not directly
+        # from the dispatcher's background runspace - WinForms modal dialogs have
+        # to run on the thread that owns the message pump, same reason
+        # Show-ToolReportWindow above is only ever called from a UI-thread event
+        # handler.
+        #
+        # No Cancel button, same reasoning as Winnow's version: by the time this
+        # can appear, pre-scan setup and every non-locked-archive file are
+        # already queued/underway - this step is purely additive (which locked
+        # archives get a password attempt vs. saved for external cracking), not
+        # a gate on whether the scan proceeds. Closing via the window's own X
+        # button behaves the same as clicking Continue - whatever's currently in
+        # the fields gets read regardless of how the dialog closed.
+        function Show-ArchivePasswordDialog {
+            param([string[]]$LockedArchives)
+
+            $dialog = New-Object System.Windows.Forms.Form
+            $dialog.Text = 'BinSifter - Password-Protected Archives'
+            $dialog.Width = 640
+            $dialog.Height = 540
+            $dialog.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterParent
+            $dialog.BackColor = $theme.WindowBack
+            $dialog.ForeColor = $theme.Fore
+            $dialog.MinimizeBox = $false
+            $dialog.MaximizeBox = $false
+
+            $continueButton = New-Object System.Windows.Forms.Button
+            $continueButton.Text = 'Continue Scan'
+            $continueButton.Dock = [System.Windows.Forms.DockStyle]::Bottom
+            $continueButton.Height = 36
+            $continueButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+            $continueButton.BackColor = $theme.Accent
+            $continueButton.ForeColor = [System.Drawing.Color]::White
+            $continueButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
+            $dialog.Controls.Add($continueButton)
+            $dialog.AcceptButton = $continueButton
+
+            $introLabel = New-Object System.Windows.Forms.Label
+            $introLabel.Text = "$($LockedArchives.Count) archive(s) under the scan source are password-protected. Enter a password for any you know - anything left blank will be saved to password_protected\ under Reports for you to try with an external cracking tool (John, hashcat, etc.) instead."
+            $introLabel.Dock = [System.Windows.Forms.DockStyle]::Top
+            $introLabel.Height = 64
+            $introLabel.Padding = New-Object System.Windows.Forms.Padding(12, 12, 12, 0)
+            $introLabel.ForeColor = $theme.Fore
+            $dialog.Controls.Add($introLabel)
+
+            # 2026-08-08, requested by Steve after confirming the batch-
+            # prompt flow works end-to-end: when a batch of archives (e.g.
+            # a Malware Bazaar download) all share one password, typing it
+            # once here beats filling in the same value per-row below.
+            # Deliberately simple semantics matching what was asked for:
+            # an archive's OWN field below wins if filled in (lets an
+            # analyst override one oddball archive out of an otherwise-
+            # shared-password batch without clearing this field first);
+            # otherwise this shared value is used - see the password_map
+            # build loop below. Uses the same Location-based layout as the
+            # per-archive rows inside $scrollPanel just below, rather than
+            # Dock, since TextBox doesn't respect Padding under Dock the
+            # way Label does.
+            $sharedPanel = New-Object System.Windows.Forms.Panel
+            $sharedPanel.Dock = [System.Windows.Forms.DockStyle]::Top
+            $sharedPanel.Height = 56
+            $sharedPanel.BackColor = $theme.WindowBack
+            $dialog.Controls.Add($sharedPanel)
+
+            $sharedLabel = New-Object System.Windows.Forms.Label
+            $sharedLabel.Text = 'Shared password (optional) - used for any archive left blank below:'
+            $sharedLabel.AutoSize = $false
+            $sharedLabel.Width = 600
+            $sharedLabel.Height = 20
+            $sharedLabel.Location = New-Object System.Drawing.Point(12, 4)
+            $sharedLabel.ForeColor = $theme.Fore
+            $sharedPanel.Controls.Add($sharedLabel)
+
+            $sharedField = New-Object System.Windows.Forms.TextBox
+            $sharedField.Width = 300
+            $sharedField.Location = New-Object System.Drawing.Point(12, 26)
+            $sharedField.UseSystemPasswordChar = $true
+            $sharedField.BackColor = $theme.ButtonBack
+            $sharedField.ForeColor = $theme.Fore
+            $sharedField.PlaceholderText = '(applies to every archive below that is left blank)'
+            $sharedPanel.Controls.Add($sharedField)
+
+            $scrollPanel = New-Object System.Windows.Forms.Panel
+            $scrollPanel.Dock = [System.Windows.Forms.DockStyle]::Fill
+            $scrollPanel.AutoScroll = $true
+            $scrollPanel.BackColor = $theme.SurfaceBack
+            $dialog.Controls.Add($scrollPanel)
+            $scrollPanel.BringToFront()
+
+            $fields = [System.Collections.Generic.Dictionary[string, System.Windows.Forms.TextBox]]::new()
+            $y = 10
+            foreach ($path in $LockedArchives) {
+                $label = New-Object System.Windows.Forms.Label
+                $label.Text = $path
+                $label.AutoSize = $false
+                $label.Width = 380
+                $label.Height = 32
+                $label.Location = New-Object System.Drawing.Point(10, $y)
+                $label.ForeColor = $theme.MutedFore
+                $label.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
+                $scrollPanel.Controls.Add($label)
+
+                $field = New-Object System.Windows.Forms.TextBox
+                $field.Width = 190
+                $field.Location = New-Object System.Drawing.Point(400, ($y + 4))
+                $field.UseSystemPasswordChar = $true
+                $field.BackColor = $theme.ButtonBack
+                $field.ForeColor = $theme.Fore
+                $field.PlaceholderText = '(leave blank if unknown)'
+                $scrollPanel.Controls.Add($field)
+                $fields[$path] = $field
+
+                $y += 40
+            }
+
+            $null = $dialog.ShowDialog()
+
+            $passwordMap = [System.Collections.Generic.Dictionary[string, string]]::new()
+            foreach ($kvp in $fields.GetEnumerator()) {
+                $value = if ($kvp.Value.Text) { $kvp.Value.Text } else { $sharedField.Text }
+                if ($value) { $passwordMap[$kvp.Key] = $value }
+            }
+            $dialog.Dispose()
+            return $passwordMap
+        }
+
         # ================= Shared state =================
         # v1.3.0-alpha.2 settings consolidation: Settings asks for 6 things
         # (SrcDir, NsrlPath, YaraRules, CapaRules, ToolsDir, GhidraDir).
@@ -1700,18 +1921,46 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             # come back empty depending on how the script is launched - notably,
             # some VS Code "Run and Debug" configurations for the PowerShell
             # extension don't populate these the same way a plain `pwsh -File`
-            # invocation does. Everything below - default Reports/Attack/
-            # Blocklist folders, the Settings cache file - is anchored to
-            # $BinSifterRoot, so rather than hard-blocking startup, fall back to
-            # the current working directory and tell the analyst where things
-            # landed, so a debug-launched session still works instead of
-            # silently surprising them later (this is what used to surface as
-            # "Report directory is not writable: Cannot bind argument to 'Path'
-            # because it is null" the first time Settings Save tried to
-            # Join-Path against a null root).
-            $BinSifterRoot = (Get-Location).Path
+            # invocation does. 2026-08-08: confirmed in the wild that this
+            # branch's OLD fallback here - (Get-Location).Path - is not safe
+            # to trust as "the script's folder" or even "where the analyst
+            # launched it from": Get-Location reflects the PowerShell
+            # session's own current directory, which for several real
+            # launch paths (a Start Menu/Desktop shortcut with no "Start
+            # in" set, some VS Code debug configs, etc.) defaults to
+            # C:\Windows\System32 - nothing to do with where BinSifter-
+            # Rowan_*.ps1 actually lives or was invoked from. Before
+            # trusting that guess, try one more, genuinely reliable source:
+            # this process's own command line, which contains the real,
+            # fully-qualified .ps1 path VERBATIM no matter which of the
+            # automatic variables above got populated (double-click, right-
+            # click "Run with PowerShell", a shortcut, VS Code's Run/Debug,
+            # `pwsh -File`, `-Command "& '...'"` all pass the script's path
+            # as a literal argument on the command line).
+            try {
+                $commandLine = (Get-CimInstance Win32_Process -Filter "ProcessId=$PID" -ErrorAction Stop).CommandLine
+                if ($commandLine -match "([A-Za-z]:\\[^`"]+?\.ps1)") {
+                    $candidatePath = $Matches[1]
+                    if (Test-Path -LiteralPath $candidatePath -PathType Leaf) {
+                        $BinSifterRoot = Split-Path -Parent $candidatePath
+                    }
+                }
+            } catch { }
+        }
+        if ([string]::IsNullOrWhiteSpace($BinSifterRoot)) {
+            # Genuinely could not find the real script file by any means
+            # (e.g. the script's contents were piped/typed into a session
+            # rather than run from a real .ps1 file, or Get-CimInstance
+            # itself failed). Go straight to a folder we KNOW is per-user
+            # and writable, rather than falling back to a "current
+            # directory" that has already been observed landing on
+            # C:\Windows\System32 in practice (see above) - one clear
+            # dialog instead of this one plus the writability fallback
+            # below firing right after it on the exact same bad guess.
+            $BinSifterRoot = Join-Path $env:LOCALAPPDATA 'BinSifter'
+            try { $null = New-Item -Path $BinSifterRoot -ItemType Directory -Force -ErrorAction Stop } catch { }
             $null = [System.Windows.Forms.MessageBox]::Show(
-                "BinSifter couldn't determine its own script folder (this can happen when launching via VS Code's Run and Debug), so its default Reports/Attack/Blocklist folders and Settings cache will be created under the current folder instead:" + "`r`n`r`n" +
+                "BinSifter couldn't determine its own script folder (this can happen when launching via VS Code's Run and Debug, or if the script was executed from text rather than a real .ps1 file), so its default Reports/Attack/Blocklist folders and Settings cache will be created here instead:" + "`r`n`r`n" +
                 $BinSifterRoot + "`r`n`r`n" +
                 "To anchor these to the script's own folder instead, run the .ps1 file directly (double-click, right-click > Run with PowerShell, or `"pwsh -File path\to\script.ps1`").",
                 'BinSifter', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
@@ -1719,11 +1968,17 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
 
         # Belt-and-suspenders on top of the fallback above: even a
         # correctly-resolved $BinSifterRoot can land somewhere the current
-        # user has no write access to - the concrete case that motivated
-        # this (2026-08-03): a launch path that left $BinSifterRoot pointing
-        # at C:\Windows\System32, so every default (Reports/Attack/
-        # Blocklist/the Settings cache file) tried to live under a directory
-        # a non-admin account can't write to. The old behavior let this slide
+        # user has no write access to - the concrete case that originally
+        # motivated this (2026-08-03): a launch path that left
+        # $BinSifterRoot pointing at C:\Windows\System32, so every default
+        # (Reports/Attack/Blocklist/the Settings cache file) tried to live
+        # under a directory a non-admin account can't write to. (2026-08-08:
+        # that specific System32 case is now caught earlier - see the
+        # fallback chain above, which no longer trusts Get-Location as a
+        # root anchor at all - but this writability check stays regardless,
+        # since a genuinely-resolved script folder on a read-only mount/
+        # locked-down machine is a real, separate scenario this still
+        # needs to handle.) The old behavior let an unwritable root slide
         # silently past the New-Item calls below (wrapped in their own
         # swallow-all try/catch) and only surfaced once Settings Save probed
         # ReportDirectory directly - a confusing place to first learn about a
@@ -1775,6 +2030,17 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             X64dbgExe         = 'x64dbg.exe'
             X32dbgExe         = 'x32dbg.exe'
             SpeakeasyExe      = 'speakeasy.exe'
+            # 2026-08-07: archive/compressed-file support (see Start-ScanEngine's
+            # "Archive expansion" section). 7-Zip's CLI handles all 4 formats
+            # confirmed for this feature (zip/tar/gzip/7z) through one consistent
+            # command-line interface, matching the "shell out to a real tool"
+            # convention every other entry in this table already follows - same
+            # tradeoff Winnow made differently (separate Python libraries per
+            # format) since Winnow's whole v2 rewrite point was moving AWAY from
+            # shelling out wherever a library exists; Rowan never made that move
+            # for anything, so staying consistent with itself here matters more
+            # than matching Winnow's specific implementation choice.
+            SevenZipExe       = '7z.exe'
         }
 
         # FRED-style tool directories are routinely hierarchical (each tool
@@ -1911,6 +2177,19 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             # the first scan's clustering pass finishes. The refresh timer just
             # displays this rather than recomputing cluster stats every tick.
             SsdeepMetrics    = $null
+            # ===== Archive/compressed-file support (2026-08-07) =====
+            # Cross-runspace handoff for the batch password-prompt dialog, same
+            # polled-shared-state pattern as every other ScanControl field here
+            # rather than a direct cross-runspace Invoke() - see Start-ScanEngine's
+            # "Archive expansion" section (sets these 3) and $refreshTimer.Add_Tick
+            # (reads PendingPasswordRequest, writes PasswordMap/PasswordMapReady).
+            # PendingPasswordRequest: $null, or a string[] of locked archive paths
+            # waiting on the UI thread to prompt for. PasswordMapReady: flips true
+            # once the UI thread has shown the dialog and populated PasswordMap
+            # (a Dictionary[string,string], possibly empty if nothing was known).
+            PendingPasswordRequest = $null
+            PasswordMap      = $null
+            PasswordMapReady = $false
         })
 
         $LogQueue = [System.Collections.Concurrent.ConcurrentQueue[string]]::new()
@@ -2645,6 +2924,294 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                     }
                 }
 
+                # ================= Archive/compressed-file support (2026-08-07) =================
+                # Port of Winnow's core/archive.py - same design (see that module's
+                # docstring for the full rationale, including the 3 decisions Steve
+                # confirmed directly: format scope, the two-pass password-prompt
+                # architecture, and "extracted files show up in Results as their own
+                # rows"), same two-pass shape (Expand-Archives finds/extracts what it
+                # can without a password and collects everything that needs one;
+                # Resolve-LockedArchives takes a supplied password map and either
+                # extracts or saves each locked archive for external cracking), same
+                # bounded nested-archive recursion depth. What's genuinely different
+                # from Winnow: this shells out to 7-Zip's CLI (7z.exe, via the same
+                # Invoke-ExternalTool helper above) for every format instead of using
+                # a separate Python library per format - matches Rowan's existing
+                # "shell out to a real tool" convention (yara64.exe/capa.exe/
+                # ssdeep.exe/etc. above), not a port-for-port translation of Winnow's
+                # implementation choice.
+                $ArchiveExtensions = @('.tar.gz', '.tgz', '.tar.bz2', '.tbz2', '.tar.xz', '.txz', '.tar', '.zip', '.7z', '.gz')
+                $MaxNestedArchiveDepth = 3
+                # A deliberately-impossible dummy password, never a real one - passed
+                # to `7z l` (list) so 7-Zip never blocks waiting on interactive stdin
+                # input if an archive turns out to need a password (7-Zip's CLI reads
+                # from the console for a missing password unless -p is always
+                # supplied, which would hang a non-interactive scan dead). Harmless
+                # when the archive isn't actually encrypted - see the p7zip mailing
+                # list guidance this mirrors: "if the header is not encrypted, a
+                # password is ignored" for listing purposes.
+                $ArchiveDummyPassword = '###BINSIFTER-NO-PASSWORD###'
+
+                function Test-IsArchiveFile {
+                    param([string]$Path)
+                    $nameLower = [System.IO.Path]::GetFileName($Path).ToLowerInvariant()
+                    foreach ($ext in $ArchiveExtensions) {
+                        if ($nameLower.EndsWith($ext)) { return $true }
+                    }
+                    return $false
+                }
+
+                # Cheap, read-only check - never attempts extraction. Lists the
+                # archive's technical info (-slt) with the dummy password above; if
+                # the LISTING itself fails, the header is encrypted (needs a
+                # password even to see the file names) - if listing succeeds, each
+                # entry's own "Encrypted = +/-" line (7-Zip's own per-file technical
+                # field, present for both zip and 7z) says whether that entry's
+                # CONTENT needs a password even though the header didn't. tar/gzip
+                # never carry this field at all (neither format has a native
+                # encryption concept) so they always come back "not encrypted" here,
+                # same as core/archive.py's needs_password().
+                function Test-ArchiveNeedsPassword {
+                    param([string]$SevenZipExe, [string]$Path)
+                    $listResult = Invoke-ExternalTool -Path $SevenZipExe `
+                        -Arguments @('l', '-slt', "-p$ArchiveDummyPassword", $Path) -TimeoutSeconds 60
+                    if ($listResult.ExitCode -ne 0) {
+                        # Listing failed - could be a genuinely encrypted header, or
+                        # just a corrupt/unsupported file. Only treat it as "needs a
+                        # password" on a real password-shaped failure, same
+                        # "corruption isn't a password question" distinction
+                        # core/archive.py's needs_password() makes - mis-classifying
+                        # plain corruption as locked would prompt the analyst for a
+                        # password that was never going to fix it.
+                        return ($listResult.StdErr -match '(?i)wrong password|data error|cannot open encrypted archive|password is not specified')
+                    }
+                    return ($listResult.StdOut -match '(?im)^Encrypted\s*=\s*\+')
+                }
+
+                # One dedicated subdirectory per archive under $ExtractionRoot, named
+                # for readability (the archive's own stem) plus a short stable hash
+                # of its full path - guarantees no collision between two same-named
+                # archives from different source subfolders. Same role as
+                # core/archive.py's _dest_dir_for().
+                function Get-ArchiveDestDir {
+                    param([string]$ArchivePath, [string]$ExtractionRoot)
+                    $stem = [System.IO.Path]::GetFileNameWithoutExtension($ArchivePath)
+                    $hashBytes = [System.Security.Cryptography.SHA1]::HashData(
+                        [System.Text.Encoding]::UTF8.GetBytes($ArchivePath.ToLowerInvariant())
+                    )
+                    $hashHex = [Convert]::ToHexString($hashBytes).Substring(0, 10).ToLowerInvariant()
+                    $destDir = Join-Path $ExtractionRoot "${stem}_$hashHex"
+                    $null = New-Item -ItemType Directory -Path $destDir -Force -ErrorAction SilentlyContinue
+                    return $destDir
+                }
+
+                # Extracts one archive with 7z.exe and returns every FILE (not
+                # directory) that landed under $DestDir - 7-Zip's own -o flag already
+                # preserves the archive's internal folder structure, this just walks
+                # the result the same stack-based way FileScanner.EnumerateFiles does
+                # for the main scan. Throws on a non-zero exit code (wrong/missing
+                # password, or genuine corruption) - callers decide what that means
+                # (pass 1 treats it as "skip, log a warning"; pass 2 treats it as
+                # "the supplied password didn't work, save for external cracking"),
+                # same split as core/archive.py's two passes.
+                function Expand-OneArchive {
+                    param([string]$SevenZipExe, [string]$ArchivePath, [string]$DestDir, [string]$Password, $ProcessRegistry)
+                    $null = New-Item -ItemType Directory -Path $DestDir -Force -ErrorAction SilentlyContinue
+                    $pw = if ($Password) { $Password } else { $ArchiveDummyPassword }
+                    $extractArgs = @('x', '-y', "-o$DestDir", "-p$pw", $ArchivePath)
+                    $registryKey = "7z-extract-$([Guid]::NewGuid().ToString('N'))"
+                    $result = Invoke-ExternalTool -Path $SevenZipExe -Arguments $extractArgs `
+                        -ProcessRegistry $ProcessRegistry -RegistryKey $registryKey -TimeoutSeconds 300
+                    if ($result.ExitCode -ne 0) {
+                        throw "7-Zip extraction failed (exit $($result.ExitCode)): $($result.StdErr)"
+                    }
+
+                    $extracted = [System.Collections.Generic.List[string]]::new()
+                    $pending = [System.Collections.Generic.Stack[string]]::new()
+                    $pending.Push($DestDir)
+                    while ($pending.Count -gt 0) {
+                        $dir = $pending.Pop()
+                        try { foreach ($sub in [System.IO.Directory]::GetDirectories($dir)) { $pending.Push($sub) } } catch { }
+                        try { foreach ($f in [System.IO.Directory]::GetFiles($dir)) { $extracted.Add($f) } } catch { }
+                    }
+                    return $extracted
+                }
+
+                # Shared recursion core for both passes below - $OnLocked is where
+                # they actually differ: Expand-Archives (pass 1) appends to its own
+                # LockedArchives list for later prompting; Resolve-LockedArchives
+                # (pass 2) saves straight to the unresolved-archives directory
+                # instead, so a nested locked archive found while resolving an
+                # already-prompted-for one doesn't trigger a second prompt round -
+                # same design as core/archive.py's _expand_recursive().
+                #
+                # $Depth counts levels of NESTING already recursed into, not "how
+                # deep is this archive" absolutely - every path passed into $Paths is
+                # always attempted regardless of depth; $MaxNestedArchiveDepth only
+                # bounds how far this recurses INTO what it finds inside an archive,
+                # so a $MaxNestedArchiveDepth of 0 still extracts every top-level
+                # archive under SrcDir, it just never opens anything found inside them.
+                function Expand-ArchivesRecursive {
+                    param(
+                        [string]$SevenZipExe,
+                        [string[]]$Paths,
+                        [string]$ExtractionRoot,
+                        [System.Collections.Generic.List[string]]$ExtractedFiles,
+                        [System.Collections.Generic.Dictionary[string, string]]$SourceArchiveByPath,
+                        [int]$Depth,
+                        [scriptblock]$OnLocked,
+                        $ProcessRegistry
+                    )
+                    foreach ($path in $Paths) {
+                        if (-not (Test-IsArchiveFile -Path $path)) { continue }
+
+                        $needsPassword = $false
+                        try {
+                            $needsPassword = Test-ArchiveNeedsPassword -SevenZipExe $SevenZipExe -Path $path
+                        }
+                        catch {
+                            Add-Log2 "Could not check password status for archive $path, skipping: $($_.Exception.Message)"
+                            continue
+                        }
+                        if ($needsPassword) {
+                            & $OnLocked $path
+                            continue
+                        }
+
+                        $destDir = Get-ArchiveDestDir -ArchivePath $path -ExtractionRoot $ExtractionRoot
+                        $extracted = $null
+                        try {
+                            $extracted = Expand-OneArchive -SevenZipExe $SevenZipExe -ArchivePath $path `
+                                -DestDir $destDir -Password $null -ProcessRegistry $ProcessRegistry
+                        }
+                        catch {
+                            Add-Log2 "Could not extract archive $path, skipping: $($_.Exception.Message)"
+                            continue
+                        }
+
+                        $nestedArchives = [System.Collections.Generic.List[string]]::new()
+                        foreach ($f in $extracted) {
+                            $ExtractedFiles.Add($f)
+                            $SourceArchiveByPath[$f] = $path
+                            if (Test-IsArchiveFile -Path $f) { $nestedArchives.Add($f) }
+                        }
+                        if ($nestedArchives.Count -eq 0) { continue }
+                        if ($Depth -ge $MaxNestedArchiveDepth) {
+                            Add-Log2 "$($nestedArchives.Count) archive(s) found nested inside $path past the $MaxNestedArchiveDepth-level recursion cap - left as plain extracted files."
+                            continue
+                        }
+                        Expand-ArchivesRecursive -SevenZipExe $SevenZipExe -Paths $nestedArchives -ExtractionRoot $ExtractionRoot `
+                            -ExtractedFiles $ExtractedFiles -SourceArchiveByPath $SourceArchiveByPath -Depth ($Depth + 1) `
+                            -OnLocked $OnLocked -ProcessRegistry $ProcessRegistry
+                    }
+                }
+
+                # Pass 1 - see core/archive.py's expand_archives(). Extracts every
+                # archive in $ArchivePaths that does NOT need a password (recursing
+                # into anything found along the way, bounded by
+                # $MaxNestedArchiveDepth), and separately collects every archive -
+                # top-level or nested - that DOES need one, without attempting to
+                # open those at all.
+                function Expand-Archives {
+                    param([string]$SevenZipExe, [string[]]$ArchivePaths, [string]$ExtractionRoot, $ProcessRegistry)
+                    $extractedFiles = [System.Collections.Generic.List[string]]::new()
+                    $sourceArchiveByPath = [System.Collections.Generic.Dictionary[string, string]]::new()
+                    $lockedArchives = [System.Collections.Generic.List[string]]::new()
+                    $onLocked = { param($p) $lockedArchives.Add($p) }.GetNewClosure()
+
+                    Expand-ArchivesRecursive -SevenZipExe $SevenZipExe -Paths $ArchivePaths -ExtractionRoot $ExtractionRoot `
+                        -ExtractedFiles $extractedFiles -SourceArchiveByPath $sourceArchiveByPath -Depth 0 `
+                        -OnLocked $onLocked -ProcessRegistry $ProcessRegistry
+
+                    return [pscustomobject]@{
+                        ExtractedFiles       = $extractedFiles
+                        SourceArchiveByPath  = $sourceArchiveByPath
+                        LockedArchives       = $lockedArchives
+                    }
+                }
+
+                # Pass 2 - see core/archive.py's resolve_locked_archives(). Called
+                # once, after the analyst has been prompted for passwords on every
+                # archive Expand-Archives (pass 1) collected. For each one: extract
+                # with $PasswordMap[$path] if supplied; on ANY failure (wrong
+                # password, no password given at all, or a real error even with the
+                # right one - not distinguished further, matching
+                # Expand-OneArchive's own single throw path), the archive itself is
+                # COPIED (never moved - never mutate the analyst's original evidence
+                # under SrcDir) into $UnresolvedDestDir for the analyst to run
+                # through John/hashcat/etc. outside BinSifter.
+                function Resolve-LockedArchives {
+                    param(
+                        [string]$SevenZipExe,
+                        [string[]]$LockedArchives,
+                        [System.Collections.Generic.Dictionary[string, string]]$PasswordMap,
+                        [string]$ExtractionRoot,
+                        [string]$UnresolvedDestDir,
+                        $ProcessRegistry
+                    )
+                    $extractedFiles = [System.Collections.Generic.List[string]]::new()
+                    $sourceArchiveByPath = [System.Collections.Generic.Dictionary[string, string]]::new()
+                    $unresolvedArchives = [System.Collections.Generic.List[string]]::new()
+                    $null = New-Item -ItemType Directory -Path $UnresolvedDestDir -Force -ErrorAction SilentlyContinue
+
+                    $saveUnresolved = {
+                        param($p)
+                        $destName = [System.IO.Path]::GetFileName($p)
+                        $destPath = Join-Path $UnresolvedDestDir $destName
+                        $i = 1
+                        while (Test-Path -LiteralPath $destPath) {
+                            $stem = [System.IO.Path]::GetFileNameWithoutExtension($destName)
+                            $ext = [System.IO.Path]::GetExtension($destName)
+                            $destPath = Join-Path $UnresolvedDestDir "${stem}_${i}${ext}"
+                            $i++
+                        }
+                        Copy-Item -LiteralPath $p -Destination $destPath -Force
+                        $unresolvedArchives.Add($destPath)
+                        Add-Log2 "Password-protected archive saved for external cracking: $p -> $destPath"
+                    }.GetNewClosure()
+
+                    foreach ($path in $LockedArchives) {
+                        $password = $null
+                        if ($PasswordMap -and $PasswordMap.ContainsKey($path) -and $PasswordMap[$path]) {
+                            $password = $PasswordMap[$path]
+                        }
+                        if (-not $password) {
+                            & $saveUnresolved $path
+                            continue
+                        }
+
+                        $destDir = Get-ArchiveDestDir -ArchivePath $path -ExtractionRoot $ExtractionRoot
+                        $extracted = $null
+                        try {
+                            $extracted = Expand-OneArchive -SevenZipExe $SevenZipExe -ArchivePath $path `
+                                -DestDir $destDir -Password $password -ProcessRegistry $ProcessRegistry
+                        }
+                        catch {
+                            Add-Log2 "Could not unlock archive $path with the supplied password: $($_.Exception.Message)"
+                            & $saveUnresolved $path
+                            continue
+                        }
+
+                        foreach ($f in $extracted) {
+                            $extractedFiles.Add($f)
+                            $sourceArchiveByPath[$f] = $path
+                        }
+                        $nestedArchives = [System.Collections.Generic.List[string]]::new()
+                        foreach ($f in $extracted) { if (Test-IsArchiveFile -Path $f) { $nestedArchives.Add($f) } }
+                        if ($nestedArchives.Count -gt 0) {
+                            Expand-ArchivesRecursive -SevenZipExe $SevenZipExe -Paths $nestedArchives -ExtractionRoot $ExtractionRoot `
+                                -ExtractedFiles $extractedFiles -SourceArchiveByPath $sourceArchiveByPath -Depth 1 `
+                                -OnLocked $saveUnresolved -ProcessRegistry $ProcessRegistry
+                        }
+                    }
+
+                    return [pscustomobject]@{
+                        ExtractedFiles       = $extractedFiles
+                        SourceArchiveByPath  = $sourceArchiveByPath
+                        UnresolvedArchives   = $unresolvedArchives
+                    }
+                }
+
                 $processRegistry = [System.Collections.Concurrent.ConcurrentDictionary[string, System.Diagnostics.Process]]::new()
                 # Exposed so the UI thread (FormClosing) can kill in-flight tool
                 # processes directly on shutdown instead of only hoping the dispatcher
@@ -2861,11 +3428,71 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                         Add-Log2 "$($enumResult.ErrorCount) filesystem enumeration error(s) occurred."
                     }
 
+                    # ================= Archive expansion (2026-08-07) =================
+                    # Serial, in the dispatcher's own runspace, BEFORE any FileRecord
+                    # gets created or any per-file work is dispatched to the worker
+                    # pool below - see the Expand-Archives/Resolve-LockedArchives
+                    # function block above for the design this follows (a direct port
+                    # of Winnow's core/archive.py). Archive files themselves stay in
+                    # $orderedPaths too (still scanned as an ordinary file in their own
+                    # right, in case the archive itself matches a YARA rule or
+                    # similar) - this only ADDS the files found inside them.
+                    $sourceArchiveByPath = [System.Collections.Generic.Dictionary[string, string]]::new()
+                    if ($Config.SevenZipExe -and (Test-Path -LiteralPath $Config.SevenZipExe -PathType Leaf)) {
+                        $archivePaths = @($orderedPaths | Where-Object { Test-IsArchiveFile -Path $_ })
+                        if ($archivePaths.Count -gt 0) {
+                            $extractionRoot = Join-Path $Config.ReportDirectory 'extracted_archives'
+                            Add-Log2 "Found $($archivePaths.Count) archive(s) under $($Config.SrcDir) - expanding..."
+                            $expansion = Expand-Archives -SevenZipExe $Config.SevenZipExe -ArchivePaths $archivePaths `
+                                -ExtractionRoot $extractionRoot -ProcessRegistry $processRegistry
+                            $orderedPaths = @($orderedPaths) + @($expansion.ExtractedFiles)
+                            foreach ($kvp in $expansion.SourceArchiveByPath.GetEnumerator()) { $sourceArchiveByPath[$kvp.Key] = $kvp.Value }
+                            Add-Log2 "Archive expansion pass 1: $($expansion.ExtractedFiles.Count) file(s) extracted, $($expansion.LockedArchives.Count) archive(s) need a password."
+
+                            if ($expansion.LockedArchives.Count -gt 0) {
+                                # Handed to the GUI thread via $ScanControl, the same
+                                # cross-runspace-communication pattern this dispatcher
+                                # already uses for pause/stop/progress (polled shared
+                                # state, not a direct cross-runspace invoke) - see
+                                # $refreshTimer.Add_Tick for the UI-thread side that
+                                # notices PendingPasswordRequest and shows
+                                # Show-ArchivePasswordDialog. Blocks here until that
+                                # side sets PasswordMapReady, same "block a background
+                                # runspace, let the UI thread answer" shape as Winnow's
+                                # QThread+Event, just built out of the primitives this
+                                # codebase already established for this exact kind of
+                                # cross-runspace handoff instead of a new one.
+                                $ScanControl.PasswordMap = $null
+                                $ScanControl.PasswordMapReady = $false
+                                $ScanControl.PendingPasswordRequest = @($expansion.LockedArchives)
+                                while (-not $ScanControl.PasswordMapReady) {
+                                    Start-Sleep -Milliseconds 150
+                                    if ($ScanControl.StopRequested) { break }
+                                }
+                                $passwordMap = $ScanControl.PasswordMap
+                                if (-not $passwordMap) { $passwordMap = [System.Collections.Generic.Dictionary[string, string]]::new() }
+                                $ScanControl.PendingPasswordRequest = $null
+
+                                $unresolvedDir = Join-Path $Config.ReportDirectory 'password_protected'
+                                $resolution = Resolve-LockedArchives -SevenZipExe $Config.SevenZipExe `
+                                    -LockedArchives $expansion.LockedArchives -PasswordMap $passwordMap `
+                                    -ExtractionRoot $extractionRoot -UnresolvedDestDir $unresolvedDir -ProcessRegistry $processRegistry
+                                $orderedPaths = @($orderedPaths) + @($resolution.ExtractedFiles)
+                                foreach ($kvp in $resolution.SourceArchiveByPath.GetEnumerator()) { $sourceArchiveByPath[$kvp.Key] = $kvp.Value }
+                                Add-Log2 "Archive expansion pass 2: $($resolution.ExtractedFiles.Count) more file(s) extracted, $($resolution.UnresolvedArchives.Count) archive(s) saved to $unresolvedDir for external cracking."
+                            }
+                        }
+                    }
+                    elseif (@($orderedPaths | Where-Object { Test-IsArchiveFile -Path $_ }).Count -gt 0) {
+                        Add-Log2 'Archive(s) found under the scan source, but SevenZipExe (7z.exe) is not configured under ToolsDir - archive expansion is being skipped this run. Archives will still be scanned as opaque single files, just not their contents.'
+                    }
+
                     $now = Get-Date
                     foreach ($path in $orderedPaths) {
                         $record = [BinSifter.FileRecord]::new()
                         $record.Path = $path
                         $record.Added = $now
+                        if ($sourceArchiveByPath.ContainsKey($path)) { $record.SourceArchive = $sourceArchiveByPath[$path] }
                         $null = $FileRecords.TryAdd($path, $record)
                         $UiDirtyQueue.Enqueue($path)
                     }
@@ -4235,6 +4862,12 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                 @{ Name = 'ExtractedIOCs'; Header = 'Extracted IOCs'; Width = 240 }
                 @{ Name = 'ReputationStatus'; Header = 'Reputation'; Width = 90 }
                 @{ Name = 'Error'; Header = 'Error'; Width = 200 }
+                # 2026-08-07: blank for a file found directly under SrcDir; the
+                # containing archive's path for a file extracted from one - see
+                # FileRecord.SourceArchive / Start-ScanEngine's "Archive
+                # expansion" section for the "own rows + source-archive column"
+                # design Steve confirmed (matches Winnow's results.py column).
+                @{ Name = 'SourceArchive'; Header = 'Source Archive'; Width = 260 }
             )
             foreach ($colDef in $resultColumns) {
                 $col = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
@@ -4666,10 +5299,57 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             $rowIndex++
             $null = $layout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))
             $layout.Controls.Add($lblStatus, 1, $rowIndex)
+            $rowIndex++
+
+            # 2026-08-08, requested by Steve after a real scan against live
+            # Malware Bazaar samples: Defender's real-time protection raced
+            # BinSifter's own scan for extracted archive contents. See
+            # Add-DefenderExclusionPath's comment block and defender.py
+            # (Winnow) for the full design - deliberately a separate,
+            # explicit, confirmation-gated action, never something the scan
+            # itself does.
+            $lblDefenderHeader = New-Object System.Windows.Forms.Label
+            $lblDefenderHeader.Text = 'Windows Defender'
+            $lblDefenderHeader.AutoSize = $true
+            $lblDefenderHeader.Margin = New-Object System.Windows.Forms.Padding(3, 28, 0, 3)
+            $lblDefenderHeader.Font = New-Object System.Drawing.Font('Segoe UI', 9, [System.Drawing.FontStyle]::Bold)
+            $lblDefenderHeader.ForeColor = $theme.Fore
+            $null = $layout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))
+            $layout.Controls.Add($lblDefenderHeader, 1, $rowIndex)
+            $rowIndex++
+
+            $lblDefenderExplainer = New-Object System.Windows.Forms.Label
+            $lblDefenderExplainer.Text = "If real-time protection is quarantining extracted archive contents before BinSifter can finish scanning them, you can exclude the extraction folder from Defender's scanning. This requires administrator approval (a UAC prompt) and means Defender will NOT automatically flag anything placed in that folder - only use this on a machine where you're comfortable with that tradeoff for malware analysis."
+            $lblDefenderExplainer.AutoSize = $false
+            $lblDefenderExplainer.Width = 620
+            $lblDefenderExplainer.Height = 60
+            $lblDefenderExplainer.Margin = New-Object System.Windows.Forms.Padding(3, 0, 8, 6)
+            $lblDefenderExplainer.ForeColor = $theme.MutedFore
+            $null = $layout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))
+            $layout.Controls.Add($lblDefenderExplainer, 1, $rowIndex)
+            $rowIndex++
+
+            $btnAddDefenderExclusion = New-ThemedButton -Text 'Add extraction folder to Defender exclusions...' -Width 320 -Height 32
+            $btnAddDefenderExclusion.Margin = New-Object System.Windows.Forms.Padding(3, 0, 0, 3)
+            $null = $layout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))
+            $layout.Controls.Add($btnAddDefenderExclusion, 1, $rowIndex)
+            $rowIndex++
+
+            $lblDefenderStatus = New-Object System.Windows.Forms.Label
+            $lblDefenderStatus.AutoSize = $true
+            $lblDefenderStatus.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+            $lblDefenderStatus.Margin = New-Object System.Windows.Forms.Padding(3, 6, 0, 0)
+            $lblDefenderStatus.ForeColor = $theme.MutedFore
+            $lblDefenderStatus.Text = ''
+            $null = $layout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))
+            $layout.Controls.Add($lblDefenderStatus, 1, $rowIndex)
 
             $page.Controls.Add($layout)
 
-            return [pscustomobject]@{ Page = $page; Fields = $fieldBoxes; BtnSave = $btnSave; LblStatus = $lblStatus }
+            return [pscustomobject]@{
+                Page = $page; Fields = $fieldBoxes; BtnSave = $btnSave; LblStatus = $lblStatus
+                BtnAddDefenderExclusion = $btnAddDefenderExclusion; LblDefenderStatus = $lblDefenderStatus
+            }
         }
 
         # ================= Page: YARA Rules =================
@@ -5284,6 +5964,47 @@ For repeatable case work, preserve the report directory (Reports\ next to BinSif
             Start-ToolMetadataRefresh
         })
 
+        $settings.BtnAddDefenderExclusion.Add_Click({
+            $targetPath = Join-Path $Config.ReportDirectory 'extracted_archives'
+
+            $confirmed = [System.Windows.Forms.MessageBox]::Show(
+                $form,
+                "This will prompt for administrator approval and add the following folder to Windows Defender's scan exclusions:`r`n`r`n$targetPath`r`n`r`nFiles placed there (including real malware extracted from archives during a scan) will NOT be automatically flagged by Defender. Continue?",
+                'Add Defender Exclusion',
+                [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Warning,
+                [System.Windows.Forms.MessageBoxDefaultButton]::Button2)
+            if ($confirmed -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+
+            # Make sure the folder actually exists before excluding it - same
+            # reasoning as Winnow's settings.py: Add-MpPreference accepts a
+            # not-yet-existing path fine, but a real folder here means Steve
+            # can immediately verify the exclusion in Windows Security's own
+            # UI without wondering whether BinSifter will create it with a
+            # different path later.
+            try { $null = New-Item -Path $targetPath -ItemType Directory -Force -ErrorAction Stop } catch { }
+
+            $settings.BtnAddDefenderExclusion.Enabled = $false
+            $settings.LblDefenderStatus.ForeColor = $theme.Fore
+            $settings.LblDefenderStatus.Text = 'Waiting for UAC elevation - check for a prompt on your screen...'
+            # Repaint before the blocking call below - otherwise the status
+            # text above wouldn't actually appear until AFTER the (up to
+            # 2-minute) elevation/Add-MpPreference call already returned.
+            [System.Windows.Forms.Application]::DoEvents()
+
+            try {
+                Add-DefenderExclusionPath -Path $targetPath
+                $settings.LblDefenderStatus.ForeColor = $theme.Success
+                $settings.LblDefenderStatus.Text = "Added to Defender exclusions: $targetPath"
+            }
+            catch {
+                $settings.LblDefenderStatus.ForeColor = $theme.Danger
+                $settings.LblDefenderStatus.Text = $_.Exception.Message
+            }
+            finally {
+                $settings.BtnAddDefenderExclusion.Enabled = $true
+            }
+        })
+
         # ================= Scan Queue wiring =================
         $scanQueue.BtnStart.Add_Click({
             if ($ScanControl.IsRunning) { return }
@@ -5386,6 +6107,7 @@ For repeatable case work, preserve the report directory (Reports\ next to BinSif
                     $(if ($r.IocCount -gt 0) { $r.IocCount } else { '' }),
                     $r.ExtractedIOCs, $r.ReputationStatus,
                     $r.Error,
+                    $r.SourceArchive,
                     $r.Disposition
                 )
             }
@@ -5683,6 +6405,28 @@ For repeatable case work, preserve the report directory (Reports\ next to BinSif
         $refreshTimer.Interval = 750
 
         $refreshTimer.Add_Tick({
+            # Archive password prompt (2026-08-07) - checked first, ahead of
+            # everything else below, so the analyst sees the dialog as promptly
+            # as the 750ms tick allows once the dispatcher's background runspace
+            # sets PendingPasswordRequest (see Start-ScanEngine's "Archive
+            # expansion" section). Show-ArchivePasswordDialog's own ShowDialog()
+            # call blocks this tick handler until the analyst closes it - that's
+            # fine, this timer just won't fire again until it returns, and
+            # nothing else needs to run on the UI thread while a modal password
+            # dialog is up anyway (same as any other modal dialog in this app).
+            if ($ScanControl.PendingPasswordRequest -and -not $ScanControl.PasswordMapReady) {
+                $lockedArchives = $ScanControl.PendingPasswordRequest
+                # Consumed immediately, before showing the dialog - ShowDialog()
+                # is blocking so a re-entrant tick can't happen here in practice,
+                # but clearing this first (rather than after) means a stray
+                # second tick can never show the same dialog twice even if that
+                # assumption ever stops holding.
+                $ScanControl.PendingPasswordRequest = $null
+                $passwordMap = Show-ArchivePasswordDialog -LockedArchives $lockedArchives
+                $ScanControl.PasswordMap = $passwordMap
+                $ScanControl.PasswordMapReady = $true
+            }
+
             # Drain logs
             $line = $null
             $appended = $false

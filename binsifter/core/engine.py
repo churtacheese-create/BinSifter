@@ -38,6 +38,21 @@ does the full hash_and_score_file() read up front (simpler, but does
 strictly more work than the original for NSRL-known files). Worth
 revisiting once there's a real performance benchmark to justify the
 added complexity either way - don't "fix" this speculatively.
+
+Archive/compressed-file support (2026-08-07, core/archive.py): archives
+found under config.SrcDir (zip/tar/gzip/7z) are expanded to real files on
+disk in a SERIAL pre-scan step, before the multiprocessing.Pool below is
+even created - see scan_directory()'s "Archive expansion" section. This
+was originally flagged in TODO.md as an open architecture question (how
+would a POOL WORKER PROCESS prompt for a password mid-scan?) that turned
+out not to apply: archive expansion runs once, in this function, in the
+parent process's own background QThread (see main_window.py's
+_ScanWorker) - a real thread, not a separate process - so it can signal
+the GUI thread and block on a threading.Event for a password batch-prompt
+using ordinary, safe Qt cross-thread coordination. By the time paths is
+handed to the pool below, every extracted file is just an ordinary file
+with a real path; _process_one_file()/_pool_worker_init() needed zero
+changes for this feature.
 """
 
 from __future__ import annotations
@@ -58,6 +73,7 @@ from pathlib import Path
 
 from binsifter.core.config import BinSifterConfig
 from binsifter.core.models import FileRecord
+from binsifter.core import archive as archive_mod
 from binsifter.core import attack_db as attack_db_mod
 from binsifter.core import authenticode
 from binsifter.core import blocklist as blocklist_mod
@@ -225,6 +241,15 @@ _worker_yara_rules = None
 # to change.
 _worker_nsrl_hashes: "nsrl_mod.NsrlIndex | set" = set()
 _worker_blocklist_hashes: set = set()
+# 2026-08-08: pre-parsed catalog (.cat) files for Authenticode catalog
+# verification - see authenticode.py's parse_catalogs()/check_signature().
+# Compiled once per worker from config.CatalogDirectory, same reasoning as
+# _worker_yara_rules just above (a parsed CertificateTrustList wraps
+# cryptography objects that aren't cleanly picklable across a process
+# boundary, so each worker parses its own copy here rather than the parent
+# handing down an already-parsed list the way blocklist_hashes/attack_db
+# do).
+_worker_catalogs: list = []
 _worker_attack_db = None
 _worker_disposition_history: dict = {}
 # One warm capa child process per scan-pool worker, reused across every
@@ -296,7 +321,7 @@ def _pool_worker_init(
     """
     global _worker_config, _worker_yara_rules, _worker_nsrl_hashes
     global _worker_blocklist_hashes, _worker_attack_db, _worker_disposition_history
-    global _worker_persistent_capa
+    global _worker_persistent_capa, _worker_catalogs
 
     if log_queue is not None:
         root_logger = logging.getLogger()
@@ -306,6 +331,7 @@ def _pool_worker_init(
 
     _worker_config = config
     _worker_yara_rules = yara_scan.compile_rules(config.YaraRules) if config.YaraRules else None
+    _worker_catalogs = authenticode.parse_catalogs(config.CatalogDirectory) if config.CatalogDirectory else []
     _worker_nsrl_hashes = nsrl_mod.open_index(nsrl_cache_path) if nsrl_cache_path else set()
     _worker_blocklist_hashes = blocklist_hashes
     _worker_attack_db = attack_db
@@ -404,7 +430,7 @@ def _process_one_file(path: str) -> _WorkerFileResult:
             record.Disposition = prior_disposition
 
         t0 = _stage_start()
-        auth_result = authenticode.check_signature(path)
+        auth_result = authenticode.check_signature(path, catalogs=_worker_catalogs)
         _stage_end("authenticode", t0)
         record.SignatureStatus = auth_result.status
         record.SignerName = auth_result.signer_name
@@ -569,6 +595,7 @@ def scan_directory(
     should_pause: Callable[[], bool] | None = None,
     should_stop: Callable[[], bool] | None = None,
     max_workers: int | None = None,
+    password_prompt_callback: Callable[[list[str]], dict[str, str]] | None = None,
 ) -> ScanResult:
     """Runs the currently-implemented pipeline stages over every file under
     config.SrcDir: hash + entropy, NSRL, blocklist, YARA, imphash. Returns
@@ -609,6 +636,21 @@ def scan_directory(
     is submitted, never mid-file). On stop, every file that hadn't been
     submitted to the pool yet is marked Status="Cancelled" - same as the
     PowerShell version's "force-remaining to Cancelled" (line ~2941).
+
+    password_prompt_callback (2026-08-07, see core/archive.py): called at
+    most ONCE per scan, synchronously, from THIS function - not from a pool
+    worker - if archive expansion's pass 1 finds any password-protected
+    archives under config.SrcDir. Receives the list of locked archive
+    paths, must return a dict[str, str] mapping whichever of those paths
+    the caller has a password for (any not present in the returned dict
+    are treated as "unknown" and saved to <ReportDirectory>/
+    password_protected/ for external cracking, same as if this callback
+    were never supplied at all). MainWindow's caller uses this to bounce
+    the request over to the GUI thread (a Qt signal + threading.Event,
+    since this runs on the scan's background QThread) and show one batch
+    password dialog; a headless/CLI run can simply omit it, which just
+    means every locked archive found goes straight to unresolved without
+    ever attempting to prompt for anything.
     """
     # ================= Pre-scan setup - now narrated (2026-08-04) =================
     # Every load/validation step below used to run completely silently before
@@ -629,6 +671,68 @@ def scan_directory(
     t0 = time.perf_counter()
     paths = enumerate_files(config.SrcDir)
     logger.info("Found %d file(s) to scan (%.1fs).", len(paths), time.perf_counter() - t0)
+
+    # ================= Archive expansion (2026-08-07) =================
+    # Serial, in-process, BEFORE the multiprocessing pool below is created -
+    # see this module's docstring and core/archive.py's for why that's the
+    # right place for this rather than something the pool's per-file
+    # workers need to handle. Archive files themselves stay in `paths` too
+    # (still scanned as an ordinary file in their own right, in case the
+    # archive itself matches a YARA rule or similar) - this only ADDS the
+    # files found inside them.
+    source_archive_by_path: dict[str, str] = {}
+    archive_paths = archive_mod.find_archives(paths)
+    if archive_paths and config.ReportDirectory:
+        extraction_root = str(Path(config.ReportDirectory) / "extracted_archives")
+        logger.info("Found %d archive(s) under %s - expanding...", len(archive_paths), config.SrcDir)
+        t0 = time.perf_counter()
+        expansion = archive_mod.expand_archives(archive_paths, extraction_root)
+        paths.extend(expansion.extracted_files)
+        source_archive_by_path.update(expansion.source_archive_by_path)
+        logger.info(
+            "Archive expansion pass 1: %d file(s) extracted, %d archive(s) need a password "
+            "(%.1fs).",
+            len(expansion.extracted_files), len(expansion.locked_archives), time.perf_counter() - t0,
+        )
+
+        if expansion.locked_archives:
+            password_map: dict[str, str] = {}
+            if password_prompt_callback is not None:
+                try:
+                    password_map = password_prompt_callback(expansion.locked_archives) or {}
+                except Exception as exc:  # noqa: BLE001 - a GUI-side prompting failure shouldn't abort the whole scan
+                    logger.warning(
+                        "Password prompt failed, treating all %d locked archive(s) as "
+                        "unresolved: %s", len(expansion.locked_archives), exc,
+                    )
+            else:
+                logger.info(
+                    "%d locked archive(s) found but no password-prompt callback was supplied "
+                    "(e.g. a headless/CLI run) - saving all of them for external cracking "
+                    "without prompting.", len(expansion.locked_archives),
+                )
+
+            unresolved_dir = str(Path(config.ReportDirectory) / "password_protected")
+            t0 = time.perf_counter()
+            resolution = archive_mod.resolve_locked_archives(
+                expansion.locked_archives, password_map, extraction_root, unresolved_dir
+            )
+            paths.extend(resolution.extracted_files)
+            source_archive_by_path.update(resolution.source_archive_by_path)
+            logger.info(
+                "Archive expansion pass 2: %d more file(s) extracted, %d archive(s) saved to "
+                "%s for external cracking (%.1fs).",
+                len(resolution.extracted_files), len(resolution.unresolved_archives),
+                unresolved_dir, time.perf_counter() - t0,
+            )
+    elif archive_paths:
+        logger.warning(
+            "%d archive(s) found under %s but no ReportDirectory is configured - archive "
+            "expansion needs somewhere on disk to extract to, so it's being skipped this run. "
+            "Archives will still be scanned as opaque single files, just not their contents.",
+            len(archive_paths), config.SrcDir,
+        )
+
     records: dict[str, FileRecord] = {p: FileRecord(Path=p) for p in paths}
 
     # One timestamp per scan, reused everywhere a filename needs to be
@@ -895,6 +999,21 @@ def scan_directory(
         log_drain_thread.join(timeout=5)
 
     pool_wall_seconds = time.perf_counter() - pool_wall_start
+
+    # 2026-08-07: applied HERE, not when `records` was first built above -
+    # each pool worker's returned result.record (see the `records[
+    # result.record.Path] = result.record` assignment in the completion-
+    # draining loop above) is a brand-new FileRecord built fresh inside
+    # _process_one_file(), with no knowledge of source_archive_by_path at
+    # all. Setting SourceArchive on the placeholder FileRecord built above,
+    # before the pool ran, would just get silently overwritten the moment
+    # that file's real result came back - confirmed the hard way via a real
+    # end-to-end scan against a source folder containing a zip, where every
+    # extracted file's SourceArchive came back blank despite this exact
+    # line existing earlier in the function.
+    for extracted_path, source_path in source_archive_by_path.items():
+        if extracted_path in records:
+            records[extracted_path].SourceArchive = source_path
 
     if stopped_at is not None:
         for remaining_path in paths[stopped_at:]:

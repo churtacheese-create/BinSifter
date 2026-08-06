@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,8 +22,10 @@ logger = logging.getLogger(__name__)
 
 
 def get_binsifter_root() -> Path:
-    """The folder BinSifter's own code lives in - anchor for every default
-    location (Reports/, Attack/, Blocklist/, the settings cache file).
+    """The folder BinSifter's own code (or, when frozen, its own installed
+    exe) lives in - anchor for every default location (Reports/, Attack/,
+    Blocklist/, the settings cache file, and the horizontal logo PNGs
+    loaded by main_window.py/about.py).
 
     This is one of the concrete, unglamorous wins of the Python rewrite:
     __file__ is reliably populated for a properly installed/packaged
@@ -30,10 +33,24 @@ def get_binsifter_root() -> Path:
     $MyInvocation.MyCommand.Path, which came back empty under VS Code's
     "Run and Debug" on the FRED and needed a defensive fallback chain (see
     BinSifter-Rowan_v1.3.0-beta.1.ps1's $BinSifterRoot block for that whole
-    saga). No equivalent fallback chain should be needed here under normal
-    packaging/installation - if this ever needs one too, that's worth
-    flagging rather than quietly working around.
+    saga).
+
+    2026-08-08 addition: when frozen by PyInstaller (installer/winnow.spec),
+    `sys.frozen` is set and `__file__`-based resolution no longer means
+    anything real - the "package" isn't sitting on disk as loose .py files
+    at all anymore. Deliberately reads `sys.executable`'s OWN directory in
+    that case (stable across launches), NOT `sys._MEIPASS` (which, for a
+    --onefile build, is a fresh temp-extraction folder every single launch -
+    would silently break the Reports/settings-cache persistence this
+    function exists to anchor, rebuilding the NSRL cache and losing cached
+    Settings on every run). This is exactly why installer/winnow.spec
+    deliberately builds --onedir, not --onefile: sys.executable's directory
+    IS where every bundled file actually, persistently lives in that mode,
+    the same "next to the installed exe" convention Rowan's own
+    $BinSifterRoot uses.
     """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
     # binsifter/core/config.py -> up to the installed package root
     return Path(__file__).resolve().parent.parent.parent
 
@@ -103,6 +120,15 @@ class BinSifterConfig:
     CapaRules: str = ""
     ToolsDir: str = ""
     GhidraDir: str = ""
+    # 2026-08-08: catalog-based (.cat) Authenticode verification - see
+    # authenticode.py's module docstring for why this exists (a large
+    # fraction of Windows' own inbox binaries are validated via a system
+    # catalog rather than an embedded signature, and signify doesn't check
+    # catalogs unless one is explicitly loaded via add_catalog()). Optional,
+    # like GhidraDir - blank means "skip catalog checks, embedded-signature
+    # verification only," not an error. A directory (not a single file)
+    # since a real CatRoot holds many .cat files, one per driver/component.
+    CatalogDirectory: str = ""
 
     # Derived by searching ToolsDir/GhidraDir - never user-entered directly
     GhidraHeadlessExe: str = ""
@@ -126,7 +152,7 @@ class BinSifterConfig:
 # just the 6 Settings-page fields, not the derived ToolsDir/GhidraDir search
 # results (which get re-resolved fresh on every load instead of trusting a
 # stale cached path).
-_CACHE_FIELDS = ["SrcDir", "NsrlPath", "YaraRules", "CapaRules", "ToolsDir", "GhidraDir"]
+_CACHE_FIELDS = ["SrcDir", "NsrlPath", "YaraRules", "CapaRules", "ToolsDir", "GhidraDir", "CatalogDirectory"]
 
 
 def _settings_cache_path(root: Path) -> Path:

@@ -15,17 +15,22 @@ save, and Start-ToolMetadataRefresh's status-bar tool-version text.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
+    QApplication,
     QFileDialog,
     QGridLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
+from binsifter.core import defender
 from binsifter.core.config import (
     BinSifterConfig,
     find_tool_path,
@@ -45,6 +50,10 @@ _FIELD_DEFS = (
     ("CapaRules", "Path to capa rules", "Directory", None),
     ("ToolsDir", "Path to tools", "Directory", None),
     ("GhidraDir", "Path to Ghidra - optional", "Directory", None),
+    # 2026-08-08: optional, like GhidraDir - a folder of .cat catalog files
+    # for Authenticode catalog verification (see authenticode.py). Blank
+    # just means catalog checks are skipped, not an error.
+    ("CatalogDirectory", "Catalog (.cat) directory - optional", "Directory", None),
 )
 
 
@@ -111,6 +120,47 @@ class SettingsPage(QWidget):
         self.status_label = QLabel("")
         root.addWidget(self.status_label)
 
+        # 2026-08-08, requested by Steve after a real scan against live
+        # Malware Bazaar samples: Windows Defender's real-time protection
+        # raced BinSifter's own worker pool, quarantining extracted
+        # samples between extraction and BinSifter opening them (OSError
+        # [Errno 22] mid-scan - see TODO.md's archive-support entries).
+        # This button adds <ReportDirectory>/extracted_archives to
+        # Defender's scan-exclusion list so that race can't happen -
+        # deliberately a separate, explicit, confirmation-gated action, not
+        # something a scan ever does on its own (see defender.py's module
+        # docstring for the full elevation design and why this is opt-in).
+        root.addSpacing(24)
+        defender_label = QLabel("Windows Defender")
+        defender_label.setStyleSheet(
+            f"color: {accent_to_css(theme.Fore)}; border: none; background: transparent; font-weight: bold;"
+        )
+        root.addWidget(defender_label)
+
+        defender_explainer = QLabel(
+            "If real-time protection is quarantining extracted archive contents before BinSifter "
+            "can finish scanning them, you can exclude the extraction folder from Defender's "
+            "scanning. This requires administrator approval (a UAC prompt) and means Defender will "
+            "NOT automatically flag anything placed in that folder - only use this on a machine "
+            "where you're comfortable with that tradeoff for malware analysis."
+        )
+        defender_explainer.setWordWrap(True)
+        defender_explainer.setStyleSheet(f"color: {accent_to_css(theme.MutedFore)}; border: none; background: transparent;")
+        root.addWidget(defender_explainer)
+
+        root.addSpacing(8)
+        self.defender_button = QPushButton("Add extraction folder to Defender exclusions...")
+        self.defender_button.setFixedHeight(32)
+        self.defender_button.setStyleSheet(
+            f"QPushButton {{ background-color: {qcolor_to_css(theme.ButtonBack)}; "
+            f"color: {accent_to_css(theme.Fore)}; border: 1px solid {qcolor_to_css(theme.Border)}; }}"
+        )
+        self.defender_button.clicked.connect(self._on_add_defender_exclusion_clicked)
+        root.addWidget(self.defender_button)
+
+        self.defender_status_label = QLabel("")
+        root.addWidget(self.defender_status_label)
+
         root.addStretch(1)
 
     def _on_browse(self, line_edit: QLineEdit, field_type: str, dialog_filter: str | None) -> None:
@@ -150,3 +200,55 @@ class SettingsPage(QWidget):
         self.status_label.setStyleSheet(f"color: {accent_to_css(theme.Success)}; border: none; background: transparent;")
         self.status_label.setText("Settings saved.")
         self.settings_saved.emit()
+
+    def _on_add_defender_exclusion_clicked(self) -> None:
+        theme = self._theme
+        report_dir = self._config.ReportDirectory
+        if not report_dir:
+            self.defender_status_label.setStyleSheet(f"color: {accent_to_css(theme.Danger)}; border: none; background: transparent;")
+            self.defender_status_label.setText("Report Directory isn't set yet - save Settings first.")
+            return
+
+        target = str(Path(report_dir) / "extracted_archives")
+
+        confirmed = QMessageBox.question(
+            self,
+            "Add Defender Exclusion",
+            f"This will prompt for administrator approval and add the following folder to Windows "
+            f"Defender's scan exclusions:\n\n{target}\n\n"
+            "Files placed there (including real malware extracted from archives during a scan) will "
+            "NOT be automatically flagged by Defender. Continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if confirmed != QMessageBox.StandardButton.Yes:
+            return
+
+        # Make sure the folder actually exists before excluding it - Add-
+        # MpPreference accepts a path to a not-yet-existing folder fine,
+        # but a real folder here means Steve can immediately verify the
+        # exclusion in Windows Security's own UI without wondering whether
+        # BinSifter will create it with a different path later.
+        try:
+            Path(target).mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass  # non-fatal - Add-MpPreference itself doesn't require the path to exist yet
+
+        self.defender_button.setEnabled(False)
+        self.defender_status_label.setStyleSheet(f"color: {accent_to_css(theme.Fore)}; border: none; background: transparent;")
+        self.defender_status_label.setText("Waiting for UAC elevation - check for a prompt on your screen...")
+        # Repaint before the blocking subprocess call below - otherwise the
+        # status text above wouldn't actually appear until AFTER the (up to
+        # 2-minute) elevation/Add-MpPreference call already returned.
+        QApplication.processEvents()
+
+        try:
+            defender.add_exclusion_path(target)
+        except defender.DefenderExclusionError as exc:
+            self.defender_status_label.setStyleSheet(f"color: {accent_to_css(theme.Danger)}; border: none; background: transparent;")
+            self.defender_status_label.setText(str(exc))
+        else:
+            self.defender_status_label.setStyleSheet(f"color: {accent_to_css(theme.Success)}; border: none; background: transparent;")
+            self.defender_status_label.setText(f"Added to Defender exclusions: {target}")
+        finally:
+            self.defender_button.setEnabled(True)

@@ -8,6 +8,8 @@ and dependency-free while still exercising the real scan_directory() code
 path end to end.
 """
 
+import zipfile
+
 from binsifter.core.config import BinSifterConfig
 from binsifter.core.disposition import save_disposition_entry
 from binsifter.core.engine import scan_directory
@@ -252,3 +254,49 @@ def test_capa_not_invoked_without_a_yara_hit(tmp_path):
     assert record.CapaEligible is False  # never computed - stays at the dataclass default
     assert record.CapaDetectionCount == 0
     assert record.CAPAOutput is None
+
+
+def test_archive_contents_scanned_through_real_worker_pool_with_source_archive_set(tmp_path):
+    """End-to-end check for 2026-08-07's archive-expansion wiring (see
+    core/archive.py and this module's own archive-expansion block) run
+    through the REAL multiprocessing.Pool, not archive.py in isolation -
+    same "unit tests can't catch the cross-process wiring bug" rationale as
+    test_nsrl_match_through_real_worker_pool above.
+
+    This is a real regression test for a real bug caught during manual
+    end-to-end verification (2026-08-07): SourceArchive was originally set
+    on the placeholder FileRecord dict built BEFORE the pool ran, which
+    then got silently clobbered the moment each file's real result came
+    back from a worker (`records[result.record.Path] = result.record`
+    replaces the whole FileRecord object, not just merges fields) - every
+    extracted file's SourceArchive came back blank in a real scan despite
+    the assignment code existing. Fixed by applying source_archive_by_path
+    AFTER the pool's completion-draining loop instead of before it starts.
+    """
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    (src_dir / "plain.txt").write_bytes(b"a normal file, not from any archive")
+    archive_path = src_dir / "bundle.zip"
+    with zipfile.ZipFile(archive_path, "w") as zf:
+        zf.writestr("inner1.txt", "inner file 1")
+        zf.writestr("inner2.txt", "inner file 2")
+
+    report_dir = tmp_path / "reports"
+    report_dir.mkdir()
+
+    config = BinSifterConfig(SrcDir=str(src_dir), ReportDirectory=str(report_dir))
+    result = scan_directory(config)
+
+    by_name = {r.Path.split("/")[-1]: r for r in result.records}
+    assert set(by_name) == {"plain.txt", "bundle.zip", "inner1.txt", "inner2.txt"}
+    assert all(r.Status == "Completed" for r in by_name.values())
+
+    # The two directly-scanned files (the plain file and the archive itself)
+    # were never extracted from anything.
+    assert by_name["plain.txt"].SourceArchive == ""
+    assert by_name["bundle.zip"].SourceArchive == ""
+
+    # The two files that came OUT of the archive point back at it - the
+    # actual bug this test guards against.
+    assert by_name["inner1.txt"].SourceArchive == str(archive_path)
+    assert by_name["inner2.txt"].SourceArchive == str(archive_path)

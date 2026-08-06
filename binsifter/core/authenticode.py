@@ -81,11 +81,13 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 try:
     from signify.authenticode import AuthenticodeFile, AuthenticodeVerificationResult  # noqa: F401
+    from signify.authenticode.trust_list import CertificateTrustList
     from signify.exceptions import ParseError as _SignifyParseError
 
     _SIGNIFY_AVAILABLE = True
@@ -115,11 +117,59 @@ _STATUS_MAP = {
 }
 
 
-def check_signature(path: str) -> AuthenticodeResult:
+def parse_catalogs(catalog_directory: str) -> list["CertificateTrustList"]:
+    """Parses every *.cat file directly under catalog_directory into a
+    CertificateTrustList, once - see engine.py's _pool_worker_init(), which
+    calls this exactly once per worker process at startup and hands the
+    result to every check_signature() call that worker makes afterward,
+    the same reuse-not-reparse pattern already used there for compiled YARA
+    rules (a native library handle isn't safely shareable across a process
+    boundary either way, so "parse once per worker" is the right unit
+    regardless).
+
+    Returns an empty list (never raises) for a blank/missing/empty
+    directory - catalog checking is opt-in, matching CatalogDirectory's
+    default "" in config.py. A single malformed .cat is logged and skipped
+    rather than aborting the whole batch, since one bad file in what could
+    be a large CatRoot-style directory shouldn't silently disable catalog
+    checking for every other, valid one.
+    """
+    if not _SIGNIFY_AVAILABLE or not catalog_directory:
+        return []
+
+    directory = Path(catalog_directory)
+    if not directory.is_dir():
+        logger.warning("CatalogDirectory does not exist or is not a directory: %s", catalog_directory)
+        return []
+
+    catalogs: list[CertificateTrustList] = []
+    for cat_path in sorted(directory.glob("*.cat")):
+        try:
+            with open(cat_path, "rb") as f:
+                catalogs.append(CertificateTrustList.from_envelope(f.read()))
+        except Exception as exc:  # noqa: BLE001 - one bad catalog shouldn't disable the rest
+            logger.warning("Could not parse catalog file %s: %s", cat_path, exc)
+
+    logger.info("Loaded %d catalog file(s) from %s", len(catalogs), catalog_directory)
+    return catalogs
+
+
+def check_signature(path: str, catalogs: "list[CertificateTrustList] | None" = None) -> AuthenticodeResult:
     """Best-effort Authenticode check - never raises. Any parse/verify
     failure folds into status="UnknownError", mirroring the PowerShell
     version's own try/catch around Get-AuthenticodeSignature (see line 2153:
     `catch { $record.SignatureStatus = 'UnknownError' }`).
+
+    catalogs (2026-08-08): pre-parsed CertificateTrustList objects from
+    parse_catalogs(), already loaded once per worker process - not
+    reparsed here per file. When provided, each is offered to this file via
+    add_catalog(..., check=True), which hashes the file according to the
+    catalog's own digest scheme and only actually attaches the catalog if
+    this file's hash is listed in it (find_subject() internally) - so
+    passing every configured catalog to every file is safe and cheap; only
+    matching catalogs end up contributing to the verification result.
+    Wired into iter_signatures()'s default signature_types="all" for free -
+    explain_verify() below needs no other changes to pick these up.
     """
     if not _SIGNIFY_AVAILABLE:
         return AuthenticodeResult(status="UnknownError", signer_name="")
@@ -127,6 +177,11 @@ def check_signature(path: str) -> AuthenticodeResult:
     try:
         with open(path, "rb") as f:
             signed_file = AuthenticodeFile.from_stream(f)
+            for catalog in catalogs or ():
+                try:
+                    signed_file.add_catalog(catalog, check=True)
+                except Exception as exc:  # noqa: BLE001 - a catalog-matching failure shouldn't sink the whole check
+                    logger.debug("add_catalog() failed for %s: %s", path, exc)
             result, _exc = signed_file.explain_verify()
             status = _STATUS_MAP.get(result.name, "UnknownError")
 
@@ -193,18 +248,30 @@ def _resolve_signer_name(signed_file, path: str) -> str:
 # icateStore/OS-cert-store wiring needed for embedded signatures - that
 # would have been solving an already-solved problem.
 #
-# SEPARATE, still-open, likely more visible gap: a large fraction of Windows' own inbox
-# system binaries (notepad.exe, calc.exe, etc.) are NOT embedded-signed at
-# all - they're validated against a system catalog file (.cat, under
-# C:\Windows\System32\CatRoot\) instead. Get-AuthenticodeSignature checks
-# catalogs transparently via WinVerifyTrust; this module currently only
-# checks each file's own embedded PE certificate table
-# (AuthenticodeFile.iter_signatures(signature_types="embedded"), the
-# default), so expect plenty of real, validly-signed Windows binaries to
-# come back "NotSigned" here rather than "Valid" - that is a known
-# difference in what's being checked, not a detection bug. signify supports
-# catalog verification via AuthenticodeFile.add_catalog(), but that requires
-# locating and loading the right .cat file(s) first, which has no BinSifter
-# config field yet (same category of gap as capa's FLIRT sigpaths TODO in
-# capa_scan.py) - flagged here rather than silently left to surprise
-# whoever first notices "but Explorer says this file is signed".
+# RESOLVED 2026-08-08: a large fraction of Windows' own inbox system
+# binaries (notepad.exe, calc.exe, etc.) are NOT embedded-signed at all -
+# they're validated against a system catalog file (.cat, under
+# C:\Windows\System32\CatRoot\) instead. Get-AuthenticodeSignature (Rowan)
+# already checks catalogs transparently via WinVerifyTrust with zero code
+# changes needed there, but this signify-based module was only checking
+# each file's embedded PE certificate table, so real, validly-signed
+# Windows binaries would come back "NotSigned" here instead of "Valid".
+#
+# Fixed via parse_catalogs()/check_signature()'s new `catalogs` parameter
+# above: engine.py's _pool_worker_init() parses every *.cat file under
+# config.CatalogDirectory once per worker (mirrors the YARA
+# compile-once-per-worker pattern already used there), and check_signature()
+# offers each to AuthenticodeFile.add_catalog(..., check=True) before
+# explain_verify() - iter_signatures()'s default signature_types="all"
+# already combines embedded + catalog signatures, so no other wiring was
+# needed. CatalogDirectory defaults to "" (opt-in, like GhidraDir) since
+# this sandbox has no Windows machine to source a genuine "known good" .cat
+# fixture from - GitHub's raw/API/codeload endpoints are all blocked by
+# this environment's network allowlist, and the pip-installed `signify`
+# package's own test fixtures aren't included in its PyPI sdist. Steve:
+# drop a real .cat (e.g. copied from your own machine's
+# C:\Windows\System32\CatRoot\{GUID}\) into the gitignored Catalogs/ folder
+# at the repo root and point Settings' new "Catalog Directory" field at it
+# (or anywhere else) to exercise this for real - tests so far only cover
+# the plumbing (parse_catalogs()/add_catalog() wiring) against synthetic
+# data, not a genuine catalog end-to-end.

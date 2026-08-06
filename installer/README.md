@@ -1,0 +1,85 @@
+# BinSifter installers
+
+Added 2026-08-08, per Steve's request for real, installable beta releases
+of both Rowan and Winnow. Read this before running either build script.
+
+## Honest caveat, stated plainly
+
+Everything in this folder was written and reasoned through in a Linux-only
+dev sandbox with **no Windows environment available to actually compile or
+run either build**. The PyInstaller spec and both Inno Setup scripts
+reflect real, specific knowledge of this dependency stack's known
+PyInstaller trouble spots (see `winnow.spec`'s comments - capa/vivisect's
+dynamic imports, signify's `mscerts` trust-store data files, speakeasy's
+own data files) rather than guesses, but a stack this size (PySide6 + capa
++ vivisect + speakeasy/unicorn + signify + numpy) essentially never
+freezes clean on the very first attempt for anyone, sandbox constraints or
+not. Expect to iterate - each failure should point at a specific missing
+hidden import or data file, which is a "same reasoning, one more package"
+fix, not a fresh investigation, per that spec file's comments.
+
+Neither `Winnow.iss` nor `Rowan.iss` has been compiled by `ISCC.exe`
+either - review them before running, especially the two `AppId` GUIDs
+(fine to keep as generated, just don't regenerate them on a future
+version - Inno Setup uses that GUID to recognize "this is an upgrade of
+the same app," not a new AppId every version).
+
+## What's here
+
+| File | Purpose |
+| --- | --- |
+| `winnow.spec` | PyInstaller spec - freezes Winnow (`binsifter/gui/__main__.py`) into a self-contained `--onedir` build. See its comments for why `--onedir` and not `--onefile`. |
+| `build_winnow.ps1` | Runs `pip install`, PyInstaller, then Inno Setup, in order. |
+| `Winnow.iss` | Inno Setup script - packages PyInstaller's output into `BinSifter-Winnow-Setup.exe`. |
+| `Rowan.iss` | Inno Setup script - packages `BinSifter-Rowan_v1.3.0-beta.1.ps1` + its image assets directly (no freeze step needed) into `BinSifter-Rowan-Setup.exe`. |
+| `build_rowan.ps1` | Runs Inno Setup against `Rowan.iss`. |
+
+## Prerequisites (on the Windows machine doing the actual build)
+
+- **Both installers:** [Inno Setup](https://jrsoftware.org/isdl.php) 6.x, installed so `ISCC.exe` is either on `PATH` or at its default install location (both build scripts check both).
+- **Winnow only:** Python 3.10+ (matching `pyproject.toml`'s `requires-python`), with `pip` able to reach PyPI to install BinSifter's own dependencies plus `pyinstaller`.
+- **Rowan needs nothing extra to build** - it's just the `.ps1` file and some PNG/ICO assets being copied and wrapped, no compilation step of its own.
+
+## Building
+
+```powershell
+# From the repo root:
+pwsh -File installer\build_winnow.ps1
+pwsh -File installer\build_rowan.ps1
+```
+
+Each produces its installer under `installer\Output\`. Neither script
+touches the other - build one, both, or neither independently.
+
+## What the installers do (both)
+
+- Standard Inno Setup wizard: license page (`LICENSE` - BinSifter is
+  source-available, not open source, so this is a real accept-to-continue
+  page like any commercial Windows installer), Start Menu shortcut, an
+  **unchecked-by-default "Create a desktop icon" checkbox** (per Steve's
+  "create desktop icons, or ask the user if they want one" - this is the
+  asking), and an uninstaller.
+- Installable without administrator rights (`PrivilegesRequired=lowest`
+  with the modern per-user/all-users override dialog) - matches
+  `Create-BinSifterShortcut.ps1`'s existing "does not need admin rights"
+  convention for Rowan, extended to both variants and to a real installer
+  rather than just a shortcut-creation script.
+- Deliberately does **not** delete `Reports/`, the settings cache, or any
+  other runtime/case data on uninstall - only BinSifter's own program
+  files are removed. Same "never silently destroy case data" caution this
+  project already applies elsewhere (e.g. `archive.py` copying, never
+  moving, locked archives).
+
+## What's different between them
+
+- **Winnow** bundles everything (Python interpreter, PySide6, capa,
+  vivisect, signify, speakeasy, numpy, etc.) into one self-contained
+  `--onedir` folder via PyInstaller first - nothing needs to be
+  separately installed on the target machine to run it, per Steve's
+  confirmed "bundle everything" choice.
+- **Rowan** does NOT bundle PowerShell 7 or 7-Zip (also per Steve's
+  confirmed choice) - `Rowan.iss`'s `[Code]` section checks for
+  `pwsh.exe`/`7z.exe` on `PATH` after install and shows a plain,
+  non-blocking message linking to the official installer for whichever is
+  missing, matching this project's existing "check and tell, don't
+  silently fail" convention for optional/external tools.
