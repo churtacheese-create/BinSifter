@@ -3,7 +3,7 @@ per scan, when core/archive.py's pass 1 (expand_archives(), called from
 engine.py's scan_directory()) finds one or more password-protected
 archives under SrcDir.
 
-Per Steve's confirmed design (2026-08-06/07, via AskUserQuestion): ALL
+Per the confirmed design (2026-08-06/07, via AskUserQuestion): ALL
 locked archives found are prompted for at once, in a single batch dialog,
 rather than interrupting the scan once per archive. See main_window.py's
 _ScanWorker.password_needed signal / MainWindow._on_password_needed() for
@@ -52,7 +52,7 @@ class ArchivePasswordDialog(QDialog):
         intro.setStyleSheet(f"color: {accent_to_css(theme.Fore)}; border: none; background: transparent;")
         root.addWidget(intro)
 
-        # 2026-08-08, requested by Steve after confirming the batch-prompt
+        # 2026-08-08, added after confirming the batch-prompt
         # flow works end-to-end: when a batch of archives (e.g. a Malware
         # Bazaar download) all share one password, typing it once here is
         # faster than filling in the same value per-row below. Deliberately

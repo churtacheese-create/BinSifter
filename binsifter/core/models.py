@@ -132,7 +132,7 @@ class FileRecord:
     # file was extracted from - the immediate CONTAINING archive if
     # archives are nested (e.g. a zip inside a zip), not necessarily the
     # top-level one under SrcDir, so provenance is never lost even a few
-    # levels deep. Per Steve's confirmed design (2026-08-06/07, see
+    # levels deep. Per the confirmed design (2026-08-06/07, see
     # core/archive.py's module docstring): extracted files show up in
     # Results as their own ordinary rows, distinguished from a
     # directly-scanned file only by this field, rather than being grouped/

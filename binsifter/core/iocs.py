@@ -18,8 +18,8 @@ regexes have quirks:
     This looks like it could be an oversight in the original, but silently
     "fixing" it here would make this port's output diverge from the
     PowerShell version's for the exact same input file, which is worse for
-    side-by-side verification than reproducing a known quirk. Flag it to
-    Steve before changing it.
+    side-by-side verification than reproducing a known quirk. Flag it
+    before changing it.
   - Similarly, the URL pattern only matches a lowercase "http"/"https"
     scheme literally (no case-insensitivity), so "HTTPS://..." strings
     aren't matched either. Same reasoning - ported as-is.

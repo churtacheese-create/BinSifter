@@ -78,7 +78,7 @@ dependencies = [
                            # reintroduce the "needs a compiler on the target machine" problem the
                            # ppdeep/pure-Python choices elsewhere in this file were made to avoid.
     "py7zr>=1.1",          # Added 2026-08-07 for core/archive.py's 7z support - one of the 4
-                           # archive formats confirmed with Steve (zip/tar/gzip are all Python
+                           # archive formats confirmed (zip/tar/gzip are all Python
                            # stdlib via zipfile/tarfile/gzip, no dependency needed for those 3;
                            # 7z has no stdlib equivalent at all). Prebuilt wheels exist for
                            # Windows/Linux/macOS, same "no compiler needed on the target machine"
@@ -102,7 +102,7 @@ dependencies = [
                            # against a synthetic AES-encrypted zip before applying the fix, not
                            # just assumed. Rowan needed no equivalent change - it shells out to
                            # 7z.exe for all archive formats, and 7-Zip has native AES-zip support
-                           # built in (confirmed by Steve's own earlier Rowan test against the same
+                           # built in (confirmed by an earlier Rowan test against the same
                            # kind of Malware Bazaar zips, which extracted successfully).
 ]
 

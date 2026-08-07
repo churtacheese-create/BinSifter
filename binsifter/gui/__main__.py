@@ -29,7 +29,7 @@ def _apply_message_box_stylesheet(app: QApplication, theme: ThemePalette) -> Non
     well-documented gap where the background gets darkened correctly while
     text-color roles (WindowText/Text) don't get correspondingly lightened,
     producing exactly the "text is there but unreadable, near-black on
-    near-black" symptom Steve hit on both the Ghidra confirmation dialog
+    near-black" symptom hit on both the Ghidra confirmation dialog
     (plain synchronous QMessageBox.information() call, no threading
     involved at all - rules out the QThread fix as a cause) and the
     Speakeasy confirmation dialog. This isn't something BinSifter's own

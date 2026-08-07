@@ -94,7 +94,7 @@ class DashboardStats:
             # then briefly a 2-way split (Not Signed / Not Verifiable) after
             # a real scan showed that predicate lumping three different
             # meanings (genuinely unsigned, unparseable format, real check
-            # failure) into one number. Reverted per Steve: rather than
+            # failure) into one number. Reverted: rather than
             # explaining what's wrong with the non-Valid files, just report
             # how many files ARE cleanly signed and verified - simpler to
             # read, and every SignatureStatus that isn't "Valid" (NotSigned,

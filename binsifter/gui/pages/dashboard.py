@@ -49,8 +49,8 @@ class DashboardPage(QWidget):
         self.tile_imphash = StatTile(theme, "Imphash Clusters", theme.Accent, "layers", compact=True)
         # 2026-08-06: went "Unsigned" (SignatureStatus != Valid, one tile) ->
         # "Not Signed" + "Not Verifiable" (two tiles, broke the 5-tile row
-        # alignment with the row below) -> back to one tile, per Steve:
-        # report the positive "Signed" count instead of explaining every way
+        # alignment with the row below) -> back to one tile: report the
+        # positive "Signed" count instead of explaining every way
         # a file can fail to be Valid. Simpler to read, and every status
         # that isn't "Valid" is implicitly "not signed or not verified"
         # without needing its own tile.

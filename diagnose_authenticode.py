@@ -28,7 +28,7 @@ entirely (permissions, a reparse point/symlink resolving oddly, a 0-byte
 file). This script answers that directly and cheaply, against the REAL
 files, rather than guessing further from source alone.
 
-Usage (run on Steve's own machine, against a real SrcDir or the specific
+Usage (run on a real Windows machine, against a real SrcDir or the specific
 files already identified from a triage CSV):
 
     python diagnose_authenticode.py <path_or_dir> [<path_or_dir> ...]

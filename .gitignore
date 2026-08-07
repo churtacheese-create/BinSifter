@@ -12,8 +12,8 @@ smoketest/samples/
 
 # Authenticode catalog (.cat) files for catalog-based signature verification
 # (see binsifter/core/authenticode.py) - real .cat files are pulled from a
-# specific machine's own CatRoot/case data, never project source. Steve:
-# this is the temporary project-directory location you asked for
+# specific machine's own CatRoot/case data, never project source. This is
+# the temporary project-directory location requested
 # (2026-08-08) - drop a real .cat here and point Settings' "Catalog
 # Directory" field at it for testing, then relocate/repoint whenever you
 # settle on a permanent location.

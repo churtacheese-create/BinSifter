@@ -1,4 +1,4 @@
-"""Windows Defender exclusion helper - added 2026-08-08 after Steve's real
+"""Windows Defender exclusion helper - added 2026-08-08 after a real
 scan against live Malware Bazaar samples showed Defender's real-time
 protection racing BinSifter's own worker pool: files extracted from a
 password-protected archive got quarantined/removed between extraction and
@@ -36,8 +36,8 @@ module's own comments for the specific gotchas addressed: Start-Process
 -Verb RunAs throwing rather than returning a bad exit code when UAC is
 declined, PowerShell's -EncodedCommand requiring UTF-16LE, and
 Add-MpPreference's own error behavior needing an explicit try/catch to turn
-into a reliable exit code). Steve should test this for real before relying
-on it.
+into a reliable exit code). This should be tested for real on a genuine
+Windows machine before being relied on.
 """
 
 from __future__ import annotations

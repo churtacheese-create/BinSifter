@@ -31,7 +31,7 @@ multiprocessing's "spawn" context is used explicitly (not the platform
 default, which is "fork" on Linux) so this behaves identically on Windows
 and Linux - "spawn" is the only start method Windows supports at all, and
 using it everywhere means the exact same code path gets exercised in this
-sandbox's test runs as on Steve's real Windows machine.
+sandbox's test runs as on a real Windows machine.
 """
 
 from __future__ import annotations

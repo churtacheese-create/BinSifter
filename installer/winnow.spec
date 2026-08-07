@@ -1,5 +1,5 @@
 # PyInstaller spec for Winnow (BinSifter's Python/PySide6 variant) - added
-# 2026-08-08 per Steve's request for a real, installable beta release.
+# 2026-08-08 per a direct request for a real, installable beta release.
 #
 # HONEST CAVEAT, stated plainly rather than glossed over: this spec was
 # written and reasoned through in a Linux-only dev sandbox with no Windows
@@ -79,14 +79,14 @@ capa_hidden = collect_submodules("capa")
 # capa-rules are NOT bundled here on purpose - matches BinSifter's existing
 # design (both Rowan and Winnow expect the analyst to point Settings'
 # "Path to capa rules" field at a separately-downloaded capa-rules
-# checkout/release, same as Steve's own F:\Tools\capa-rules-9.4.0 - see
+# checkout/release, e.g. F:\Tools\capa-rules-9.4.0 - see
 # TODO.md/README.md). Bundling a specific capa-rules version inside the
 # installer would silently pin analysts to whatever ruleset existed at
 # build time instead of letting them update independently.
 
 a = Analysis(
-    [str(repo_root.parent / "binsifter" / "gui" / "__main__.py")],
-    pathex=[str(repo_root.parent)],
+    [str(repo_root / "binsifter" / "gui" / "__main__.py")],
+    pathex=[str(repo_root)],
     binaries=[*mscerts_binaries, *speakeasy_binaries],
     datas=[*own_datas, *mscerts_datas, *speakeasy_datas],
     hiddenimports=[

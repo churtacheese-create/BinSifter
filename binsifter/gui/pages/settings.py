@@ -120,7 +120,7 @@ class SettingsPage(QWidget):
         self.status_label = QLabel("")
         root.addWidget(self.status_label)
 
-        # 2026-08-08, requested by Steve after a real scan against live
+        # 2026-08-08, added after a real scan against live
         # Malware Bazaar samples: Windows Defender's real-time protection
         # raced BinSifter's own worker pool, quarantining extracted
         # samples between extraction and BinSifter opening them (OSError
@@ -226,8 +226,8 @@ class SettingsPage(QWidget):
 
         # Make sure the folder actually exists before excluding it - Add-
         # MpPreference accepts a path to a not-yet-existing folder fine,
-        # but a real folder here means Steve can immediately verify the
-        # exclusion in Windows Security's own UI without wondering whether
+        # but a real folder here means the exclusion can immediately be
+        # verified in Windows Security's own UI without wondering whether
         # BinSifter will create it with a different path later.
         try:
             Path(target).mkdir(parents=True, exist_ok=True)

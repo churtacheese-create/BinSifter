@@ -124,8 +124,8 @@ _COLUMNS = (
     # 2026-08-07: blank for a file found directly under SrcDir; the
     # containing archive's path for a file extracted from one - see
     # models.py's FileRecord.SourceArchive / core/archive.py's module
-    # docstring for the "own rows + source-archive column" design Steve
-    # confirmed.
+    # docstring for the "own rows + source-archive column" design that
+    # was confirmed.
     ("SourceArchive", "Source Archive", 260),
 )
 _DISPOSITION_COL = len(_COLUMNS)
@@ -363,7 +363,7 @@ class ResultsPage(QWidget):
         # AllowUserToResizeColumns behavior - File Path used to be locked to
         # Stretch mode, which silently blocked manual resizing on exactly the
         # column analysts most need to widen (a real usability regression
-        # from the original, reported directly by Steve after trying the
+        # from the original, reported directly after trying the
         # live app). QHeaderView::section's border-right above also gives a
         # visible seam to grab, since the borderless header style otherwise
         # left the resize handles undiscoverable even on the columns that
@@ -578,7 +578,7 @@ class ResultsPage(QWidget):
             # 2026-08-06: was truly silent on success - Rowan's original is
             # identical (Start-Process with no follow-up on the happy path,
             # only MessageBoxes on the error paths above), so this wasn't a
-            # regression from the port, but Steve reported it directly:
+            # regression from the port, but it was reported directly:
             # right-clicking and choosing this looked like nothing happened
             # at all, with no window, message, or hint of where to look.
             # Headless analysis genuinely can run for minutes with no
@@ -632,8 +632,8 @@ class ResultsPage(QWidget):
         `type=Qt.ConnectionType.QueuedConnection` explicitly to those same
         lambda .connect() calls.
 
-        2026-08-06, round 2: that first fix did NOT hold - Steve hit the
-        identical crash again running Sigcheck (which shares this exact
+        2026-08-06, round 2: that first fix did NOT hold - the same
+        identical crash hit again running Sigcheck (which shares this exact
         method), plus new `QBasicTimer::stop` spam on top. Root cause of
         the first fix's failure: an explicit connection-type override still
         needs Qt to resolve a *receiver* to determine which thread's event

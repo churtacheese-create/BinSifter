@@ -70,7 +70,7 @@ launch action did - it never had a raw-shellcode/-r mode either. Shellcode
 emulation (se.load_shellcode + run_shellcode, architecture-forced via
 -a x86/amd64) is a real speakeasy capability but was not exercised here
 since there's no real shellcode sample on hand to verify it against - flag
-to Steve before adding it rather than shipping an unverified code path.
+before adding it rather than shipping an unverified code path.
 """
 
 from __future__ import annotations

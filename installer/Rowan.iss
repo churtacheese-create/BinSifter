@@ -5,7 +5,7 @@
 ;
 ; Unlike Winnow, there's no freeze/PyInstaller step first - Rowan is a
 ; single .ps1 file plus a handful of image assets, run directly by pwsh.exe.
-; Per Steve's confirmed choice (2026-08-08): this installer does NOT bundle
+; Per the confirmed choice (2026-08-08): this installer does NOT bundle
 ; PowerShell 7 or 7-Zip themselves - it checks for pwsh.exe/7z.exe and
 ; links to their official installers if either is missing, same
 ; "check-and-link, don't silently fail" pattern the rest of this codebase
@@ -48,8 +48,8 @@ ArchitecturesInstallIn64BitMode=x64compatible
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-; Unchecked by default, exactly per Steve's "create desktop icons (or ask
-; the user if they want one)" - same as Winnow.iss.
+; Unchecked by default, exactly per the "create desktop icons (or ask
+; the user if they want one)" requirement - same as Winnow.iss.
 Name: "desktopicon"; Description: "Create a &desktop icon"; GroupDescription: "Additional icons:"; Flags: unchecked
 
 [Files]
@@ -66,9 +66,9 @@ Source: "..\BinSifter-Desktop.ico"; DestDir: "{app}"; Flags: ignoreversion
 ; ShellExecute performs a PATH search at LAUNCH time for a bare exe name,
 ; so this keeps working even if PowerShell 7 gets installed AFTER
 ; BinSifter (unlike resolving a fixed path once at install time, which
-; Create-BinSifterShortcut.ps1's older approach does for the same reason
-; Steve may already be used to - this installer's version is a small
-; improvement on that, not a behavior regression).
+; Create-BinSifterShortcut.ps1's older approach does for the same reason -
+; this installer's version is a small improvement on that, not a
+; behavior regression).
 Name: "{group}\BinSifter Rowan"; Filename: "pwsh.exe"; Parameters: "-NoLogo -ExecutionPolicy Bypass -File ""{app}\{#MyScriptName}"""; WorkingDir: "{app}"; IconFilename: "{app}\BinSifter-WindowIcon.ico"
 Name: "{group}\Uninstall BinSifter Rowan"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\BinSifter Rowan"; Filename: "pwsh.exe"; Parameters: "-NoLogo -ExecutionPolicy Bypass -File ""{app}\{#MyScriptName}"""; WorkingDir: "{app}"; IconFilename: "{app}\BinSifter-WindowIcon.ico"; Tasks: desktopicon

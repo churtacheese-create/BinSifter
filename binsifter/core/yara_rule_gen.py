@@ -30,7 +30,7 @@ Ported as-is rather than "improved" to e.g. min(3, len(strings)) of them,
 since these are explicitly unreviewed drafts (the header comment already
 says so) and silently changing detection logic here would defeat the
 "draft to be reviewed by a human" premise as much as leaving the bug in.
-Flag to Steve before changing.
+Flag before changing.
 """
 
 from __future__ import annotations

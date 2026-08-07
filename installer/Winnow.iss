@@ -53,8 +53,8 @@ ArchitecturesInstallIn64BitMode=x64compatible
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-; Unchecked by default, exactly per Steve's "create desktop icons (or ask
-; the user if they want one)" - this IS the asking: a normal wizard
+; Unchecked by default, exactly per the "create desktop icons (or ask
+; the user if they want one)" requirement - this IS the asking: a normal wizard
 ; checkbox page, off by default, on if the analyst opts in.
 Name: "desktopicon"; Description: "Create a &desktop icon"; GroupDescription: "Additional icons:"; Flags: unchecked
 

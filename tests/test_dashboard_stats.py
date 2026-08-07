@@ -53,7 +53,7 @@ def test_capa_scans_and_nsrl_matches_count_booleans():
 def test_signed_only_counts_valid_status():
     # 2026-08-06: went "Unsigned" (one tile) -> "Not Signed"/"Not
     # Verifiable" (two tiles) -> back to one tile reporting the positive
-    # "Signed" count instead, per Steve. Every other status (empty,
+    # "Signed" count instead. Every other status (empty,
     # NotSigned, NotTrusted, HashMismatch, NotSupportedFileFormat,
     # UnknownError) is implicitly "not signed or not verified" and doesn't
     # get counted here.

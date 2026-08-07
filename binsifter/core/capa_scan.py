@@ -29,8 +29,8 @@ flare-capa via pip does not (see capa's own install docs). This can
 increase false-attribution of statically-linked library code as
 "developer-authored" capability matches. No BinSifter Settings field
 exists for a sigs directory yet - flagged here rather than silently
-accepted or unilaterally adding a new Settings field (Steve was
-deliberate about keeping the Settings page to 6 fields).
+accepted or unilaterally adding a new Settings field (the Settings page
+was deliberately kept to 6 fields).
 """
 
 from __future__ import annotations

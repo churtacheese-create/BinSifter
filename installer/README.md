@@ -1,6 +1,6 @@
 # BinSifter installers
 
-Added 2026-08-08, per Steve's request for real, installable beta releases
+Added 2026-08-08, per a direct request for real, installable beta releases
 of both Rowan and Winnow. Read this before running either build script.
 
 ## Honest caveat, stated plainly
@@ -37,15 +37,16 @@ the same app," not a new AppId every version).
 
 ## Publishing a real GitHub Release (recommended path)
 
-Added 2026-08-08. Steve, since I have neither a Windows environment nor
-push/release credentials in this sandbox, I can't compile these installers
-or publish a release myself - but I wrote a GitHub Actions workflow
-(`.github/workflows/release-installers.yml`) that does both, using GitHub's
-own infrastructure. You'll need to push it once; after that it's
+Added 2026-08-08. Neither a Windows environment nor push/release
+credentials are available in the dev sandbox this project is built from,
+so installers can't be compiled or a release published from there
+directly - a GitHub Actions workflow
+(`.github/workflows/release-installers.yml`) handles both instead, using
+GitHub's own infrastructure. It needs to be pushed once; after that it's
 self-serve for every future release.
 
 **One-time setup:** commit and push everything (the workflow file, the
-`installer/` folder, and any other pending changes) from your machine:
+`installer/` folder, and any other pending changes):
 
 ```
 git add -A
@@ -99,9 +100,9 @@ touches the other - build one, both, or neither independently.
 - Standard Inno Setup wizard: license page (`LICENSE` - BinSifter is
   source-available, not open source, so this is a real accept-to-continue
   page like any commercial Windows installer), Start Menu shortcut, an
-  **unchecked-by-default "Create a desktop icon" checkbox** (per Steve's
-  "create desktop icons, or ask the user if they want one" - this is the
-  asking), and an uninstaller.
+  **unchecked-by-default "Create a desktop icon" checkbox** (per the
+  "create desktop icons, or ask the user if they want one" requirement -
+  this is the asking), and an uninstaller.
 - Installable without administrator rights (`PrivilegesRequired=lowest`
   with the modern per-user/all-users override dialog) - matches
   `Create-BinSifterShortcut.ps1`'s existing "does not need admin rights"
@@ -118,9 +119,9 @@ touches the other - build one, both, or neither independently.
 - **Winnow** bundles everything (Python interpreter, PySide6, capa,
   vivisect, signify, speakeasy, numpy, etc.) into one self-contained
   `--onedir` folder via PyInstaller first - nothing needs to be
-  separately installed on the target machine to run it, per Steve's
+  separately installed on the target machine to run it, per the
   confirmed "bundle everything" choice.
-- **Rowan** does NOT bundle PowerShell 7 or 7-Zip (also per Steve's
+- **Rowan** does NOT bundle PowerShell 7 or 7-Zip (also per the
   confirmed choice) - `Rowan.iss`'s `[Code]` section checks for
   `pwsh.exe`/`7z.exe` on `PATH` after install and shows a plain,
   non-blocking message linking to the official installer for whichever is

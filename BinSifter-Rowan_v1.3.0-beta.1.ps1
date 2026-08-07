@@ -1774,7 +1774,7 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
         # password-protected archives under SrcDir. Direct port of Winnow's
         # ArchivePasswordDialog: ALL locked archives are prompted for at once, in
         # a single dialog, rather than interrupting the scan once per archive -
-        # Steve's confirmed design (2026-08-06/07, via AskUserQuestion). Called
+        # the confirmed design (2026-08-06/07, via AskUserQuestion). Called
         # from $refreshTimer.Add_Tick on the UI thread (see below), not directly
         # from the dispatcher's background runspace - WinForms modal dialogs have
         # to run on the thread that owns the message pump, same reason
@@ -1820,7 +1820,7 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             $introLabel.ForeColor = $theme.Fore
             $dialog.Controls.Add($introLabel)
 
-            # 2026-08-08, requested by Steve after confirming the batch-
+            # 2026-08-08, added after confirming the batch-
             # prompt flow works end-to-end: when a batch of archives (e.g.
             # a Malware Bazaar download) all share one password, typing it
             # once here beats filling in the same value per-row below.
@@ -2926,7 +2926,7 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
 
                 # ================= Archive/compressed-file support (2026-08-07) =================
                 # Port of Winnow's core/archive.py - same design (see that module's
-                # docstring for the full rationale, including the 3 decisions Steve
+                # docstring for the full rationale, including the 3 decisions
                 # confirmed directly: format scope, the two-pass password-prompt
                 # architecture, and "extracted files show up in Results as their own
                 # rows"), same two-pass shape (Expand-Archives finds/extracts what it
@@ -4866,7 +4866,7 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                 # containing archive's path for a file extracted from one - see
                 # FileRecord.SourceArchive / Start-ScanEngine's "Archive
                 # expansion" section for the "own rows + source-archive column"
-                # design Steve confirmed (matches Winnow's results.py column).
+                # design that was confirmed (matches Winnow's results.py column).
                 @{ Name = 'SourceArchive'; Header = 'Source Archive'; Width = 260 }
             )
             foreach ($colDef in $resultColumns) {
@@ -5044,7 +5044,7 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                     # 2026-08-06: was silent on success - only the error paths
                     # above ever showed a MessageBox, so a successful click
                     # looked identical to nothing happening at all. Reported
-                    # directly by Steve, fixed identically on the Winnow side
+                    # directly, fixed identically on the Winnow side
                     # (results.py's _launch_ghidra). Headless analysis still
                     # runs unattended with no further feedback by design - this
                     # is a one-time "yes, it started" acknowledgment, not a
@@ -5301,7 +5301,7 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             $layout.Controls.Add($lblStatus, 1, $rowIndex)
             $rowIndex++
 
-            # 2026-08-08, requested by Steve after a real scan against live
+            # 2026-08-08, added after a real scan against live
             # Malware Bazaar samples: Defender's real-time protection raced
             # BinSifter's own scan for extracted archive contents. See
             # Add-DefenderExclusionPath's comment block and defender.py
@@ -5977,8 +5977,8 @@ For repeatable case work, preserve the report directory (Reports\ next to BinSif
 
             # Make sure the folder actually exists before excluding it - same
             # reasoning as Winnow's settings.py: Add-MpPreference accepts a
-            # not-yet-existing path fine, but a real folder here means Steve
-            # can immediately verify the exclusion in Windows Security's own
+            # not-yet-existing path fine, but a real folder here means the
+            # exclusion can immediately be verified in Windows Security's own
             # UI without wondering whether BinSifter will create it with a
             # different path later.
             try { $null = New-Item -Path $targetPath -ItemType Directory -Force -ErrorAction Stop } catch { }

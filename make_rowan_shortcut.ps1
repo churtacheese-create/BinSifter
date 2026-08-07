@@ -1,6 +1,6 @@
 # Creates a desktop shortcut for Rowan, the PowerShell variant, separate
 # from the Python variant's (Winnow) existing shortcut - named "BinSifter_Power" per
-# Steve's request, so both apps can be launched independently while both
+# a direct request, so both apps can be launched independently while both
 # are being kept working.
 #
 # WorkingDirectory is set explicitly to the script's own folder - this

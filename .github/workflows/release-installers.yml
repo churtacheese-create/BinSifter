@@ -1,6 +1,6 @@
 name: Build and release installers
 
-# Added 2026-08-08, per Steve's request for real GitHub Releases carrying
+# Added 2026-08-08, per a direct request for real GitHub Releases carrying
 # full installers for both variants - see installer/README.md for what
 # each installer actually does, and this file's own comments for why CI
 # (not a local build) is the right place to run PyInstaller/Inno Setup.

@@ -6,7 +6,7 @@ blocklist, YARA, imphash, ssdeep clustering, capa, FLOSS, Authenticode, IOC
 extraction, MITRE ATT&CK enrichment, draft YARA rule generation, CSV report
 writing) - each swapped in as its own module was finished, a hard gate per
 step rather than a rewrite-then-test-everything-at-the-end approach, per
-Steve's stated priority on accuracy over speed of delivery.
+the stated priority on accuracy over speed of delivery.
 
 scan_directory() runs files through a bounded multiprocessing.Pool (see
 MAX_SCAN_WORKERS below) instead of one at a time - added 2026-08-03 after a

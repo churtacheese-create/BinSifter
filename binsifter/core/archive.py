@@ -1,11 +1,11 @@
 """Archive/compressed-file support - decompress and expand the contents of
 zip/tar/gzip/7z archives found under the scan source directory, so their
 contents get scanned as ordinary files rather than the archive being
-scanned only as an opaque single blob. Added 2026-08-07 per Steve's
+scanned only as an opaque single blob. Added 2026-08-07 per a
 2026-08-06 request (see TODO.md's "Planned - next session" entry for the
 original ask and open design questions).
 
-Three design decisions Steve confirmed directly (AskUserQuestion,
+Three design decisions confirmed directly (AskUserQuestion,
 2026-08-06/07) that this module and its call site in engine.py's
 scan_directory() are built around:
 
@@ -47,8 +47,8 @@ _process_one_file()/_pool_worker_init() in engine.py need zero changes to
 scan them.
 
 Nested archives (a zip inside a zip) are expanded recursively, bounded by
-MAX_NESTED_DEPTH - a sensible, documented DEFAULT rather than a
-Steve-confirmed decision (this specific sub-question wasn't one of the 3
+MAX_NESTED_DEPTH - a sensible, documented DEFAULT rather than an
+explicitly-confirmed decision (this specific sub-question wasn't one of the 3
 put to AskUserQuestion; format scope / password-prompt architecture /
 Results display were judged the load-bearing ones worth blocking on).
 Nested archives newly discovered while resolving an already-password-
@@ -397,7 +397,7 @@ def resolve_locked_archives(
     _extract_zip()'s docstring), the archive itself is COPIED (never
     moved - never mutate the analyst's original evidence under SrcDir) into
     unresolved_dest_dir for the analyst to run through John/hashcat/etc.
-    outside BinSifter, per Steve's original request.
+    outside BinSifter, per the original request.
 
     Successfully-unlocked archives are expanded recursively the same way
     pass 1 does; a nested locked archive discovered here is saved straight

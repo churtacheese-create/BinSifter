@@ -6,7 +6,7 @@ hash reputation").
 
 Uses the `signify` library (pure Python, cross-platform PE/PKCS#7
 Authenticode verification) instead of a Windows-only call to
-Get-AuthenticodeSignature/WinVerifyTrust, since Steve wants the Python
+Get-AuthenticodeSignature/WinVerifyTrust, since the goal is for the Python
 rewrite to eventually support Linux too. This means BinSifter now does its
 own trust-chain validation rather than deferring to the Windows certificate
 store - see the caveats below on why SignatureStatus values won't map 1:1
@@ -268,10 +268,10 @@ def _resolve_signer_name(signed_file, path: str) -> str:
 # this sandbox has no Windows machine to source a genuine "known good" .cat
 # fixture from - GitHub's raw/API/codeload endpoints are all blocked by
 # this environment's network allowlist, and the pip-installed `signify`
-# package's own test fixtures aren't included in its PyPI sdist. Steve:
-# drop a real .cat (e.g. copied from your own machine's
-# C:\Windows\System32\CatRoot\{GUID}\) into the gitignored Catalogs/ folder
-# at the repo root and point Settings' new "Catalog Directory" field at it
-# (or anywhere else) to exercise this for real - tests so far only cover
+# package's own test fixtures aren't included in its PyPI sdist. To
+# exercise this for real: drop a real .cat (e.g. copied from a real
+# machine's C:\Windows\System32\CatRoot\{GUID}\) into the gitignored
+# Catalogs/ folder at the repo root and point Settings' new "Catalog
+# Directory" field at it (or anywhere else) - tests so far only cover
 # the plumbing (parse_catalogs()/add_catalog() wiring) against synthetic
 # data, not a genuine catalog end-to-end.
