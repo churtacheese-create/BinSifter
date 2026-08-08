@@ -1,0 +1,3463 @@
+Checking 576 file(s)...
+
+  F:\Binaries2Scan\Binaries2Scan\1CEnterprise 8.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\1CEnterprise 8_xp.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\7xd158ww.exe
+    First 16 bytes: 4d 5a 50 00 02 00 00 00 04 00 0f 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\7yd128ww.exe
+    First 16 bytes: 4d 5a 50 00 02 00 00 00 04 00 0f 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\_ISDEL.EXE
+    First 16 bytes: 4d 5a 36 01 01 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\_SETUP.DLL
+    First 16 bytes: 4d 5a 53 01 01 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\A3DUtility.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\AccessibleMarshal.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ACCMGR.DLL
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ACE.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\acmfccoi_21617.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\acrobat60.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\AcroBroker.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\Acrofx32.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\AcroRd32.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\AcroRd32.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\AcroRd32Info.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\AcroRdIF.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\AcroRead.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\AcroTextExtractor.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\ACT20.EXE
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\Adobe DNG Converter.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\Adobe Stock Photos CS3.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\adobe_caps.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\adobe_epic.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\adobe_eula.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\adobe_personalization.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\adobe_registration.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\AdobeCollabSync.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\AdobeLinguistic.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\adobelm.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\AdobeLM_libFNP.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\AdobeOLS.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\AdobeOwl.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\AdobePDFL.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\AdobePSL.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\AdobeUpdater.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\AdobeXMP.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\AdobeXMPFiles.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\AdobeXMPScript.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\AgentSaver.exe
+    First 16 bytes: 4d 5a 50 00 02 00 00 00 04 00 0f 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\agldt28l.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\AGM.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ahclient.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ahsearch.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ahv.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\AiodLite.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\AllotCansColor.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\amck1cchon.exe
+    First 16 bytes: 4d 5a 50 00 02 00 00 00 04 00 0f 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\apdboot.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\apdhook.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\APDPreferences.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ARE.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\asneu.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ASPUtils.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\ATICatalystInstallManager.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ATIDEMGX.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\atiicdxx.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ATILog.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ATIManifestDLMExt.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ATISetup.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\atl.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\authplay.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\AUTORUN.DLL
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\AUTORUN.EXE
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\AutoUpdate.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\AviPlay.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\awegoset.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\AXE8SharedExpat.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\AXEDOMCore.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\AXSLE.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\BakInstallFiles.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\BarChart.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\baseDBalm.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\bass.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\BEER.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\BIB.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\BIBUtils.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Branding.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Bridge.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\bridgeproxy.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\browsercomps.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\CalibratorWork.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-core-implementation.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-core-preinstall.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-core-static.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-graphics-full-existing.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-graphics-full-new.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-graphics-Light.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-graphics-previews-vista.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-help-chs.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-help-cht.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-help-cs.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-help-da.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-help-de.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-help-el.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-help-en-US.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-help-es.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-help-fi.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-help-fr.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-help-hu.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-help-it.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-help-ja.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-help-ko.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-help-nl.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-help-no.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-help-pl.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-help-pt-BR.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-help-ru.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-help-sv.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-help-th.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-help-tr.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-local-cs.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-local-da.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-local-de.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-local-el.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-local-es.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-local-fi.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-local-fr.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-local-hu.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-local-it.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-local-ja.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-local-ko.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-local-nl.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-local-no.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-local-pl.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-local-pt-BR.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-local-ru.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-local-sv.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-local-th.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-local-tr.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-local-zh-chs.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-local-zh-cht.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-mom-installproxy.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-skins.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-utility.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccc-utility64.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ccme_base.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\CDDBControlWinamp.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\CDDBUIWinamp.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\CDLog.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\CDMGR.DLL
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\CH_62917.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\CH_72621.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\chipset.MSI
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ci#dpl-e.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\ci#dpl-u.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\ci#epl-e.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\ci#epl-u.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\ci#zpl-e.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\ci#zpl-u.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\CL_62917.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\CL_72621.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\CmaXport.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\CMNRES.DLL
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ColorExpert.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\CompressionDLMExt.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ContentSrvLib.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\ControlCenterActions.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\CoolType.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\CoreTypes.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\CRCVerDLMExt.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\cryptocme2.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\dbghelp.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\DBRepair Tool.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ddeng3.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\DEFHELP.DLL
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\DELTEMP.EXE
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\DEPMGR.DLL
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\DetectionManager.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\DevExpress.Data.v19.2.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\DevExpress.EasyTest.v17.2.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\DevExpress.EasyTest.v19.2.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\DevExpress.ExpressApp.EasyTest.WinAdapter.v17.2.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\DevExpress.ExpressApp.EasyTest.WinAdapter.v19.2.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\DevExpress.ExpressApp.ModelEditor.v19.2.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\DevExpress.ExpressApp.v17.2.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\DevExpress.ExpressApp.v19.2.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\DevExpress.ExpressApp.Win.v17.2.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\DevExpress.ExpressApp.Win.v19.2.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\DeviceCentral.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\DFCHGFLD.DLL
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\DFDEPUI.DLL
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\DFFACT.DLL
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\difxapi.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\DISKMGR.DLL
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\DLMCom.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\DOTNETFX.EXE
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\DownloadManager.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\DriverWizard.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\Droplet Template.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\DWEMLaunch.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\EasyLock.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\eCom.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\EncryptionDLMExt.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ENFlex.exe
+    First 16 bytes: 4d 5a 50 00 02 00 00 00 04 00 0f 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Eula.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\ExtendScript Toolkit 2.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\ExtendScript.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Extension Manager.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\FASTWIZ.EXE
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\FileInfo.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\FirebirdSql.Data.FirebirdClient.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Firefox Setup 2.0.0.1.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\Firefox Setup 3.0.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\firefox.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\FireWire.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\flash.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\flash_Pix8888_32.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\flashlite.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\flashlite21.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\flashlite21_Pix8888_32.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\flashlite_Pix8888_32.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\flashproxy-client.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\flashproxy-reg-appspot.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\flashproxy-reg-email.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\flashproxy-reg-http.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\flashproxy-reg-url.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\flashsnddec.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\FNP_Act_Installer.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\FnpCommsSoap.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\freebl3.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\fsaver3_free.exe
+    First 16 bytes: 4d 5a 50 00 02 00 00 00 04 00 0f 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\fteproxy.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\GBUNICNV.EXE
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\gdiplus.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\GENCOMP.DLL
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\General_Player_V1.7.0.0.T.20150929 (2).exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\gkmedias.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\History Statistics.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\HPCFNT02.DLL
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\HPCRD02.DLL
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\HPCSTR02.DLL
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\HPCUI02.DLL
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\HPOEMUI.DLL
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\HPPRN02.DLL
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\HTMLLITE.DLL
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\IASNT4.EXE
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\ICA32.EXE
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\ICONLIB.DLL
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\ICSharpCode.SharpZipLib.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\icucnv36.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\icudt36.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\in_cdda.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\in_midi.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\in_mod.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\in_mp3.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\in_wave.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\in_wm.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ingestionfileinfo.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\install_flash_player.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\InstallManager.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\InstallManagerApp.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Instruktsiya_pejo_4007.exe
+    First 16 bytes: 3c 62 72 20 2f 3e 0a 3c 62 3e 57 61 72 6e 69 6e
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\Interop.Excel.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\josdsk.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\joshw.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\jospath.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\josusr.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\JP2KLib.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\jre-6u17-windows-i586-s.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\K-Lite_Codec_Pack_1570_Mega.exe
+    First 16 bytes: 4d 5a 50 00 02 00 00 00 04 00 0f 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\KAICALC.EXE
+    First 16 bytes: 4d 5a 42 00 02 00 00 00 20 00 00 00 ff ff 05 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\kav14.0.0.4651ru-ru.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\KeePassX.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\kmp.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ksos17.0.0.611ru-ru_full.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\Langmngr.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\LANGPACK.EXE
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\LanguageMgr.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\LAsetup.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\LeaderTask.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\libagli18n28.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\libagluc28.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\libcurl.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\libeay32.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\libEGL.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\libevent-2-0-5.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\libevent_core-2-0-5.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\libevent_extra-2-0-5.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\libgcc_s_dw2-1.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\libgcc_s_sjlj-1.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\libgcrypt-20.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\libGLESv2.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\libgmp-10.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\libgpg-error-0.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\libjpeg-8.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\libmmd.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\libmysqld.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\libpng16-16.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\libssp-0.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\libstdc++-6.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\libwinpthread-1.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\LOADSTATE.EXE
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\LOG.DLL
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\logsession.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\LogTransport2.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\LogTransport2.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\lt_oul.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\M7_EmuHw.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\M7_EmuSmw7.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Magic Towers.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\meek-client-torbrowser.exe
+    First 16 bytes: 4d 5a 90 00 03 00 04 00 00 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\meek-client.exe
+    First 16 bytes: 4d 5a 90 00 03 00 04 00 00 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\MFC71U.DLL
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\mfc80u.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Microsoft.SqlServer.BatchParser.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\MIGISM.DLL
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\MIGISM_A.DLL
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\MixerManager.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\MMPI.EXE
+    First 16 bytes: 4d 5a a0 01 27 01 11 10 06 04 ee 05 ee a5 c2 22
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\MMTableRev0.MSI
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\MMTableRev1.MSI
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\MMTableRev2.MSI
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\mozalloc.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\mozglue.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\mozjs.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\mozsqlite3.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\MPS.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\MSRDPCLI.EXE
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\msvcm80.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\MSVCP70.DLL
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\msvcp71.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\msvcp80.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\msvcr100.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\MSVCR70.DLL
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\msvcr71.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\msvcr80.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Msvcrt.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\NDPSP.EXE
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\NetIO.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\NetIOFTP.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\NetIOSFTP.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\npdsplay.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\nppdf32.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\NPSWF32.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\npwmsdrm.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\nspr4.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\nss3.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\nssckbi.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\nssdbm3.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\nssutil3.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\obfs4proxy.exe
+    First 16 bytes: 4d 5a 90 00 03 00 04 00 00 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\obfsproxy.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ols.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Onix32.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\opera.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Opera_950_in_Setup.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\OperaMgr.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\OUniAnsi.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\out_disk.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\out_ds.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\out_wave.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\out_wm.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\PackageManager.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Pak_for_QIP_v.1.1.exe
+    First 16 bytes: 4d 5a 50 00 02 00 00 00 04 00 0f 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\PBAINST.EXE
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\PC-Banking.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\PCL5ERES.DLL
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\PDFPrevHndlr.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\PDFPrevHndlrShim.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\pdfsettings.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\pe.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Photodownloader.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\Photoshop.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Photoshop.exe
+    First 16 bytes: 4d 5a 90 00 03 00 10 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\PieChart.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\plc4.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\plds4.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\PlugDef.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\plugin-container.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\plugin-hang-ui.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Plugin.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\PokerStarsInstall.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\PSArt.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\psmatlab.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\pspluginsupport.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\PSViews.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\python27.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\qgif4.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\qico4.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\qip8060.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\qjpeg4.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\qtaccessiblewidgets4.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\QtCore4.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\QtGui4.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\QuickTimeGlue.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\QuickTimeInstaller.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\read_file.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\reader_sl.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\REBOOTST.EXE
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\Replace.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\ResInstallFiles.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Resources-cs_CZ.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Resources-de_DE.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Resources-en_US.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Resources-es_ES.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Resources-fr_FR.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Resources-it_IT.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Resources-ja_JP.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Resources-ko_KR.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Resources-nl_NL.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Resources-pl_PL.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Resources-ru_RU.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Resources-sv_SE.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Resources-tr_TR.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Resources-zh_CN.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Resources-zh_TW.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Resources.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ROCKWOOL_PipeSections.exe
+    First 16 bytes: 4d 5a 50 00 02 00 00 00 04 00 0f 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ROCKWOOL_TechMat.exe
+    First 16 bytes: 4d 5a 50 00 02 00 00 00 04 00 0f 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\rt3d.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\S3_REFRE.DLL
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\S3DTKW.DLL
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\S3GAMMA.DLL
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\S3HAL95.DLL
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\S3LC2X.DLL
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\S3UNINST.EXE
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.ClassZip.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.DataConvert.Language.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Dispense.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Drivers.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.ExcelToDS.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.ImportFormula.AbstractFactory.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.ImportFormula.FirebirdFactory.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.ImportFormula.SqlFactory.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Language.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Scale.Drivers.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Services.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.SysFrm.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.SysJob.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Systems.AmountConvert.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Systems.Conn.dll
+    First 16 bytes: 2f 30 32 7a 39 6d 4d 55 50 48 45 3d 56 36 69 66
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Systems.Controls.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Systems.ConvertToCPSXML.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Systems.ConvertToFM1.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Systems.ConvertToFM2.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Systems.ConvertToNippon.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Systems.ConvertToSanTintCSV.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Systems.ConvertToSanTintXML.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Systems.DataBaseUpdate.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Systems.FormulaDataConvert.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Systems.Function.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Systems.Import.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Systems.Initialize.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Systems.LabelLibrary.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Systems.Log.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Systems.PropertyCustom.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Systems.PublicManager.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Systems.Tab.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Systems.UDisk.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Systems.UnitConvert.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Systems.Update.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Systems.Uploader.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Systems.UserAccess.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Systems.UserBusiness.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Systems.UserData.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Systems.UserManager.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.TaskScheduler.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Tint.Access.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Tint.Business.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Tint.Can.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Tint.Data.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Tint.Manager.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Tool.DispensedFileUploader.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Tool.DispensedFormulaUploader.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Tool.FormulaUpdate.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Tool.LabelPrinter.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Tool.UserManage.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SanTint.Version.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Saver.exe
+    First 16 bytes: 4d 5a 50 00 02 00 00 00 04 00 0f 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SCANSTATE.EXE
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\SCANSTATE_A.EXE
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\ScCore.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SciLexer.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SCL.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SCRIPT.DLL
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\SCRIPT_A.DLL
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\SETLOG.DLL
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\setup.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SETUPDB.DLL
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\setuprus.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\SHFOLDER.DLL
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\Shtrl4.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SITSETUP.DLL
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\smime3.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SoapSSLSupport.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\softokn3.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\sound.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\spellcheck.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SPSUI.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\SPWIZENG.DLL
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SPWSAdapter.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\sqlite.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ss#dpl-e.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\ss#dpl-u.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\ss#epl-e.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\ss#epl-u.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\ss#zpl-e.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\ss#zpl-u.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\ssl3.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ssleay32.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ssnetmon.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\stduviewer.exe
+    First 16 bytes: 4d 5a 50 00 02 00 00 00 04 00 0f 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SUITE.DLL
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\SUPTOOLS.MSI
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\svgre.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SVRGRMGR.DLL
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\Symlib.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\SYSMOD.DLL
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\SYSMOD_A.DLL
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\TEMPLMGR.DLL
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\terminateprocess-buffer.exe
+    First 16 bytes: 4d 5a 90 00 03 00 04 00 00 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\TestExecutor.v17.2.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\TestExecutor.v19.2.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Thunderbird Setup 1.5.0.9.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\tiaaf_17269.exe
+    First 16 bytes: 4d 5a 50 00 02 00 00 00 04 00 0f 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\ToolkitPro.ResourceDe.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\ToolkitPro.ResourceEn.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\ToolkitPro.ResourceIt.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\ToolkitPro.ResourcePt.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\ToolkitPro.ResourceRu.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\tor.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Translation tool.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\TTCP.EXE
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\tvtablerev1.MSI
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\TVW_USB_ID.MSI
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\UIMGR.DLL
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\UNCTRN.DLL
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\UNCTRN_A.DLL
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\unicows.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\UNIDRV.DLL
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\UNIDRVUI.DLL
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\unins000.exe
+    First 16 bytes: 4d 5a 50 00 02 00 00 00 04 00 0f 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\uninst.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Uninstall.exe
+    First 16 bytes: 4d 5a 50 00 02 00 00 00 04 00 0f 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\UninstWA.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\UNIRES.DLL
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\unrar.dll
+    First 16 bytes: 4d 5a 50 00 02 00 00 00 04 00 0f 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\updater.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\V7PLUS.DLL
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\VALIDATE.DLL
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\vc832.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\vc864.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('The MSI file is missing a DigitalSignature stream.'))
+
+  F:\Binaries2Scan\Binaries2Scan\vc_redist.x86.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\vcredist.msi
+    First 16 bytes: d0 cf 11 e0 a1 b1 1a e1 00 00 00 00 00 00 00 00
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): True
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\ViewerPS.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\vis_avs.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\vis_nsfs.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\w9xpopen.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\WBEMODBC.MSI
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\WdfCoInstaller01009.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\wdreg.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\wdreg_gui.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\webaccesslib.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\WHHRdlc.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\winampa.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\WinDjView-0.4.3.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\WindowsInstaller-KB893803-v2-x86.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\WindowsInstaller-KB893803-x86.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\WindowsXP-KB936929-SP3-x86-RUS.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\wrar361ru.exe
+    First 16 bytes: 4d 5a 50 00 02 00 00 00 04 00 0f 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Xafari.EasyTest.WinAdapter.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Xafari.Utils.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\xerces-c_2_6.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\xmpir.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: OK (exception: None)
+
+  F:\Binaries2Scan\Binaries2Scan\XPSPREQS.DLL
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\XPSPSCEN.DLL
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\XPSPUI.DLL
+    First 16 bytes: (file is empty or unreadable)
+    Starts with 'MZ' (PE magic): False
+    Starts with OLE compound-file magic (MSI magic): False
+    AuthenticodeFile.from_stream() raised ParseError: Unable to determine file type with available parsers.
+
+  F:\Binaries2Scan\Binaries2Scan\xul.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\XviD_codec_Install.exe
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\ZipForge.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\zlib.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\zlib1.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\zlibwapi.dll
+    First 16 bytes: 4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+  F:\Binaries2Scan\Binaries2Scan\Башенки.exe
+    First 16 bytes: 4d 5a 50 00 02 00 00 00 04 00 0f 00 ff ff 00 00
+    Starts with 'MZ' (PE magic): True
+    Starts with OLE compound-file magic (MSI magic): False
+    check_signature() would resolve to: NOT_SIGNED (exception: AuthenticodeNotSignedError('No signature was found.'))
+
+======================================================================
+Summary (grouped by outcome, most common first):
+   440  resolved: NOT_SIGNED
+    98  resolved: OK
+    38  from_stream() raised ParseError: Unable to determine file type with available parsers.

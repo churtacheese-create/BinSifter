@@ -54,6 +54,19 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+# Windows-specific fix (2026-08-08): when stdout is redirected to a file
+# (`> diagnose.txt`) instead of a real console, Python falls back to the
+# system's legacy codepage (cp1252 here) instead of UTF-8, and cp1252 can't
+# encode a lot of ordinary Unicode - including plenty of characters that
+# show up in real malware sample filenames (Cyrillic/CJK obfuscation,
+# smart quotes/em dashes from a copy-paste, etc.), which is exactly the
+# kind of file this script exists to diagnose. Force UTF-8 explicitly and
+# use backslashreplace so an unprintable/undecodable filename gets shown
+# as an escaped representation instead of crashing the whole run partway
+# through a potentially long file list.
+sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
+sys.stderr.reconfigure(encoding="utf-8", errors="backslashreplace")
+
 try:
     from signify.authenticode import AuthenticodeFile
     from signify.exceptions import ParseError as SignifyParseError

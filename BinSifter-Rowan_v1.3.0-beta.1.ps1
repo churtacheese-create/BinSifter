@@ -45,75 +45,6 @@ function Test-SystemDarkMode {
     }
 }
 
-function Add-DefenderExclusionPath {
-    <#
-      Adds $Path to Windows Defender's scan-exclusion list, prompting for UAC
-      elevation via a separate elevated process - added 2026-08-08 after a
-      real scan against live Malware Bazaar samples showed Defender's
-      real-time protection racing BinSifter's own extraction/scan pipeline:
-      files got quarantined between extraction and BinSifter reading them
-      (see TODO.md's archive-support entries; Winnow hit the equivalent
-      OSError, this is the same underlying problem). Mirrors
-      binsifter/core/defender.py's Winnow implementation - same design, same
-      reasoning - just native PowerShell here since Rowan already runs
-      inside a PowerShell process and doesn't need to shell out to a
-      sub-process the way Winnow does to get one.
-
-      Deliberately opt-in only, never called from the scan pipeline itself -
-      see the Settings page's $settings.BtnAddDefenderExclusion.Add_Click
-      handler for the confirmation-dialog-gated call site. BinSifter's own
-      process never gains admin rights - Process.Start() with Verb='runas'
-      launches a SEPARATE elevated powershell.exe, which is what Windows'
-      UAC prompt actually elevates.
-
-      Throws a plain, human-readable exception on any failure (UAC
-      declined, Add-MpPreference itself failing, the elevated process
-      failing to launch at all, or timing out) - callers show
-      $_.Exception.Message directly in a MessageBox, no further translation
-      needed.
-    #>
-    param([Parameter(Mandatory)][string]$Path)
-
-    $escapedPath = $Path -replace "'", "''"
-    # try/catch + explicit exit 0/1 here (not just letting PowerShell's
-    # default error-to-exit-code behavior handle it) so the elevated
-    # process's exit code reliably tells us whether Add-MpPreference itself
-    # succeeded - matches Winnow's identical reasoning in defender.py.
-    $innerScript = "try { Add-MpPreference -ExclusionPath '$escapedPath'; exit 0 } catch { exit 1 }"
-    # -EncodedCommand takes base64 of UTF-16LE text - avoids the quoting
-    # nightmare of nesting a quoted command inside ProcessStartInfo's own
-    # Arguments string.
-    $encoded = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($innerScript))
-
-    $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = 'powershell.exe'
-    $psi.Arguments = "-NoProfile -NonInteractive -EncodedCommand $encoded"
-    $psi.Verb = 'runas'
-    $psi.UseShellExecute = $true
-
-    try {
-        $proc = [System.Diagnostics.Process]::Start($psi)
-    }
-    catch [System.ComponentModel.Win32Exception] {
-        # NativeErrorCode 1223 is the real Win32 ERROR_CANCELLED - what
-        # Process.Start() throws when the user clicks "No" on the UAC
-        # prompt, since the elevated process never actually launches.
-        if ($_.Exception.NativeErrorCode -eq 1223) {
-            throw 'UAC elevation was declined - no changes were made.'
-        }
-        throw "Could not launch the elevated process: $($_.Exception.Message)"
-    }
-
-    $completed = $proc.WaitForExit(120000)
-    if (-not $completed) {
-        throw 'Timed out waiting for the elevated Add-MpPreference process (120s) - the UAC prompt may still be waiting for a response on screen.'
-    }
-
-    if ($proc.ExitCode -ne 0) {
-        throw 'Add-MpPreference failed. This usually means Windows Defender is not the active antivirus product, its real-time protection is off, or Tamper Protection is blocking preference changes.'
-    }
-}
-
 function New-STARunspace {
     $iss = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
     $runspace = [System.Management.Automation.Runspaces.RunspaceFactory]::CreateRunspace($iss)
@@ -1671,15 +1602,174 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
 
         # v1.3.0-alpha.2: on-demand "deep analysis" launcher helpers for the
         # Results-grid context menu (Sigcheck / Ghidra / x64dbg / x32dbg /
-        # Speakeasy - ported selectively from proto2). Unlike the scan-pool's
-        # own Invoke-ExternalTool (defined inside the worker/dispatcher
-        # scriptblocks and not reachable from the UI thread), this copy runs
-        # on the UI thread itself for single-file, analyst-initiated actions.
-        # Kept deliberately synchronous (same tradeoff proto2 made) rather than
-        # adding a second async/timer-poll pattern alongside the scan engine's -
-        # bounded by TimeoutSeconds and paired with a wait cursor so it reads as
-        # "busy," not "hung." Only Sigcheck and Speakeasy call this; Ghidra and
-        # x64dbg/x32dbg are fire-and-forget launches with no output to capture.
+        # Adds $Path to Windows Defender's scan-exclusion list, prompting for
+        # UAC elevation via a separate elevated process - added 2026-08-08
+        # after a real scan against live Malware Bazaar samples showed
+        # Defender's real-time protection racing BinSifter's own extraction/
+        # scan pipeline: files got quarantined between extraction and
+        # BinSifter reading them (see TODO.md's archive-support entries;
+        # Winnow hit the equivalent OSError, this is the same underlying
+        # problem). Mirrors binsifter/core/defender.py's Winnow
+        # implementation - same design, same reasoning - just native
+        # PowerShell here since Rowan already runs inside a PowerShell
+        # process and doesn't need to shell out to get one.
+        #
+        # Deliberately opt-in only, never called from the scan pipeline
+        # itself - see the Settings page's
+        # $settings.BtnAddDefenderExclusion.Add_Click handler for the
+        # confirmation-dialog-gated call site. BinSifter's own process never
+        # gains admin rights - Process.Start() with Verb='runas' launches a
+        # SEPARATE elevated powershell.exe, which is what Windows' UAC
+        # prompt actually elevates.
+        #
+        # 2026-08-08: moved here from top-level scope (originally defined
+        # right after Test-SystemDarkMode, before Show-MainWindow even
+        # starts) while adding the AV-detection feature below and re-
+        # checking how the Settings page's click handlers actually reach
+        # their helper functions. Top-level functions only run in the
+        # DEFAULT runspace (the one executing this script's own bootstrap
+        # code at the bottom of the file); everything the Settings page
+        # itself calls - this function included - runs inside
+        # Show-MainWindow's $ps.AddScript({...}) block, which executes on a
+        # SEPARATE runspace (see New-STARunspace above) with its own
+        # independent function table. A function defined at top-level is
+        # simply not visible from inside that separate runspace - calling
+        # it from there fails at runtime with "the term ... is not
+        # recognized," the same way it would if the function didn't exist
+        # at all. Every other helper the Settings/Results pages actually
+        # call (Invoke-CapturedTool, Show-ToolReportWindow, the AI-export
+        # functions above) was already correctly defined in here, inside
+        # this same nested scope - this one function had been the sole
+        # exception, almost certainly because it was written before the
+        # runspace split existed in its current form and never re-checked
+        # against it. Not confirmed failing on a real machine (no pwsh in
+        # this dev sandbox to prove it either way), but the scoping
+        # violation itself is unambiguous, so moved here defensively rather
+        # than left as a live risk for the next real Defender-exclusion
+        # test.
+        function Add-DefenderExclusionPath {
+            param([Parameter(Mandatory)][string]$Path)
+
+            $escapedPath = $Path -replace "'", "''"
+            # try/catch + explicit exit 0/1 here (not just letting
+            # PowerShell's default error-to-exit-code behavior handle it) so
+            # the elevated process's exit code reliably tells us whether
+            # Add-MpPreference itself succeeded - matches Winnow's identical
+            # reasoning in defender.py.
+            $innerScript = "try { Add-MpPreference -ExclusionPath '$escapedPath'; exit 0 } catch { exit 1 }"
+            # -EncodedCommand takes base64 of UTF-16LE text - avoids the
+            # quoting nightmare of nesting a quoted command inside
+            # ProcessStartInfo's own Arguments string.
+            $encoded = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($innerScript))
+
+            $psi = New-Object System.Diagnostics.ProcessStartInfo
+            $psi.FileName = 'powershell.exe'
+            $psi.Arguments = "-NoProfile -NonInteractive -EncodedCommand $encoded"
+            $psi.Verb = 'runas'
+            $psi.UseShellExecute = $true
+
+            try {
+                $proc = [System.Diagnostics.Process]::Start($psi)
+            }
+            catch [System.ComponentModel.Win32Exception] {
+                # NativeErrorCode 1223 is the real Win32 ERROR_CANCELLED -
+                # what Process.Start() throws when the user clicks "No" on
+                # the UAC prompt, since the elevated process never actually
+                # launches.
+                if ($_.Exception.NativeErrorCode -eq 1223) {
+                    throw 'UAC elevation was declined - no changes were made.'
+                }
+                throw "Could not launch the elevated process: $($_.Exception.Message)"
+            }
+
+            $completed = $proc.WaitForExit(120000)
+            if (-not $completed) {
+                throw 'Timed out waiting for the elevated Add-MpPreference process (120s) - the UAC prompt may still be waiting for a response on screen.'
+            }
+
+            if ($proc.ExitCode -ne 0) {
+                throw 'Add-MpPreference failed. This usually means Windows Defender is not the active antivirus product, its real-time protection is off, or Tamper Protection is blocking preference changes.'
+            }
+        }
+
+        # Antivirus product detection (2026-08-08) - the Defender exclusion
+        # button above only ever helps if Defender is the machine's active
+        # antivirus product. This reads whatever's actually registered with
+        # Windows Security via the same root/SecurityCenter2 WMI class
+        # Windows' own Security app is built on (every AV product,
+        # Defender included, publishes itself there - not a BinSifter
+        # invention), so Settings can point the analyst at the right place
+        # even when it isn't Defender. Mirrors binsifter/core/av_detect.py's
+        # Winnow implementation field-for-field (same WMI class, same
+        # vendor-guidance table, same "empty result isn't an error" and
+        # "SecurityCenter2 doesn't exist on Windows Server" caveats) - see
+        # that module's docstring for the fuller rationale, including why
+        # this deliberately does NOT try to script an exclusion for
+        # anything but Defender (most vendors have no stable local CLI for
+        # it, and centrally-managed EDR products block local self-exclusion
+        # by design).
+        #
+        # Reading this WMI class does NOT require Administrator rights, on
+        # any supported Windows version - unlike Add-DefenderExclusionPath
+        # above, no elevation/UAC flow is needed here at all.
+        $script:AvVendorGuidance = [ordered]@{
+            'windows defender'   = 'Use the button below - BinSifter can add this exclusion automatically.'
+            'microsoft defender' = 'Use the button below - BinSifter can add this exclusion automatically.'
+            'mcafee'             = 'McAfee: Endpoint Security console > Threat Prevention > Exclusions (or pushed from ePO if centrally managed).'
+            'eset'               = 'ESET: open the product > Setup > Detection Engine (or Antivirus) > Exclusions.'
+            'sophos'             = 'Sophos: Sophos Endpoint > Exclusions, or Sophos Central > policy Exclusions if centrally managed.'
+            'symantec'           = "Symantec/Broadcom Endpoint Protection: exclusions are normally pushed from the SEP Manager console - a local client usually can't add its own."
+            'broadcom'           = "Broadcom Endpoint Protection: exclusions are normally pushed from the SEP Manager console - a local client usually can't add its own."
+            'crowdstrike'        = 'CrowdStrike Falcon: exclusions are managed centrally from the Falcon console by design - there is no supported local self-exclusion.'
+            'sentinelone'        = 'SentinelOne: exclusions are managed centrally from the Management Console by design - there is no supported local self-exclusion.'
+            'bitdefender'        = 'Bitdefender: Protection > Antivirus > Settings (gear icon) > Manage Exceptions.'
+            'kaspersky'          = 'Kaspersky: Settings > Threats and Exclusions > Manage Exclusions.'
+            'trend micro'        = "Trend Micro: open the console/agent's Scan Exclusion List settings."
+            'malwarebytes'       = 'Malwarebytes: Settings > Exclusions > Add Exclusion.'
+            'avast'              = 'Avast: Menu > Settings > General > Exceptions.'
+            'avg'                = 'AVG: Menu > Settings > General > Exceptions.'
+            'webroot'            = 'Webroot: PC Security > Identity & Privacy Shields > Application/Exclusion list.'
+            'f-secure'           = 'F-Secure: Settings > find the exclusion/exception list for real-time scanning.'
+            'norton'             = 'Norton: Settings > Antivirus > Scans and Risks > Exclusions/Low Risks.'
+        }
+
+        function Get-AvGuidance {
+            param([string]$Name)
+            $lowered = $Name.ToLowerInvariant()
+            foreach ($pattern in $script:AvVendorGuidance.Keys) {
+                if ($lowered.Contains($pattern)) { return $script:AvVendorGuidance[$pattern] }
+            }
+            return "No specific guidance available for $Name - check its settings for a scan exclusion/exception list."
+        }
+
+        # Returns display names of every antivirus product registered in
+        # root/SecurityCenter2, deduplicated. An empty array is a normal,
+        # valid outcome (Windows Server, Security Center service disabled,
+        # or genuinely nothing registered) - the caller shows that as a
+        # plain status message, not an error.
+        function Get-InstalledAvProducts {
+            try {
+                $names = Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntiVirusProduct -ErrorAction Stop |
+                    Select-Object -ExpandProperty displayName
+            }
+            catch {
+                # Namespace not found (Windows Server / service disabled) -
+                # same "not an error" treatment as genuinely finding nothing.
+                return @()
+            }
+            return @($names | Where-Object { $_ } | Select-Object -Unique)
+        }
+
+        # Ported selectively from proto2 for Sigcheck/Speakeasy). Unlike the
+        # scan-pool's own Invoke-ExternalTool (defined inside the worker/
+        # dispatcher scriptblocks and not reachable from the UI thread),
+        # this copy runs on the UI thread itself for single-file, analyst-
+        # initiated actions. Kept deliberately synchronous (same tradeoff
+        # proto2 made) rather than adding a second async/timer-poll pattern
+        # alongside the scan engine's - bounded by TimeoutSeconds and paired
+        # with a wait cursor so it reads as "busy," not "hung." Only
+        # Sigcheck and Speakeasy call this; Ghidra and x64dbg/x32dbg are
+        # fire-and-forget launches with no output to capture.
         function Invoke-CapturedTool {
             param(
                 [string]$Path,
@@ -1766,6 +1856,255 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             $reportForm.Controls.Add($txt)
             $null = $reportForm.ShowDialog()
             $reportForm.Dispose()
+        }
+
+        # AI-ready export (2026-08-08) - formats one file's already-extracted
+        # BinSifter findings into a compact Markdown document and a matching
+        # JSON object, for handing to whatever AI the analyst wants to use:
+        # paste the Markdown into a cloud chat interface, or feed the JSON to
+        # a script hitting a local model's API. Ported from Winnow's
+        # core/ai_export.py, kept in lockstep field-for-field and
+        # section-for-section so an export of the same file looks the same
+        # regardless of which variant produced it - see that module's
+        # docstring for the full rationale (this exists as the safer
+        # follow-up after the local-inference prototype's GPU/display lockup,
+        # documented in TODO.md's "AI-assisted triage exploration" section).
+        # BinSifter never runs or calls out to any AI here, cloud or local -
+        # this only formats data that's already been computed.
+        $AiExportTruncateAt = 4000
+        $AiExportDisclaimer = 'This document contains only automated findings BinSifter already extracted for this file - no AI analysis has been run on it. Any conclusions an AI draws from the data below are a hypothesis for further investigation, not a detection.'
+
+        # Same sentinel rules as ai_export.py's compact_record(): ""/0/$false/
+        # -1 are BinSifter's generic "not computed" markers and get dropped,
+        # except Path/MD5/SHA1 (file identity, kept even if somehow empty)
+        # and Disposition ("Untriaged" is a real triage state, not a
+        # "not computed" placeholder). YaraSeverity's "Unknown" default is a
+        # per-field sentinel on top of the generic rule, same reasoning as
+        # YaraSeverityScore's -1 - just spelled as a word instead of a number.
+        function Test-AiExportSentinelValue {
+            param([string]$Key, $Value)
+            if ($null -eq $Value) { return $true }
+            if ($Value -is [string]) {
+                if ($Value -eq '') { return $true }
+                if ($Key -eq 'YaraSeverity' -and $Value -eq 'Unknown') { return $true }
+                return $false
+            }
+            if ($Value -is [bool]) { return ($Value -eq $false) }
+            if ($Value -is [int] -or $Value -is [double]) { return ($Value -eq 0 -or $Value -eq -1) }
+            return $false
+        }
+
+        function Get-AiExportCompactFields {
+            param([BinSifter.FileRecord]$Record)
+
+            $alwaysKeep = @('Path', 'MD5', 'SHA1', 'Disposition')
+            # Deliberately excluded, same as Winnow: Status/Progress/Added
+            # (internal scan-state bookkeeping, not relevant to an AI trying
+            # to reason about intent) and SsdeepClusterId/ImphashClusterId
+            # (raw cluster numbers, meaningless without cross-referencing
+            # other files in the same run - ClusterSize alone is
+            # self-contained).
+            $fields = [ordered]@{
+                Path                    = $Record.Path
+                MD5                     = $Record.MD5
+                SHA1                    = $Record.SHA1
+                SSDEEP                  = $Record.SSDEEP
+                NsrlMatch               = $Record.NsrlMatch
+                YaraMatches             = $Record.YaraMatches
+                YaraHitCount            = $Record.YaraHitCount
+                CapaEligible            = $Record.CapaEligible
+                PossibleFalseNegative   = $Record.PossibleFalseNegative
+                CAPAOutput              = $Record.CAPAOutput
+                CapaDetectionCount      = $Record.CapaDetectionCount
+                CapaShellcodeFormat     = $Record.CapaShellcodeFormat
+                YaraSeverity            = $Record.YaraSeverity
+                YaraSeverityScore       = $Record.YaraSeverityScore
+                YaraAttackTechniques    = $Record.YaraAttackTechniques
+                Entropy                 = $Record.Entropy
+                Error                   = $Record.Error
+                FlossStringCount        = $Record.FlossStringCount
+                SsdeepMatches           = $Record.SsdeepMatches
+                SsdeepClusterSize       = $Record.SsdeepClusterSize
+                SsdeepHasHighSimilarity = $Record.SsdeepHasHighSimilarity
+                SsdeepPreviouslySeen    = $Record.SsdeepPreviouslySeen
+                PackerDetected          = $Record.PackerDetected
+                Compiler                = $Record.Compiler
+                Imphash                 = $Record.Imphash
+                RichHash                = $Record.RichHash
+                ImphashClusterSize      = $Record.ImphashClusterSize
+                SignatureStatus         = $Record.SignatureStatus
+                SignerName              = $Record.SignerName
+                IocCount                = $Record.IocCount
+                ExtractedIOCs           = $Record.ExtractedIOCs
+                ReputationStatus        = $Record.ReputationStatus
+                ReputationSource        = $Record.ReputationSource
+                Disposition             = $Record.Disposition
+                SourceArchive           = $Record.SourceArchive
+            }
+
+            $out = [ordered]@{}
+            foreach ($key in $fields.Keys) {
+                $value = $fields[$key]
+                if (-not ($alwaysKeep -contains $key) -and (Test-AiExportSentinelValue -Key $key -Value $value)) {
+                    continue
+                }
+                if ($value -is [string] -and $value.Length -gt $AiExportTruncateAt) {
+                    $value = $value.Substring(0, $AiExportTruncateAt) + "`n...(truncated, $($value.Length) chars total)"
+                }
+                $out[$key] = $value
+            }
+            return $out
+        }
+
+        function Add-AiExportSection {
+            # $Rows is an array of 2-element arrays: @(label, value). Rows
+            # whose value is $null are dropped; if nothing survives, no
+            # section header is emitted at all (same as build_markdown()'s
+            # empty-category behavior on the Winnow side).
+            param(
+                [System.Collections.Generic.List[string]]$Lines,
+                [string]$Title,
+                [object[]]$Rows
+            )
+            $present = @($Rows | Where-Object { $null -ne $_[1] })
+            if ($present.Count -eq 0) { return }
+            $Lines.Add("## $Title")
+            foreach ($row in $present) { $Lines.Add("- $($row[0]): $($row[1])") }
+            $Lines.Add('')
+        }
+
+        function ConvertTo-AiExportMarkdown {
+            param([BinSifter.FileRecord]$Record)
+
+            $data = Get-AiExportCompactFields -Record $Record
+            $name = Split-Path -Leaf $Record.Path
+            if ([string]::IsNullOrEmpty($name)) { $name = $Record.Path }
+
+            $lines = [System.Collections.Generic.List[string]]::new()
+            $lines.Add("# BinSifter finding: $name")
+            $lines.Add('')
+            $lines.Add("**Path:** ``$($data['Path'])``")
+
+            $hashBits = [System.Collections.Generic.List[string]]::new()
+            foreach ($pair in @(, @('MD5', 'MD5'), @('SHA1', 'SHA1'), @('ssdeep', 'SSDEEP'))) {
+                if ($data.Contains($pair[1]) -and $data[$pair[1]]) {
+                    $hashBits.Add("$($pair[0]) ``$($data[$pair[1]])``")
+                }
+            }
+            if ($hashBits.Count -gt 0) {
+                $lines.Add("**Hashes:** $($hashBits -join ' - ')")
+            }
+            $lines.Add('')
+
+            Add-AiExportSection -Lines $lines -Title 'Signature' -Rows @(
+                , @('Status', $data['SignatureStatus'])
+                , @('Signer', $data['SignerName'])
+            )
+
+            # YaraSeverity ("Unknown" default) and YaraSeverityScore (-1
+            # default, dropped as a "not computed" sentinel) can each survive
+            # compaction independently of the other, so build this line from
+            # whichever half is actually present instead of assuming both
+            # travel together.
+            $severityValue = $null
+            if ($data.Contains('YaraSeverity')) {
+                $scorePart = if ($data.Contains('YaraSeverityScore')) { " (score $($data['YaraSeverityScore']))" } else { '' }
+                $severityValue = "$($data['YaraSeverity'])$scorePart"
+            }
+            Add-AiExportSection -Lines $lines -Title 'YARA' -Rows @(
+                , @('Hits', $data['YaraHitCount'])
+                , @('Severity', $severityValue)
+                , @('Rules matched', $data['YaraMatches'])
+                , @('ATT&CK techniques', $data['YaraAttackTechniques'])
+            )
+
+            Add-AiExportSection -Lines $lines -Title 'capa' -Rows @(
+                , @('Eligible', $data['CapaEligible'])
+                , @('Detections', $data['CapaDetectionCount'])
+                , @('Possible false negative', $data['PossibleFalseNegative'])
+                , @('Shellcode format', $data['CapaShellcodeFormat'])
+            )
+            if ($data.Contains('CAPAOutput') -and $data['CAPAOutput']) {
+                $lines.Add('### Raw capa output')
+                $lines.Add('```')
+                $lines.Add($data['CAPAOutput'])
+                $lines.Add('```')
+                $lines.Add('')
+            }
+
+            Add-AiExportSection -Lines $lines -Title 'ssdeep / imphash clustering' -Rows @(
+                , @('ssdeep cluster size', $data['SsdeepClusterSize'])
+                , @('ssdeep high similarity to another file', $data['SsdeepHasHighSimilarity'])
+                , @('ssdeep previously seen (prior run)', $data['SsdeepPreviouslySeen'])
+                , @('ssdeep matches', $data['SsdeepMatches'])
+                , @('Imphash', $data['Imphash'])
+                , @('Imphash cluster size', $data['ImphashClusterSize'])
+                , @('Rich header hash', $data['RichHash'])
+            )
+
+            if ($data.Contains('ExtractedIOCs') -and $data['ExtractedIOCs']) {
+                $iocCount = if ($data.Contains('IocCount')) { $data['IocCount'] } else { $null }
+                $header = if ($iocCount) { "## Extracted IOCs ($iocCount)" } else { '## Extracted IOCs' }
+                $lines.Add($header)
+                foreach ($ioc in ($data['ExtractedIOCs'] -split '; ')) { $lines.Add("- $ioc") }
+                $lines.Add('')
+            }
+
+            Add-AiExportSection -Lines $lines -Title 'Other' -Rows @(
+                , @('Entropy', $data['Entropy'])
+                , @('FLOSS string count', $data['FlossStringCount'])
+                , @('Packer detected', $data['PackerDetected'])
+                , @('Compiler', $data['Compiler'])
+                , @('Reputation status', $data['ReputationStatus'])
+                , @('Reputation source', $data['ReputationSource'])
+                , @('Disposition', $data['Disposition'])
+                , @('Source archive', $data['SourceArchive'])
+                , @('Scan error', $data['Error'])
+            )
+
+            $lines.Add('---')
+            $generatedOn = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd')
+            $lines.Add("_Generated by BinSifter on $generatedOn. $AiExportDisclaimer_")
+            return ($lines -join "`r`n")
+        }
+
+        function ConvertTo-AiExportJson {
+            param([BinSifter.FileRecord]$Record)
+
+            $payload = [ordered]@{
+                _meta    = [ordered]@{
+                    generated_by  = 'BinSifter'
+                    generated_at  = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.ffffffZ')
+                    note          = $AiExportDisclaimer
+                }
+                findings = Get-AiExportCompactFields -Record $Record
+            }
+            return ($payload | ConvertTo-Json -Depth 6)
+        }
+
+        # Writes both files into $OutputDir, named by SHA1 (falling back to
+        # the file's own stem if no SHA1 is available - e.g. a file that
+        # errored before hashing), same convention the Ghidra quick-launch
+        # item already uses for project folders, so exports and Ghidra
+        # projects for the same file are easy to cross-reference by name.
+        # Returns @{ MdPath = ...; JsonPath = ... }.
+        function Export-FileForAiAnalysis {
+            param(
+                [BinSifter.FileRecord]$Record,
+                [string]$OutputDir
+            )
+            if (-not (Test-Path -LiteralPath $OutputDir -PathType Container)) {
+                $null = New-Item -Path $OutputDir -ItemType Directory -Force
+            }
+            $stem = if ($Record.SHA1) { "BinSifter_$($Record.SHA1)" } else { "BinSifter_$([IO.Path]::GetFileNameWithoutExtension($Record.Path))" }
+
+            $mdPath = Join-Path $OutputDir "$stem.md"
+            [System.IO.File]::WriteAllText($mdPath, (ConvertTo-AiExportMarkdown -Record $Record), [System.Text.Encoding]::UTF8)
+
+            $jsonPath = Join-Path $OutputDir "$stem.json"
+            [System.IO.File]::WriteAllText($jsonPath, (ConvertTo-AiExportJson -Record $Record), [System.Text.Encoding]::UTF8)
+
+            return @{ MdPath = $mdPath; JsonPath = $jsonPath }
         }
 
         # Batch password-prompt dialog for archive expansion (2026-08-07) - shown
@@ -5172,6 +5511,47 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             }.GetNewClosure())
             $null = $launchMenu.Items.Add($speakeasyItem)
 
+            $null = $launchMenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+
+            # Unlike Ghidra/Sigcheck/Speakeasy, this has no external tool to
+            # find - it's pure local formatting (see Export-FileForAiAnalysis
+            # above), so the only prerequisite is somewhere to write the two
+            # output files, same as the "Open report folder" toolbar button
+            # already requires.
+            $aiExportItem = New-Object System.Windows.Forms.ToolStripMenuItem
+            $aiExportItem.Text = 'Export for AI analysis (Markdown + JSON)'
+            $aiExportItem.Add_Click({
+                if ($grid.SelectedRows.Count -eq 0) { return }
+                $targetPath = $grid.SelectedRows[0].Cells['Path'].Value
+                if ([string]::IsNullOrWhiteSpace($Config.ReportDirectory)) {
+                    [System.Windows.Forms.MessageBox]::Show(
+                        $grid.FindForm(), "Configure a Report Directory in Settings first - AI exports are stored under it.", 'BinSifter',
+                        [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+                    return
+                }
+                if (-not (Test-Path -LiteralPath $targetPath -PathType Leaf)) { return }
+                # TryGetValue, not a bare indexer - same reasoning as the
+                # Ghidra item above ($FileRecords is a ConcurrentDictionary).
+                $record = $null
+                $hasRecord = $FileRecords.TryGetValue($targetPath, [ref]$record)
+                if (-not $hasRecord) { return }
+                try {
+                    $exportDir = Join-Path $Config.ReportDirectory 'ai_exports'
+                    $paths = Export-FileForAiAnalysis -Record $record -OutputDir $exportDir
+                    [System.Windows.Forms.MessageBox]::Show(
+                        $grid.FindForm(),
+                        "AI-ready export written for $([IO.Path]::GetFileName($targetPath)):`r`n`r`n$($paths.MdPath)`r`n$($paths.JsonPath)",
+                        'BinSifter',
+                        [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+                }
+                catch {
+                    [System.Windows.Forms.MessageBox]::Show(
+                        $grid.FindForm(), "Could not write AI export: $($_.Exception.Message)", 'BinSifter',
+                        [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+                }
+            }.GetNewClosure())
+            $null = $launchMenu.Items.Add($aiExportItem)
+
             $launchMenu.Add_Opening({
                 if ($grid.SelectedRows.Count -eq 0) { $_.Cancel = $true; return }
                 foreach ($tool in $launchTools) {
@@ -5182,6 +5562,8 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                 $ghidraItem.Enabled = -not [string]::IsNullOrWhiteSpace($Config.GhidraHeadlessExe)
                 $sigcheckItem.Enabled = -not [string]::IsNullOrWhiteSpace($Config.SigcheckExe)
                 $speakeasyItem.Enabled = -not [string]::IsNullOrWhiteSpace($Config.SpeakeasyExe)
+                $aiExportItem.Enabled = -not [string]::IsNullOrWhiteSpace($Config.ReportDirectory)
+                $aiExportItem.Text = if ($aiExportItem.Enabled) { 'Export for AI analysis (Markdown + JSON)' } else { 'Export for AI analysis (configure Report Directory first)' }
             }.GetNewClosure())
             $grid.ContextMenuStrip = $launchMenu
 
@@ -5301,6 +5683,52 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             $layout.Controls.Add($lblStatus, 1, $rowIndex)
             $rowIndex++
 
+            # 2026-08-08, added right after the Defender section below: that
+            # section only ever helps if Defender is the machine's active
+            # antivirus product. This detects whatever's actually
+            # registered (Get-InstalledAvProducts above) and, for anything
+            # other than Defender, points the analyst at that vendor's own
+            # exclusion settings instead of a button that silently does
+            # nothing useful.
+            $lblAvHeader = New-Object System.Windows.Forms.Label
+            $lblAvHeader.Text = 'Antivirus'
+            $lblAvHeader.AutoSize = $true
+            $lblAvHeader.Margin = New-Object System.Windows.Forms.Padding(3, 28, 0, 3)
+            $lblAvHeader.Font = New-Object System.Drawing.Font('Segoe UI', 9, [System.Drawing.FontStyle]::Bold)
+            $lblAvHeader.ForeColor = $theme.Fore
+            $null = $layout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))
+            $layout.Controls.Add($lblAvHeader, 1, $rowIndex)
+            $rowIndex++
+
+            $lblAvExplainer = New-Object System.Windows.Forms.Label
+            $lblAvExplainer.Text = "Detects which antivirus product(s) are registered with Windows Security on this machine. The automated exclusion button below only works for Windows Defender - for any other product, this points you at where to add the exclusion yourself."
+            $lblAvExplainer.AutoSize = $false
+            $lblAvExplainer.Width = 620
+            $lblAvExplainer.Height = 50
+            $lblAvExplainer.Margin = New-Object System.Windows.Forms.Padding(3, 0, 8, 6)
+            $lblAvExplainer.ForeColor = $theme.MutedFore
+            $null = $layout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))
+            $layout.Controls.Add($lblAvExplainer, 1, $rowIndex)
+            $rowIndex++
+
+            $btnDetectAv = New-ThemedButton -Text 'Detect installed antivirus' -Width 320 -Height 32
+            $btnDetectAv.Margin = New-Object System.Windows.Forms.Padding(3, 0, 0, 3)
+            $null = $layout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))
+            $layout.Controls.Add($btnDetectAv, 1, $rowIndex)
+            $rowIndex++
+
+            $lblAvStatus = New-Object System.Windows.Forms.Label
+            $lblAvStatus.AutoSize = $false
+            $lblAvStatus.Width = 620
+            $lblAvStatus.Height = 60
+            $lblAvStatus.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+            $lblAvStatus.Margin = New-Object System.Windows.Forms.Padding(3, 6, 0, 0)
+            $lblAvStatus.ForeColor = $theme.MutedFore
+            $lblAvStatus.Text = ''
+            $null = $layout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))
+            $layout.Controls.Add($lblAvStatus, 1, $rowIndex)
+            $rowIndex++
+
             # 2026-08-08, added after a real scan against live
             # Malware Bazaar samples: Defender's real-time protection raced
             # BinSifter's own scan for extracted archive contents. See
@@ -5349,6 +5777,7 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             return [pscustomobject]@{
                 Page = $page; Fields = $fieldBoxes; BtnSave = $btnSave; LblStatus = $lblStatus
                 BtnAddDefenderExclusion = $btnAddDefenderExclusion; LblDefenderStatus = $lblDefenderStatus
+                BtnDetectAv = $btnDetectAv; LblAvStatus = $lblAvStatus
             }
         }
 
@@ -5962,6 +6391,27 @@ For repeatable case work, preserve the report directory (Reports\ next to BinSif
             Update-YaraRulesContent
             Update-CapaRulesList
             Start-ToolMetadataRefresh
+        })
+
+        $settings.BtnDetectAv.Add_Click({
+            $settings.BtnDetectAv.Enabled = $false
+            $settings.LblAvStatus.ForeColor = $theme.Fore
+            $settings.LblAvStatus.Text = 'Checking...'
+            [System.Windows.Forms.Application]::DoEvents()
+
+            $names = Get-InstalledAvProducts
+            if (@($names).Count -eq 0) {
+                $settings.LblAvStatus.ForeColor = $theme.MutedFore
+                $settings.LblAvStatus.Text = "No antivirus product found via Windows Security Center - this is expected on Windows Server (Security Center isn't available there), or genuinely means nothing is registered on this machine."
+            }
+            else {
+                $lines = New-Object System.Collections.Generic.List[string]
+                $lines.Add("Detected: $($names -join ', ')")
+                foreach ($name in $names) { $lines.Add("- $name`: $(Get-AvGuidance -Name $name)") }
+                $settings.LblAvStatus.ForeColor = $theme.Success
+                $settings.LblAvStatus.Text = $lines -join "`r`n"
+            }
+            $settings.BtnDetectAv.Enabled = $true
         })
 
         $settings.BtnAddDefenderExclusion.Add_Click({

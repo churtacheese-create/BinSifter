@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from binsifter.core import defender
+from binsifter.core import av_detect, defender
 from binsifter.core.config import (
     BinSifterConfig,
     find_tool_path,
@@ -120,6 +120,44 @@ class SettingsPage(QWidget):
         self.status_label = QLabel("")
         root.addWidget(self.status_label)
 
+        # 2026-08-08, added right after the Defender exclusion button below:
+        # that button only ever helps if Defender is the machine's active
+        # antivirus product, and BinSifter has no way to know that without
+        # asking. This detects whatever's actually registered (via
+        # av_detect.py, same root/SecurityCenter2 WMI class Windows'
+        # own Security app reads) and, for anything other than Defender,
+        # points the analyst at that vendor's own exclusion settings
+        # instead of silently doing nothing useful.
+        root.addSpacing(24)
+        av_label = QLabel("Antivirus")
+        av_label.setStyleSheet(
+            f"color: {accent_to_css(theme.Fore)}; border: none; background: transparent; font-weight: bold;"
+        )
+        root.addWidget(av_label)
+
+        av_explainer = QLabel(
+            "Detects which antivirus product(s) are registered with Windows Security on this "
+            "machine. The automated exclusion button below only works for Windows Defender - for "
+            "any other product, this points you at where to add the exclusion yourself."
+        )
+        av_explainer.setWordWrap(True)
+        av_explainer.setStyleSheet(f"color: {accent_to_css(theme.MutedFore)}; border: none; background: transparent;")
+        root.addWidget(av_explainer)
+
+        root.addSpacing(8)
+        self.av_detect_button = QPushButton("Detect installed antivirus")
+        self.av_detect_button.setFixedHeight(32)
+        self.av_detect_button.setStyleSheet(
+            f"QPushButton {{ background-color: {qcolor_to_css(theme.ButtonBack)}; "
+            f"color: {accent_to_css(theme.Fore)}; border: 1px solid {qcolor_to_css(theme.Border)}; }}"
+        )
+        self.av_detect_button.clicked.connect(self._on_detect_av_clicked)
+        root.addWidget(self.av_detect_button)
+
+        self.av_detect_status_label = QLabel("")
+        self.av_detect_status_label.setWordWrap(True)
+        root.addWidget(self.av_detect_status_label)
+
         # 2026-08-08, added after a real scan against live
         # Malware Bazaar samples: Windows Defender's real-time protection
         # raced BinSifter's own worker pool, quarantining extracted
@@ -200,6 +238,39 @@ class SettingsPage(QWidget):
         self.status_label.setStyleSheet(f"color: {accent_to_css(theme.Success)}; border: none; background: transparent;")
         self.status_label.setText("Settings saved.")
         self.settings_saved.emit()
+
+    def _on_detect_av_clicked(self) -> None:
+        theme = self._theme
+        self.av_detect_button.setEnabled(False)
+        self.av_detect_status_label.setStyleSheet(f"color: {accent_to_css(theme.Fore)}; border: none; background: transparent;")
+        self.av_detect_status_label.setText("Checking...")
+        QApplication.processEvents()
+
+        try:
+            products = av_detect.detect_av_products()
+        except av_detect.AvDetectionError as exc:
+            self.av_detect_status_label.setStyleSheet(f"color: {accent_to_css(theme.Danger)}; border: none; background: transparent;")
+            self.av_detect_status_label.setText(str(exc))
+            self.av_detect_button.setEnabled(True)
+            return
+
+        if not products:
+            self.av_detect_status_label.setStyleSheet(f"color: {accent_to_css(theme.MutedFore)}; border: none; background: transparent;")
+            self.av_detect_status_label.setText(
+                "No antivirus product found via Windows Security Center - this is expected on "
+                "Windows Server (Security Center isn't available there), or genuinely means nothing "
+                "is registered on this machine."
+            )
+            self.av_detect_button.setEnabled(True)
+            return
+
+        names = ", ".join(p.name for p in products)
+        lines = [f"Detected: {names}"]
+        for product in products:
+            lines.append(f"- {product.name}: {av_detect.guidance_for(product.name)}")
+        self.av_detect_status_label.setStyleSheet(f"color: {accent_to_css(theme.Success)}; border: none; background: transparent;")
+        self.av_detect_status_label.setText("\n".join(lines))
+        self.av_detect_button.setEnabled(True)
 
     def _on_add_defender_exclusion_clicked(self) -> None:
         theme = self._theme

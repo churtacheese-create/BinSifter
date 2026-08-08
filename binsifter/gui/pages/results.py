@@ -57,7 +57,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from binsifter.core import speakeasy_scan
+from binsifter.core import ai_export, speakeasy_scan
 from binsifter.core.config import BinSifterConfig
 from binsifter.core.disposition import save_disposition_entry
 from binsifter.core.models import FileRecord
@@ -522,6 +522,24 @@ class ResultsPage(QWidget):
         speakeasy_action = menu.addAction("Run isolated Speakeasy emulation")
         speakeasy_action.triggered.connect(lambda checked=False, target=target_path: self._launch_speakeasy(target))
 
+        menu.addSeparator()
+
+        # Unlike Ghidra/Sigcheck, this has no external tool to find - it's
+        # pure local formatting (see core/ai_export.py's module docstring),
+        # so the only prerequisite is somewhere to write the two output
+        # files, same as the "Open report folder" toolbar button already
+        # requires.
+        ai_export_configured = bool(self._config.ReportDirectory)
+        ai_export_label = "Export for AI analysis (Markdown + JSON)"
+        ai_export_action = menu.addAction(
+            ai_export_label if ai_export_configured else f"{ai_export_label} (configure Report Directory first)"
+        )
+        ai_export_action.setEnabled(ai_export_configured)
+        if ai_export_configured:
+            ai_export_action.triggered.connect(
+                lambda checked=False, target=target_path: self._export_for_ai_analysis(target)
+            )
+
         return menu
 
     def _launch_quick_tool(
@@ -594,6 +612,40 @@ class ResultsPage(QWidget):
             )
         except OSError as exc:
             QMessageBox.critical(self, "BinSifter", f"Could not launch Ghidra: {exc}")
+
+    def _export_for_ai_analysis(self, target_path: str) -> None:
+        """Writes the Markdown+JSON pair for one file's already-extracted
+        findings, for handing to whatever AI the analyst wants to use -
+        pasting the Markdown into a cloud chat interface, or feeding the
+        JSON to a script hitting a local model's API. No AI is called from
+        here, or anywhere in BinSifter - see core/ai_export.py's module
+        docstring for why that matters (the abandoned local-inference
+        prototype's GPU lockup, documented in TODO.md).
+
+        No confirmation dialog needed the way Speakeasy/X64dbg get one -
+        this only reads already-in-memory scan results and writes two small
+        text files, nothing that touches or executes the sample itself.
+        """
+        report_dir = self._config.ReportDirectory
+        if not report_dir:
+            QMessageBox.information(
+                self, "BinSifter",
+                "Configure a Report Directory in Settings first - AI exports are stored under it.",
+            )
+            return
+        record = next((r for r in self._records if r.Path == target_path), None)
+        if record is None:
+            return
+        try:
+            export_dir = Path(report_dir) / "ai_exports"
+            md_path, json_path = ai_export.export_file(record, export_dir)
+            QMessageBox.information(
+                self, "BinSifter",
+                f"AI-ready export written for {Path(target_path).name}:\n\n"
+                f"{md_path}\n{json_path}",
+            )
+        except OSError as exc:
+            QMessageBox.critical(self, "BinSifter", f"Could not write AI export: {exc}")
 
     def _launch_sigcheck(self, exe_path: str, target_path: str) -> None:
         if not Path(target_path).is_file():
