@@ -2582,7 +2582,27 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                         $null = $proc.Start()
                         $stdoutTask = $proc.StandardOutput.ReadToEndAsync()
                         $stderrTask = $proc.StandardError.ReadToEndAsync()
-                        if (-not $proc.WaitForExit(3000)) {
+                        # 2026-08-09: bumped from 3000ms after a real FLARE VM
+                        # run showed "Capa: version unavailable" in the status
+                        # bar even though `capa.exe --version` answered fine
+                        # when run directly in a terminal - so capa.exe itself
+                        # isn't broken, this probe's own timeout was too tight
+                        # for it specifically. capa's official Windows release
+                        # is a PyInstaller onefile executable, which
+                        # self-extracts its whole bundled Python runtime into
+                        # a fresh %TEMP% folder on every launch (not cached) -
+                        # a real, well-documented PyInstaller characteristic,
+                        # not a BinSifter guess. That's a fundamentally
+                        # heavier startup than yara64.exe/ssdeep.exe (small
+                        # native binaries with near-instant launch), so one
+                        # flat timeout shared across all three tools wasn't
+                        # well-suited to capa's profile - especially on a
+                        # slower-disk analysis VM. This only ever runs once at
+                        # startup or right after a Settings save, never in a
+                        # hot loop, so a longer worst-case wait costs nothing
+                        # real; still fails gracefully to 'version unavailable'
+                        # if a tool is genuinely hung.
+                        if (-not $proc.WaitForExit(10000)) {
                             try { $proc.Kill($true) } catch { }
                             try { $null = $proc.WaitForExit(2000) } catch { }
                             return 'version unavailable'
@@ -3859,7 +3879,33 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                     # Close/Dispose lives in this finally so an unexpected exception
                     # mid-dispatch still releases the pool instead of leaking it.
                     try {
-                    $queue = [System.Collections.Generic.Queue[string]]::new($orderedPaths)
+                    # 2026-08-09: real-scan bug, confirmed from a live log
+                    # ("Scan engine error: Cannot find an overload for "new"
+                    # and the argument count: "1"." right after "Target
+                    # queue populated" - the dispatcher never got any
+                    # further). $orderedPaths starts out as a genuinely
+                    # .NET-typed List[string] (EnumerationResult.Files), but
+                    # archive expansion above rebuilds it via
+                    # `@($orderedPaths) + @($expansion.ExtractedFiles)` -
+                    # PowerShell's array subexpression operator flattens
+                    # that into a loosely-typed System.Object[], even though
+                    # every element is still really a string. Queue[string]
+                    # has both a `Queue(int capacity)` and a
+                    # `Queue(IEnumerable[string] collection)` constructor,
+                    # and PowerShell's ::new() overload binder can fail to
+                    # disambiguate those two against an untyped Object[]
+                    # argument - "Cannot find an overload" is PowerShell's
+                    # exact wording for that binder failure, thrown before
+                    # the constructor ever actually runs. This was never
+                    # caught before because it's the only 1-argument
+                    # ::new() call on a generic collection anywhere in this
+                    # file, and archive expansion had never previously run
+                    # end-to-end against a live Rowan scan reaching this
+                    # exact line. Explicitly casting to a real [string[])
+                    # first removes the ambiguity - a genuine String[]
+                    # unambiguously satisfies IEnumerable[string], no
+                    # binder guesswork needed.
+                    $queue = [System.Collections.Generic.Queue[string]]::new([string[]]$orderedPaths)
                     $inFlight = [System.Collections.Generic.List[object]]::new()
                     $completedCount = 0
                     $nextMilestone = 50
