@@ -1986,7 +1986,20 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             $lines.Add("**Path:** ``$($data['Path'])``")
 
             $hashBits = [System.Collections.Generic.List[string]]::new()
-            foreach ($pair in @(, @('MD5', 'MD5'), @('SHA1', 'SHA1'), @('ssdeep', 'SSDEEP'))) {
+            # NOTE: no leading comma before the first @('MD5','MD5') here, unlike
+            # the multi-line "-Rows @( , @(...) , @(...) )" pattern used elsewhere
+            # in this file. Those work BECAUSE each row is its own newline-
+            # separated statement in a script block, where a leading `,` per
+            # statement is needed to stop @()'s pipeline-style collection from
+            # auto-unrolling that row's 2 elements. This is a single-line,
+            # already comma-joined list - not a multi-statement block - so
+            # there's no such auto-unroll to cancel out. Adding a leading comma
+            # here instead double-wraps only the first item (@(@('MD5','MD5'))),
+            # so $pair[1] silently returns $null on the first iteration -> the
+            # OrderedDictionary's $data.Contains($null) throws "Value cannot be
+            # null. (Parameter 'key')". Confirmed by tracing the real error
+            # message from a live AI-export run (2026-08-10).
+            foreach ($pair in @(@('MD5', 'MD5'), @('SHA1', 'SHA1'), @('ssdeep', 'SSDEEP'))) {
                 if ($data.Contains($pair[1]) -and $data[$pair[1]]) {
                     $hashBits.Add("$($pair[0]) ``$($data[$pair[1]])``")
                 }
@@ -2093,18 +2106,49 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                 [BinSifter.FileRecord]$Record,
                 [string]$OutputDir
             )
-            if (-not (Test-Path -LiteralPath $OutputDir -PathType Container)) {
-                $null = New-Item -Path $OutputDir -ItemType Directory -Force
+            # 2026-08-10: two real bugs already found and fixed in this feature
+            # this same day (a leading-comma array-construction bug in the
+            # Markdown hash-summary line, and a bare-parens if/else-as-operand
+            # bug in the draft-YARA-rule code elsewhere in this file, both
+            # never exercised until a prior bug ahead of them got fixed first -
+            # see TODO.md's "Second real Rowan installer test" section). A
+            # THIRD "You cannot call a method on a null-valued expression"
+            # error surfaced immediately after fixing the first one here, and
+            # couldn't be pinned to a specific line via read-through alone
+            # (every instance-method call in this function and its callees
+            # was checked against every FileRecord field that can legitimately
+            # be null - none were unguarded) - this dev sandbox still has no
+            # `pwsh` to reproduce and step through it directly. Stage-labeled
+            # try/catch here narrows down WHICH step throws on the next real
+            # attempt, rather than guessing a third time.
+            $stage = 'preparing output directory'
+            try {
+                if (-not (Test-Path -LiteralPath $OutputDir -PathType Container)) {
+                    $null = New-Item -Path $OutputDir -ItemType Directory -Force
+                }
+
+                $stage = 'computing output filename'
+                $stem = if ($Record.SHA1) { "BinSifter_$($Record.SHA1)" } else { "BinSifter_$([IO.Path]::GetFileNameWithoutExtension($Record.Path))" }
+
+                $stage = 'building Markdown content'
+                $mdContent = ConvertTo-AiExportMarkdown -Record $Record
+
+                $stage = 'writing Markdown file'
+                $mdPath = Join-Path $OutputDir "$stem.md"
+                [System.IO.File]::WriteAllText($mdPath, $mdContent, [System.Text.Encoding]::UTF8)
+
+                $stage = 'building JSON content'
+                $jsonContent = ConvertTo-AiExportJson -Record $Record
+
+                $stage = 'writing JSON file'
+                $jsonPath = Join-Path $OutputDir "$stem.json"
+                [System.IO.File]::WriteAllText($jsonPath, $jsonContent, [System.Text.Encoding]::UTF8)
+
+                return @{ MdPath = $mdPath; JsonPath = $jsonPath }
             }
-            $stem = if ($Record.SHA1) { "BinSifter_$($Record.SHA1)" } else { "BinSifter_$([IO.Path]::GetFileNameWithoutExtension($Record.Path))" }
-
-            $mdPath = Join-Path $OutputDir "$stem.md"
-            [System.IO.File]::WriteAllText($mdPath, (ConvertTo-AiExportMarkdown -Record $Record), [System.Text.Encoding]::UTF8)
-
-            $jsonPath = Join-Path $OutputDir "$stem.json"
-            [System.IO.File]::WriteAllText($jsonPath, (ConvertTo-AiExportJson -Record $Record), [System.Text.Encoding]::UTF8)
-
-            return @{ MdPath = $mdPath; JsonPath = $jsonPath }
+            catch {
+                throw "[stage: $stage] $($_.Exception.Message)"
+            }
         }
 
         # Batch password-prompt dialog for archive expansion (2026-08-07) - shown
@@ -4316,8 +4360,16 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                                     $commonStrings = @($intersection | Select-Object -First 12)
                                 }
 
-                                $minSize = ($members | Measure-Object -Property @{Expression={ (Get-Item -LiteralPath $_.Path -ErrorAction SilentlyContinue).Length }} -Minimum).Minimum
-                                $maxSize = ($members | Measure-Object -Property @{Expression={ (Get-Item -LiteralPath $_.Path -ErrorAction SilentlyContinue).Length }} -Maximum).Maximum
+                                # Measure-Object's -Property parameter is PSPropertyExpression[]-typed,
+                                # not [object[]] like Select-Object/Sort-Object/Group-Object - it does
+                                # NOT accept the @{Expression=...} calculated-property hashtable syntax
+                                # those cmdlets support. A bare scriptblock is the only accepted form
+                                # for a computed value here (confirmed against PowerShell's own source/
+                                # docs - passing a hashtable throws "Cannot bind parameter 'Property'.
+                                # Cannot convert ... to type Microsoft.PowerShell.Commands.PSPropertyExpression").
+                                $sizeMeasure = $members | Measure-Object -Property { (Get-Item -LiteralPath $_.Path -ErrorAction SilentlyContinue).Length } -Minimum -Maximum
+                                $minSize = $sizeMeasure.Minimum
+                                $maxSize = $sizeMeasure.Maximum
                                 $sizeCondition = if ($minSize -and $maxSize) { "filesize >= $([Math]::Max(0, $minSize - 4096)) and filesize <= $($maxSize + 4096)" } else { $null }
 
                                 $ruleName = "bsifter_ssdeep_cluster_${clusterId}_$timestamp" -replace '[^a-zA-Z0-9_]', '_'
@@ -4338,7 +4390,18 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                                         $lines.Add("        `$s$si = `"$escaped`"")
                                     }
                                     $lines.Add('    condition:')
-                                    $cond = "uint16(0) == 0x5A4D and " + (if ($sizeCondition) { "$sizeCondition and " } else { '' }) + "(3 of them)"
+                                    # NOTE: previously wrote the if/else directly inline as an operand
+                                    # of `+` - e.g. "..." + (if (...) {...} else {...}) + "...". Bare
+                                    # (...) parens in PowerShell only accept a single pipeline, not a
+                                    # statement like if/else (that's what $(...) is for) - so the
+                                    # parser tried to invoke `if` itself as an external command,
+                                    # throwing "The term 'if' is not recognized as the name of a
+                                    # cmdlet...". Precomputing the conditional piece into its own
+                                    # variable first (a plain top-level if/else assignment, which IS
+                                    # valid - PowerShell captures a statement's output on assignment)
+                                    # sidesteps the issue entirely rather than switching to $(...).
+                                    $sizePart = if ($sizeCondition) { "$sizeCondition and " } else { '' }
+                                    $cond = "uint16(0) == 0x5A4D and " + $sizePart + "(3 of them)"
                                     $lines.Add("        $cond")
                                 }
                                 else {
@@ -4347,7 +4410,8 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                                     # range-only skeleton that's explicitly flagged as needing manual
                                     # work rather than silently omitting the rule.
                                     $lines.Add('    condition:')
-                                    $fallbackCond = "uint16(0) == 0x5A4D" + (if ($sizeCondition) { " and $sizeCondition" } else { '' })
+                                    $fallbackSizePart = if ($sizeCondition) { " and $sizeCondition" } else { '' }
+                                    $fallbackCond = "uint16(0) == 0x5A4D" + $fallbackSizePart
                                     $lines.Add("        $fallbackCond // TODO: no common strings found - add real detection logic before use")
                                 }
                                 $lines.Add('}')
@@ -5496,10 +5560,11 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                 $targetPath = $grid.SelectedRows[0].Cells['Path'].Value
                 $speakeasyExe = $Config.SpeakeasyExe
                 if ([string]::IsNullOrWhiteSpace($speakeasyExe) -or -not (Test-Path -LiteralPath $speakeasyExe -PathType Leaf)) {
+                    $installNote = "speakeasy.exe isn't a standalone download - install it via `"pip install speakeasy-emulator`" in a Python environment, then copy speakeasy.exe out of that environment's Scripts folder into your tools directory."
                     $msg = if ($Config.ToolsDir) {
-                        "speakeasy.exe was not found in your configured tools directory:`r`n$($Config.ToolsDir)"
+                        "speakeasy.exe was not found in your configured tools directory:`r`n$($Config.ToolsDir)`r`n`r`n$installNote"
                     } else {
-                        "Configure a tools directory in Settings first (Settings > Path to tools), then place speakeasy.exe in it."
+                        "Configure a tools directory in Settings first (Settings > Path to tools). $installNote"
                     }
                     [System.Windows.Forms.MessageBox]::Show(
                         $grid.FindForm(), $msg, 'BinSifter',
@@ -6043,7 +6108,7 @@ Only the first three are required — everything else is optional, and a missing
 • ResourceHacker.exe — optional. Quick-launch from Results.
 • sigcheck.exe — optional. Sysinternals Sigcheck — on-demand signature/provenance dump from Results.
 • x64dbg.exe and x32dbg.exe — optional, two separate entries. Debugger launch from Results — pick whichever matches the target's bitness.
-• speakeasy.exe — optional. Isolated code emulation, on-demand from Results.
+• speakeasy.exe — optional. Isolated code emulation, on-demand from Results. Unlike the other tools above, this isn't a standalone download - it's the launcher stub pip creates when you run "pip install speakeasy-emulator" in a Python environment. Install it there, then copy speakeasy.exe out of that environment's Scripts folder (e.g. %LOCALAPPDATA%\Programs\Python\Python3xx\Scripts\speakeasy.exe, or a venv's Scripts folder) into your configured tools directory - same as any other tool here once it's copied in.
 
 Ghidra isn't in this folder's search - it has its own "Path to Ghidra" field instead (see BEFORE THE FIRST SCAN above). Point it at your Ghidra install root (e.g. D:\ghidra_11.x) and BinSifter locates analyzeHeadless.bat inside it the same recursive way, without needing anything copied, moved, or symlinked - the real install stays exactly where it is.
 
