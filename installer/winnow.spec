@@ -62,6 +62,24 @@ own_datas = [
 mscerts_datas, mscerts_binaries, mscerts_hidden = collect_all("mscerts")
 speakeasy_datas, speakeasy_binaries, speakeasy_hidden = collect_all("speakeasy")
 
+# 2026-08-09, added after a real installer crashed at startup on TWO
+# separate Windows machines with unicorn's own "ERROR: fail to load the
+# dynamic library." speakeasy_scan.py has since been hardened so a failed
+# unicorn load can no longer crash the whole app (see that module's
+# docstring) - but that's a safety net for a genuinely missing/broken
+# runtime dependency (most likely the Visual C++ Redistributable, per
+# unicorn 1.0.2's known Windows requirements), not a substitute for making
+# sure unicorn's own native DLL is actually bundled by PyInstaller in the
+# first place. Unlike mscerts/speakeasy above, nothing here was previously
+# explicitly collecting unicorn's binaries - PyInstaller's own bundled
+# community hook for `unicorn` (via pyinstaller-hooks-contrib, a
+# transitive dependency of pyinstaller itself) should normally catch this
+# automatically, but there was no way to confirm that from this Linux dev
+# sandbox against a real Windows build. Collecting it explicitly here costs
+# nothing if the automatic hook already had it covered, and directly closes
+# the gap if it didn't - the same defensive reasoning as mscerts/speakeasy.
+unicorn_datas, unicorn_binaries, unicorn_hidden = collect_all("unicorn")
+
 # ---------------------------------------------------------------------------
 # capa's own dependency, vivisect (plus its sister package envi), is a
 # well-known PyInstaller pain point in the wider capa/vivisect community -
@@ -87,10 +105,10 @@ capa_hidden = collect_submodules("capa")
 a = Analysis(
     [str(repo_root / "binsifter" / "gui" / "__main__.py")],
     pathex=[str(repo_root)],
-    binaries=[*mscerts_binaries, *speakeasy_binaries],
-    datas=[*own_datas, *mscerts_datas, *speakeasy_datas],
+    binaries=[*mscerts_binaries, *speakeasy_binaries, *unicorn_binaries],
+    datas=[*own_datas, *mscerts_datas, *speakeasy_datas, *unicorn_datas],
     hiddenimports=[
-        *mscerts_hidden, *speakeasy_hidden,
+        *mscerts_hidden, *speakeasy_hidden, *unicorn_hidden,
         *vivisect_hidden, *envi_hidden, *capa_hidden,
         # multiprocessing.Pool workers (engine.py's scan_directory()) need
         # their own entry point resolvable when frozen - PyInstaller's

@@ -80,11 +80,53 @@ import logging
 import os
 from dataclasses import dataclass, field
 
-import speakeasy
-
 logger = logging.getLogger(__name__)
 
-_DEFAULT_CONFIG_PATH = os.path.join(os.path.dirname(speakeasy.__file__), "configs", "default.json")
+# 2026-08-09: real installer test, on TWO separate machines (a host and a
+# FLARE VM), crashed the entire app at STARTUP - before the main window
+# ever appeared - with an ImportError chain ending in unicorn's own
+# "ERROR: fail to load the dynamic library." speakeasy's own __init__.py
+# eagerly imports its full Windows-emulation stack down to `unicorn`
+# (speakeasy -> speakeasy.windows.win32 -> ... -> speakeasy.binemu ->
+# speakeasy.engines.unicorn_eng -> unicorn), which loads unicorn's native
+# DLL via ctypes at IMPORT TIME, not lazily. Since this module used to do a
+# plain top-level `import speakeasy`, and results.py imports THIS module
+# at ITS OWN top level (so the whole GUI can build the Speakeasy quick-
+# launch menu item), any failure to load that one native DLL took down
+# the entire application for every user - even someone who never intends
+# to use Speakeasy emulation at all. speakeasy-emulator pins an old
+# unicorn release (1.0.2, see pyproject.toml's dependency comment) whose
+# prebuilt Windows wheel is known in the wider community to need the
+# Microsoft Visual C++ Redistributable (x64) present on the target
+# machine - very plausibly the real root cause here, though it wasn't
+# possible to confirm which machine had it missing from this dev sandbox.
+# Fixed with the same graceful-degradation philosophy emulate_file()
+# below already uses for a target file speakeasy can't handle: the import
+# itself is now wrapped, the failure is stored instead of raised, and
+# emulate_file() returns a normal, actionable SpeakeasyResult.error instead
+# of ever letting this exception propagate up through results.py's import
+# and crash app startup. Every other BinSifter feature (YARA, capa, ssdeep,
+# hashing, Authenticode, the whole rest of the Results grid) has zero
+# dependency on unicorn/speakeasy and is completely unaffected either way.
+try:
+    import speakeasy
+    _IMPORT_ERROR: Exception | None = None
+except Exception as exc:  # noqa: BLE001 - deliberately broad: any import-time failure (missing native DLL, incompatible runtime, etc.) must not take the whole app down with it
+    speakeasy = None  # type: ignore[assignment]
+    _IMPORT_ERROR = exc
+    logger.warning("Speakeasy emulation is unavailable - failed to import: %s", exc)
+
+_DEFAULT_CONFIG_PATH = (
+    os.path.join(os.path.dirname(speakeasy.__file__), "configs", "default.json")
+    if speakeasy is not None else ""
+)
+
+_UNAVAILABLE_MESSAGE = (
+    "Speakeasy's emulation engine (Unicorn) failed to load on this machine: {error}. "
+    "This usually means the Microsoft Visual C++ Redistributable (x64) isn't installed - "
+    "install the latest version from Microsoft's website and restart BinSifter. Every other "
+    "BinSifter feature is unaffected by this."
+)
 
 # Longer than the 30s default the PowerShell version used for Sigcheck/other
 # quick captured tools - emulation of a nontrivial sample routinely runs
@@ -134,8 +176,16 @@ def emulate_file(target_path: str) -> SpeakeasyResult:
     genuine failure) folds into SpeakeasyResult.error, same graceful-
     degradation philosophy as the rest of core/ (capa/FLOSS/Authenticode
     all degrade to an empty/best-effort result rather than aborting the
-    file's scan).
+    file's scan). Also the one place the module-level import failure
+    (see _IMPORT_ERROR above) actually surfaces - as a normal, contained
+    result the Results-grid report window already knows how to display,
+    not an app-crashing exception.
     """
+    if _IMPORT_ERROR is not None:
+        return SpeakeasyResult(
+            api_call_count=0, file_operation_count=0,
+            error=_UNAVAILABLE_MESSAGE.format(error=_IMPORT_ERROR),
+        )
     try:
         cfg = _load_config()
         se = speakeasy.Speakeasy(config=cfg)

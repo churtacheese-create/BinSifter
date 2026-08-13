@@ -45,7 +45,7 @@ Winnow is beta, not 1.0 - expect rough edges, and please report anything that lo
 
 **Rowan:** Windows, PowerShell 7+ (`pwsh.exe`).
 
-**Winnow:** Python 3.10+, any OS the GUI's requirements support (developed and tested on Windows so far). Install with `pip install -e .` from the repo root.
+**Winnow:** Python 3.10+, any OS the GUI's requirements support (developed and tested on Windows so far). Install with `pip install -e .` from the repo root. On Windows, also install the [Microsoft Visual C++ Redistributable (x64)](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist) if it isn't already on the machine - the Speakeasy emulation feature's underlying engine (Unicorn) needs it to load. If it's missing, every other BinSifter feature still works normally; only Speakeasy emulation reports a clear error instead of running.
 
 **Both variants:**
 

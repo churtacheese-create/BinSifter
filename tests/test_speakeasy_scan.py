@@ -9,8 +9,23 @@ version field names. No committed PE fixture is used for the success path
 (smoketest/samples/ is real-world binaries, gitignored, not reproducible in
 every environment); emulate_file()'s error path is exercised directly
 against real bad input instead, which needs no fixture at all.
+
+2026-08-09 addition: a real installer test on two separate Windows machines
+(a host and a FLARE VM) crashed the entire app at startup because this
+module used to do a plain top-level `import speakeasy`, which eagerly pulls
+in `unicorn`'s native DLL - any failure there took down results.py's own
+module-level import, and with it the whole GUI, before a single window ever
+appeared. This dev sandbox is Linux, where the real `speakeasy`/`unicorn`
+packages import successfully (no Windows DLL to fail to load), so the
+actual Windows failure mode can't be reproduced end-to-end here. What CAN
+be verified directly: emulate_file()'s own bypass logic once the module-
+level import has already failed - simulated by monkeypatching the module's
+_IMPORT_ERROR/speakeasy state, the same state shape a real import failure
+would leave behind, rather than trying to force a real ImportError through
+a working native library. See the three tests at the bottom of this file.
 """
 
+from binsifter.core import speakeasy_scan
 from binsifter.core.speakeasy_scan import (
     SpeakeasyResult,
     _format_dns,
@@ -113,3 +128,40 @@ def test_format_traffic_without_port_or_proto():
     assert _format_traffic({"server": "1.2.3.4", "proto": "tcp.http"}) == "1.2.3.4 (tcp.http)"
     assert _format_traffic({"server": "1.2.3.4", "port": 80}) == "1.2.3.4:80"
     assert _format_traffic({}) == ""
+
+
+def test_module_imports_cleanly_when_speakeasy_is_available():
+    # Sanity check for the common case (this sandbox's Linux speakeasy
+    # install works fine) - the module-level import must not have left
+    # _IMPORT_ERROR set when speakeasy genuinely loaded.
+    assert speakeasy_scan._IMPORT_ERROR is None
+
+
+def test_emulate_file_degrades_gracefully_when_import_failed(monkeypatch):
+    # Simulate the exact state a real Windows unicorn-DLL load failure
+    # leaves behind: speakeasy is None, _IMPORT_ERROR holds the original
+    # exception - without this, emulate_file() would try to use a None
+    # `speakeasy` module and crash with an AttributeError instead of
+    # reporting a clean, actionable error.
+    fake_error = ImportError("ERROR: fail to load the dynamic library.")
+    monkeypatch.setattr(speakeasy_scan, "speakeasy", None)
+    monkeypatch.setattr(speakeasy_scan, "_IMPORT_ERROR", fake_error)
+
+    result = speakeasy_scan.emulate_file("C:\\Evidence\\sample.exe")
+
+    assert result.api_call_count == 0
+    assert result.file_operation_count == 0
+    assert result.error is not None
+    assert "fail to load the dynamic library" in result.error
+    assert "Visual C++ Redistributable" in result.error
+
+
+def test_emulate_file_import_failure_never_raises(monkeypatch):
+    # The whole point of this fix - calling emulate_file() with a broken
+    # import must return a normal SpeakeasyResult, never propagate an
+    # exception the way the bare module-level `import speakeasy` used to.
+    monkeypatch.setattr(speakeasy_scan, "speakeasy", None)
+    monkeypatch.setattr(speakeasy_scan, "_IMPORT_ERROR", RuntimeError("boom"))
+
+    result = speakeasy_scan.emulate_file("C:\\Evidence\\sample.exe")
+    assert result.error is not None
