@@ -19,6 +19,10 @@ smoketest/samples/
 # settle on a permanent location.
 Catalogs/
 
+# Local machine fix script - not project source
+Claude_workspaceFix.ps1
+Claude_workspaceFix_*.log
+
 # OS junk
 Thumbs.db
 .DS_Store
