@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -53,6 +54,51 @@ def get_binsifter_root() -> Path:
         return Path(sys.executable).resolve().parent
     # binsifter/core/config.py -> up to the installed package root
     return Path(__file__).resolve().parent.parent.parent
+
+
+def get_binsifter_data_root() -> Path:
+    """Where BinSifter actually writes its own runtime data (Reports/,
+    Attack/, Blocklist/, the settings cache, the NSRL mmap cache) - almost
+    always the same directory as get_binsifter_root(), but falls back to a
+    per-user, always-writable location if that directory turns out not to
+    be writable.
+
+    2026-08-13 addition: a real installer test crashed Winnow at startup
+    with an unhandled PermissionError ([WinError 5] Access is denied)
+    trying to mkdir 'C:\\Program Files\\BinSifter Winnow\\Reports'.
+    Winnow.iss deliberately offers a per-user (default) OR an all-users/
+    admin install choice (PrivilegesRequiredOverridesAllowed=dialog) - the
+    per-user path lands under %LOCALAPPDATA%\\Programs, which is always
+    writable by that user, but the all-users path lands under Program
+    Files, which a normal (non-elevated) launch can never write to.
+    build_default_config() and save_settings_cache() used to assume
+    get_binsifter_root() was always writable; that assumption only held
+    for the per-user install.
+
+    Rather than special-casing "am I under Program Files," this actually
+    probes for write access (permission bits don't reliably predict real
+    NTFS/UAC write access) and falls back to
+    %LOCALAPPDATA%\\BinSifter Winnow\\ - the standard per-user data
+    location, always writable, no elevation needed - if the probe fails.
+    Leaves the common case (per-user install, or running from source)
+    completely unchanged.
+    """
+    root = get_binsifter_root()
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+        probe = root / ".bsifter-write-probe"
+        probe.touch()
+        probe.unlink()
+        return root
+    except OSError as exc:
+        fallback = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "BinSifter Winnow"
+        fallback.mkdir(parents=True, exist_ok=True)
+        logger.warning(
+            "%s is not writable (%s) - likely an all-users/Program Files install - "
+            "using %s for Reports/settings/cache data instead.",
+            root, exc, fallback,
+        )
+        return fallback
 
 
 # Maps each tool's Config field to the fixed filename BinSifter looks for
@@ -181,7 +227,7 @@ def save_settings_cache(config: BinSifterConfig) -> None:
     """Writes the Settings-page fields to the cache file - only called after
     a successful Settings Save, not on every config mutation.
     """
-    root = get_binsifter_root()
+    root = get_binsifter_data_root()
     cache_path = _settings_cache_path(root)
     payload = {key: getattr(config, key) for key in _CACHE_FIELDS}
     cache_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -194,7 +240,7 @@ def build_default_config() -> BinSifterConfig:
     PowerShell version's $reportsDefaultDir/$attackDefaultPath/
     $blocklistDefaultPath plus $cachedSettings.
     """
-    root = get_binsifter_root()
+    root = get_binsifter_data_root()
     reports_dir = root / "Reports"
     attack_path = root / "Attack" / "enterprise-attack.json"
     blocklist_path = root / "Blocklist" / "blocklist.csv"
