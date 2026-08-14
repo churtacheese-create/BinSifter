@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import multiprocessing
 import sys
 
 from PySide6.QtWidgets import QApplication
@@ -67,4 +68,36 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    # 2026-08-13: REQUIRED for a frozen (PyInstaller) build - without this,
+    # a real installer test showed every multiprocessing worker
+    # engine.py's scan_directory() spawns (up to 16, one per CPU) opening
+    # a brand new full BinSifter-Winnow.exe GUI window instead of running
+    # as a background worker, mid-scan, right after NSRL caching finished.
+    #
+    # Root cause: on Windows, multiprocessing has no fork() and must
+    # "spawn" - relaunch a fresh interpreter and have it import the main
+    # module. For a normal (non-frozen) script that relaunch runs
+    # `python.exe -c <bootstrap code>`, which never re-executes this
+    # file's own `if __name__ == "__main__":` block at all - so unfrozen,
+    # this codebase's engine.py/capa_scan.py/subprocess_timeout.py's
+    # existing multiprocessing.get_context("spawn") calls (dev sandbox and
+    # `pip install -e .` usage) always worked correctly with no special
+    # handling needed. There is no separate python.exe once frozen,
+    # though - the frozen exe IS the only executable, so Python's own
+    # multiprocessing.spawn module relaunches THAT SAME exe with a hidden
+    # sentinel flag instead. freeze_support() is what recognizes that
+    # sentinel and, in the child, runs the worker's target function then
+    # exits immediately - WITHOUT that check, PyInstaller's bootloader has
+    # no way to know this launch is a spawned worker and not a fresh
+    # double-click, so it just ran this whole script again top to bottom,
+    # QApplication and MainWindow included. winnow.spec's existing
+    # "multiprocessing.popen_spawn_win32" hiddenimport only makes sure the
+    # module bundles into the build - it doesn't call freeze_support() for
+    # you, which is a separate, required, one-line step per Python's own
+    # multiprocessing docs. Must be the very first thing done here, before
+    # QApplication is ever created, since a spawned worker needs to exit
+    # before reaching any of that. A harmless no-op on Linux/macOS and on
+    # an unfrozen run either way, so left unconditional rather than
+    # gated behind `sys.frozen`.
+    multiprocessing.freeze_support()
     sys.exit(main())

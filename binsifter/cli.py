@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import multiprocessing
 import sys
 from pathlib import Path
 
@@ -81,4 +82,12 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    # Not part of a frozen build today (winnow.spec only bundles
+    # binsifter/gui/__main__.py - see that file's own comment for the full
+    # explanation of why this call matters) - kept here too since
+    # scan_directory() spawns the same multiprocessing workers either way,
+    # so this entry point would hit the identical bug the moment it was
+    # ever frozen on its own (e.g. a future headless-scan-only build).
+    # Harmless no-op otherwise.
+    multiprocessing.freeze_support()
     sys.exit(main())
