@@ -2831,9 +2831,21 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                         [BinSifter.EntropyAnalyzer]::AddCounts($byteCounts, $buffer, $bytesRead)
                     }
 
+                    # 2026-08-13: [Convert]::ToHexString() (and the SHA1/SHA256
+                    # ::HashData() static shortcuts used elsewhere in this file)
+                    # were only added in .NET 5.0 - PowerShell 7.0 still ships on
+                    # .NET Core 3.1 and doesn't have either. A real installer test
+                    # on a FLARE VM (PowerShell 7 installed via winget, landing on
+                    # 7.0 rather than a newer 7.x) threw "does not contain a
+                    # method named 'HashData'" immediately at scan start, while
+                    # the exact same installer worked fine on a host machine with
+                    # a newer PowerShell 7 already on it. [BitConverter]::ToString()
+                    # (hyphenated uppercase hex, same casing Convert.ToHexString
+                    # produces) has existed since .NET Framework 1.1 - safe on
+                    # every PowerShell 7.x release, not just the newest ones.
                     $sha1Bytes = $sha1Hasher.GetHashAndReset()
-                    $sha1 = [Convert]::ToHexString($sha1Bytes)
-                    $md5 = [Convert]::ToHexString($md5Hasher.GetHashAndReset())
+                    $sha1 = [System.BitConverter]::ToString($sha1Bytes).Replace('-', '')
+                    $md5 = [System.BitConverter]::ToString($md5Hasher.GetHashAndReset()).Replace('-', '')
                 }
                 finally {
                     if ($stream) { $stream.Dispose() }
@@ -3399,10 +3411,19 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                 function Get-ArchiveDestDir {
                     param([string]$ArchivePath, [string]$ExtractionRoot)
                     $stem = [System.IO.Path]::GetFileNameWithoutExtension($ArchivePath)
-                    $hashBytes = [System.Security.Cryptography.SHA1]::HashData(
-                        [System.Text.Encoding]::UTF8.GetBytes($ArchivePath.ToLowerInvariant())
-                    )
-                    $hashHex = [Convert]::ToHexString($hashBytes).Substring(0, 10).ToLowerInvariant()
+                    # .Create()/.ComputeHash() instead of the .NET 5+-only
+                    # ::HashData() static shortcut - see the main per-file hash
+                    # loop's 2026-08-13 comment for why (PowerShell 7.0, still
+                    # on .NET Core 3.1, doesn't have HashData).
+                    $destDirSha1 = [System.Security.Cryptography.SHA1]::Create()
+                    try {
+                        $hashBytes = $destDirSha1.ComputeHash(
+                            [System.Text.Encoding]::UTF8.GetBytes($ArchivePath.ToLowerInvariant())
+                        )
+                    } finally {
+                        $destDirSha1.Dispose()
+                    }
+                    $hashHex = [System.BitConverter]::ToString($hashBytes).Replace('-', '').Substring(0, 10).ToLowerInvariant()
                     $destDir = Join-Path $ExtractionRoot "${stem}_$hashHex"
                     $null = New-Item -ItemType Directory -Path $destDir -Force -ErrorAction SilentlyContinue
                     return $destDir
@@ -3633,11 +3654,19 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                     # the source path so multiple NSRL files can't collide on cache names.
                     $nsrlCacheDir = Join-Path $Config.ReportDirectory '.bsifter-nsrl-cache'
                     $null = New-Item -ItemType Directory -Path $nsrlCacheDir -Force -ErrorAction SilentlyContinue
-                    $nsrlPathHash = [Convert]::ToHexString(
-                        [System.Security.Cryptography.SHA256]::HashData(
+                    # .Create()/.ComputeHash() instead of the .NET 5+-only
+                    # ::HashData() static shortcut - see the main per-file hash
+                    # loop's 2026-08-13 comment for why (PowerShell 7.0, still
+                    # on .NET Core 3.1, doesn't have HashData).
+                    $nsrlPathSha256 = [System.Security.Cryptography.SHA256]::Create()
+                    try {
+                        $nsrlPathHashBytes = $nsrlPathSha256.ComputeHash(
                             [System.Text.Encoding]::UTF8.GetBytes($Config.NsrlPath.ToLowerInvariant())
                         )
-                    ).Substring(0, 16)
+                    } finally {
+                        $nsrlPathSha256.Dispose()
+                    }
+                    $nsrlPathHash = [System.BitConverter]::ToString($nsrlPathHashBytes).Replace('-', '').Substring(0, 16)
                     $cacheName = "$([System.IO.Path]::GetFileNameWithoutExtension($Config.NsrlPath))_$nsrlPathHash.bsifter-cache"
                     $cachePath = Join-Path $nsrlCacheDir $cacheName
                     $tempCachePath = "$cachePath.tmp"
@@ -6904,11 +6933,19 @@ For repeatable case work, preserve the report directory (Reports\ next to BinSif
                     # actually reflects what a scan would use instead of always missing.
                     if ($ReportDirectory -and (Test-Path -LiteralPath $ReportDirectory -PathType Container)) {
                         $nsrlCacheDir = Join-Path $ReportDirectory '.bsifter-nsrl-cache'
-                        $nsrlPathHash = [Convert]::ToHexString(
-                            [System.Security.Cryptography.SHA256]::HashData(
+                        # .Create()/.ComputeHash() instead of the .NET 5+-only
+                        # ::HashData() static shortcut - see the main per-file
+                        # hash loop's 2026-08-13 comment for why (PowerShell
+                        # 7.0, still on .NET Core 3.1, doesn't have HashData).
+                        $previewNsrlSha256 = [System.Security.Cryptography.SHA256]::Create()
+                        try {
+                            $previewNsrlHashBytes = $previewNsrlSha256.ComputeHash(
                                 [System.Text.Encoding]::UTF8.GetBytes($NsrlPath.ToLowerInvariant())
                             )
-                        ).Substring(0, 16)
+                        } finally {
+                            $previewNsrlSha256.Dispose()
+                        }
+                        $nsrlPathHash = [System.BitConverter]::ToString($previewNsrlHashBytes).Replace('-', '').Substring(0, 16)
                         $cacheName = "$([System.IO.Path]::GetFileNameWithoutExtension($NsrlPath))_$nsrlPathHash.bsifter-cache"
                         $cachePath = Join-Path $nsrlCacheDir $cacheName
 
