@@ -13,7 +13,7 @@ from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from binsifter import __version__
-from binsifter.core.config import get_binsifter_root
+from binsifter.core.config import get_bundled_asset_path
 from binsifter.gui.theme import ThemePalette, logo_horizontal_filename, qcolor_to_css
 from binsifter.gui.widgets import accent_to_css
 
@@ -32,7 +32,10 @@ class AboutPage(QWidget):
         # 2026-08-08: switched from a __file__-relative parent chain to
         # get_binsifter_root(), which resolves correctly under a frozen/
         # installed exe too (see that function's docstring).
-        logo_path = get_binsifter_root() / logo_horizontal_filename(theme)
+        # 2026-08-14: switched again, to get_bundled_asset_path() - see that
+        # function's docstring for why get_binsifter_root() alone stopped
+        # finding this file under a real installed build.
+        logo_path = get_bundled_asset_path(logo_horizontal_filename(theme))
         if logo_path.is_file():
             logo_label = QLabel()
             pixmap = QPixmap(str(logo_path))

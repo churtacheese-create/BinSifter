@@ -256,6 +256,71 @@ def test_capa_not_invoked_without_a_yara_hit(tmp_path):
     assert record.CAPAOutput is None
 
 
+def test_stalled_worker_is_abandoned_instead_of_hanging_forever(tmp_path, monkeypatch):
+    """2026-08-14: a real FLARE VM scan (Winnow_scanLogs_08142026.txt) got to
+    651/652 files and then produced zero further log output for over 3
+    hours before it was force-closed - one file's worker got stuck inside a
+    stage with no timeout protection (only capa has one; hashing/
+    authenticode/YARA/ssdeep/FLOSS don't), and the old plain
+    result_queue.get() in the draining loop waited for that result forever.
+    See RESULT_STALL_TIMEOUT_SECONDS' module-level comment for the full
+    root-cause writeup.
+
+    Exercising the real 1200s default here isn't practical, so this
+    replaces _NoDaemonPool with a fake, synchronous, in-process stand-in
+    that calls _process_one_file() directly for every file except one
+    designated "stuck" path, whose callback is simply never invoked -
+    exactly what a permanently-hung real worker looks like from the
+    draining loop's point of view. RESULT_STALL_TIMEOUT_SECONDS is
+    monkeypatched down to a fraction of a second so the test doesn't
+    actually wait 20 minutes.
+    """
+    import binsifter.core.engine as engine_mod
+
+    src_dir = _make_files(tmp_path, 3)  # file0.bin, file1.bin, file2.bin
+    stuck_path = str((tmp_path / "src" / "file1.bin"))
+    config = _config(src_dir)
+
+    class _FakePool:
+        def __init__(self, *, processes, initializer, initargs):
+            # Mirrors what a real spawned worker's _pool_worker_init() call
+            # does, just in this same test process instead of a child -
+            # sets up the _worker_* globals _process_one_file() reads.
+            initializer(*initargs)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            return False
+
+        def apply_async(self, func, args, callback=None, error_callback=None):
+            path = args[0]
+            if path == stuck_path:
+                return  # simulated permanently-hung worker - callback never fires
+            try:
+                result = func(*args)
+            except Exception as exc:  # noqa: BLE001 - mirrors error_callback's real contract
+                if error_callback:
+                    error_callback(exc)
+            else:
+                if callback:
+                    callback(result)
+
+    monkeypatch.setattr(engine_mod, "_NoDaemonPool", _FakePool)
+    monkeypatch.setattr(engine_mod, "RESULT_STALL_TIMEOUT_SECONDS", 0.2)
+
+    result = scan_directory(config)
+
+    by_path = {r.Path: r for r in result.records}
+    assert by_path[stuck_path].Status == "Error"
+    assert "did not respond" in by_path[stuck_path].Error
+    # The two healthy files still completed normally - one stuck file
+    # doesn't take the rest of the batch down with it.
+    other_statuses = [r.Status for p, r in by_path.items() if p != stuck_path]
+    assert other_statuses == ["Completed", "Completed"]
+
+
 def test_archive_contents_scanned_through_real_worker_pool_with_source_archive_set(tmp_path):
     """End-to-end check for 2026-08-07's archive-expansion wiring (see
     core/archive.py and this module's own archive-expansion block) run

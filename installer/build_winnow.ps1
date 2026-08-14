@@ -24,7 +24,17 @@ try {
     # pyproject.toml - PyInstaller's static analysis below needs these
     # actually importable, not just declared, to find them at all.
     python -m pip install -e . --quiet
-    python -m pip install pyinstaller --quiet
+    # 2026-08-14: floor-pinned, not left fully unconstrained - a real
+    # installer build with no pin at all silently picked up PyInstaller
+    # 6.0's onedir layout change (bundled datas moved from flat-next-to-
+    # the-exe into a new _internal\ subdirectory), which broke every
+    # bundled logo PNG's resolution (get_bundled_asset_path() in
+    # binsifter/core/config.py now handles either layout, but there's no
+    # reason to keep inviting the same class of silent, version-triggered
+    # behavior change for some future PyInstaller release too - matches
+    # every other real dependency in pyproject.toml, which are all pinned
+    # with at least a floor).
+    python -m pip install "pyinstaller>=6.0" --quiet
 }
 finally {
     Pop-Location

@@ -20,7 +20,7 @@ import time
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Qt, QThread, QTimer, Signal
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -34,7 +34,7 @@ from PySide6.QtWidgets import (
 )
 
 from binsifter import __version__
-from binsifter.core.config import build_default_config, get_binsifter_root
+from binsifter.core.config import build_default_config, get_bundled_asset_path
 from binsifter.core.engine import ScanResult, scan_directory
 from binsifter.core.models import FileRecord
 from binsifter.core.tool_metadata import format_status_line, refresh_tool_metadata
@@ -194,6 +194,19 @@ class MainWindow(QMainWindow):
         # becomes more than a one-time startup check.
         self.theme: ThemePalette = theme if theme is not None else get_theme_palette(detect_os_dark_mode())
         self.setWindowTitle(f"BinSifter Winnow {__version__}")
+        # 2026-08-14: winnow.spec's EXE(icon=...) embeds an icon into the
+        # built exe's own PE resources, which Windows uses for the taskbar
+        # entry - but Qt does NOT automatically reuse that embedded resource
+        # for the WINDOW's own title-bar icon (a separate, Qt-level
+        # property); nothing in this codebase had ever called
+        # setWindowIcon() at all, so the title bar showed no icon
+        # regardless of the exe's own embedded one. Uses the PNG (not the
+        # .ico winnow.spec embeds) since PNG decoding is built directly
+        # into Qt on every platform, unlike .ico which needs a separate
+        # imageformats plugin that may or may not be bundled.
+        icon_path = get_bundled_asset_path("BinSifter-WindowIcon.png")
+        if icon_path.is_file():
+            self.setWindowIcon(QIcon(str(icon_path)))
         self.resize(1400, 900)
         self.setStyleSheet(f"QMainWindow {{ background-color: {qcolor_to_css(self.theme.WindowBack)}; }}")
 
@@ -253,10 +266,12 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 18, 0, 0)
         layout.setSpacing(0)
 
-        # get_binsifter_root() (not a __file__-relative parent chain
-        # computed here directly) so this keeps resolving correctly under a
-        # frozen/installed exe too - see that function's 2026-08-08 note.
-        logo_path = get_binsifter_root() / logo_horizontal_filename(theme)
+        # get_bundled_asset_path() (not get_binsifter_root() directly, and
+        # not a __file__-relative parent chain) - see that function's
+        # 2026-08-14 note on why: a frozen/installed exe's bundled datas
+        # (this PNG included) don't reliably sit right next to the exe
+        # depending on the PyInstaller version that built it.
+        logo_path = get_bundled_asset_path(logo_horizontal_filename(theme))
         logo_label = QLabel()
         logo_label.setContentsMargins(12, 0, 12, 0)
         if logo_path.is_file():

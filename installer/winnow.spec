@@ -38,6 +38,14 @@ repo_root = Path(SPECPATH).resolve().parent
 own_datas = [
     (str(repo_root / "BinSifter-Logo-Horizontal-Dark.png"), "."),
     (str(repo_root / "BinSifter-Logo-Horizontal.png"), "."),
+    # 2026-08-14: the PNG (not the .ico EXE(icon=...) below embeds into the
+    # exe's own PE resources for the taskbar) - main_window.py now also
+    # calls setWindowIcon() at runtime for the window's own title-bar icon,
+    # which needs a real loadable file, not just the exe's embedded
+    # resource (Qt doesn't reuse that automatically - see that call's
+    # comment). PNG avoids depending on the imageformats/qico plugin being
+    # bundled correctly, unlike loading the .ico directly would.
+    (str(repo_root / "BinSifter-WindowIcon.png"), "."),
 ]
 
 # ---------------------------------------------------------------------------

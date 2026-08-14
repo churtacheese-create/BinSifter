@@ -102,6 +102,32 @@ logger = logging.getLogger(__name__)
 # _default_worker_count().
 MAX_SCAN_WORKERS = 16
 
+# 2026-08-14: hard ceiling on how long scan_directory()'s result-draining
+# loop will wait with ZERO forward progress before giving up on the rest of
+# the batch, rather than blocking forever. capa is the only per-file stage
+# with its own hang-safety net (PersistentCapaWorker's 90s timeout, see
+# capa_scan.py) - hashing/authenticode/imphash/ssdeep/YARA/FLOSS all run
+# directly in the pool worker process with nothing bounding them. A real
+# scan on a FLARE VM (Winnow_scanLogs_08142026.txt) got to 651/652 files and
+# then produced literally zero further log output - no "Finished:", no
+# error, nothing - for over 3 hours before it was force-closed (the elapsed
+# timer read past 5:30:00). Root-caused by diffing every "Scanning:" path
+# against every "Finished:" path in that log: exactly one file
+# (WindowsXP-KB936929-SP3-x86-RUS.exe, a large XP-era self-extracting
+# hotfix installer) was submitted and never came back. The draining loop
+# below used to be a plain, un-timed-out `result_queue.get()` - once a pool
+# worker got stuck inside ANY untimed stage for that one file, its callback
+# never fired, so the loop's `for _ in range(submitted): result_queue.get()`
+# blocked on that exact slot forever, which blocks the `with _NoDaemonPool
+# (...) as pool:` block from ever exiting, which blocks the entire scan -
+# every other file had already finished, so there was nothing left to make
+# progress on, just an unbounded wait for one worker that was never coming
+# back. 20 minutes is deliberately generous relative to the worst normal
+# per-file time actually observed in that same log (530.0s, ~8.8 minutes,
+# for AcroRd32.dll) - more than double it - so this should never trip on a
+# genuinely slow-but-progressing file, only on a real hang.
+RESULT_STALL_TIMEOUT_SECONDS = 1200
+
 
 def _default_worker_count() -> int:
     return max(1, min(MAX_SCAN_WORKERS, os.cpu_count() or 4))
@@ -961,11 +987,36 @@ def scan_directory(
             # file actually finished next - which is exactly what
             # ScanQueuePage.upsert_record()'s path-keyed updates already
             # handle correctly.
+            #
+            # 2026-08-14: polls with a timeout and tracks how long it's been
+            # since the LAST result of any kind arrived, instead of a plain
+            # blocking result_queue.get() - see RESULT_STALL_TIMEOUT_SECONDS'
+            # comment above for the real scan that hung indefinitely because
+            # of this. Any single result (ok or error) resets the clock, so
+            # this only trips when NOTHING has come back for the full
+            # ceiling, not just because one file happens to be slow while
+            # others keep finishing around it.
             completed = 0
-            for _ in range(submitted):
-                status, payload = result_queue.get()
+            last_progress_monotonic = time.monotonic()
+            stalled = False
+            # min(30, ...) so a shorter-than-30s stall ceiling (only ever
+            # done in tests - production always uses the real 1200s default)
+            # still gets checked promptly instead of waiting out a fixed 30s
+            # poll first regardless of how small the ceiling is.
+            poll_seconds = min(30, RESULT_STALL_TIMEOUT_SECONDS)
+            while completed < submitted:
+                try:
+                    status, payload = result_queue.get(timeout=poll_seconds)
+                except queue.Empty:
+                    if time.monotonic() - last_progress_monotonic >= RESULT_STALL_TIMEOUT_SECONDS:
+                        stalled = True
+                        break
+                    continue
+
+                last_progress_monotonic = time.monotonic()
                 if status == "error":
                     logger.error("Scan worker failed unexpectedly: %s", payload)
+                    completed += 1
                     continue
 
                 result: _WorkerFileResult = payload
@@ -982,6 +1033,40 @@ def scan_directory(
                 completed += 1
                 if progress_callback:
                     progress_callback(completed, len(paths), result.record.Path, result.record)
+
+            if stalled:
+                # Every path dispatched to the pool got its placeholder
+                # record's Status flipped to "Scanning" at submission time
+                # (above) - a path whose real result never came back still
+                # shows that same placeholder Status untouched, which is
+                # exactly how "still outstanding" is identified here with no
+                # extra bookkeeping needed.
+                stuck_paths = [p for p in paths[:submitted] if records[p].Status == "Scanning"]
+                logger.error(
+                    "Scan stalled: no worker result for over %ds - %d file(s) still "
+                    "outstanding (e.g. %s), abandoning the rest of this batch so the "
+                    "scan can finish instead of hanging indefinitely.",
+                    RESULT_STALL_TIMEOUT_SECONDS, len(stuck_paths),
+                    stuck_paths[0] if stuck_paths else "?",
+                )
+                for stuck_path in stuck_paths:
+                    stuck_record = records[stuck_path]
+                    stuck_record.Status = "Error"
+                    stuck_record.Error = (
+                        f"Scan worker did not respond within {RESULT_STALL_TIMEOUT_SECONDS}s "
+                        "and was abandoned so the rest of the scan could finish. This "
+                        "file likely hit a hang in a stage with no timeout protection "
+                        "(hashing/authenticode/YARA/ssdeep/FLOSS all lack one - only "
+                        "capa has its own 90s cutoff)."
+                    )
+                    completed += 1
+                    if progress_callback:
+                        progress_callback(completed, len(paths), stuck_path, stuck_record)
+                # The `with _NoDaemonPool(...) as pool:` block's own __exit__,
+                # right below, terminates every worker process unconditionally
+                # (see that class's docstring) - this is what actually kills
+                # the permanently-stuck worker and frees it, the same
+                # mechanism a normal scan completion already relies on.
 
         # Pool.__exit__ (just ran, above) tears down worker processes via
         # terminate() - an abrupt kill that does NOT clean up each worker's

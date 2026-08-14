@@ -101,6 +101,54 @@ def get_binsifter_data_root() -> Path:
         return fallback
 
 
+def get_bundled_asset_path(filename: str) -> Path:
+    """Resolves a read-only bundled asset (the two logo PNGs, the window-
+    icon PNG) - deliberately separate from get_binsifter_root(), which
+    means "where BinSifter's PERSISTENT, writable data belongs" and must
+    stay stable across launches (see that function's docstring on why it
+    avoids sys._MEIPASS for exactly that reason).
+
+    2026-08-14: the very first real-Windows test round where Winnow's
+    window actually rendered (every earlier one crashed at or before
+    MainWindow.__init__ - the eager unicorn import crash, then the
+    Program-Files write-permission crash) surfaced every logo (sidebar,
+    About page) coming up blank on BOTH a host machine and a FLARE VM,
+    with no error anywhere - meaning this was very likely broken from
+    Winnow's very first installer build, just never observed until now.
+
+    Root cause: installer/winnow.spec's own_datas (the two logo PNGs)
+    are bundled with a "." destination, which used to land directly next
+    to the built exe under older PyInstaller onedir layouts - but neither
+    build_winnow.ps1 nor the release workflow pins a PyInstaller version
+    (`pip install pyinstaller`, no constraint, in both places), so every
+    real build already gets whatever's newest on PyPI. PyInstaller 6.0
+    changed the onedir default layout to nest bundled datas one level
+    deeper, under an auto-generated _internal/ subdirectory, instead of
+    flat next to the exe - get_binsifter_root() / filename silently
+    stopped finding them, and the calling code's `if logo_path.is_file():`
+    guard (see main_window.py/about.py) was written to skip gracefully
+    rather than error, so this failed completely silently.
+
+    sys._MEIPASS is PyInstaller's own documented, version-independent
+    pointer to wherever datas actually landed, regardless of onedir vs.
+    onefile or which layout a given PyInstaller version uses - exactly
+    the right tool for a read-only bundled asset with no persistence
+    requirement (unlike Reports/the settings cache). Tries the exe's own
+    directory too, in case a future PyInstaller version reverts the
+    layout again - checking both costs nothing and doesn't hard-code
+    either assumption.
+    """
+    candidates: list[Path] = []
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        candidates.append(Path(meipass) / filename)
+    candidates.append(get_binsifter_root() / filename)
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return candidates[-1]  # not found anywhere - same fallback callers already .is_file()-guard against
+
+
 # Maps each tool's Config field to the fixed filename BinSifter looks for
 # under ToolsDir - single source of truth, same role as $ToolFileNames in
 # the PowerShell version. NOTE: YaraExe/CapaExe/SsdeepExe/FlossExe/
