@@ -24,7 +24,7 @@
 import sys
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules, copy_metadata
 
 block_cipher = None
 repo_root = Path(SPECPATH).resolve().parent
@@ -102,6 +102,31 @@ vivisect_hidden = collect_submodules("vivisect")
 envi_hidden = collect_submodules("envi")
 capa_hidden = collect_submodules("capa")
 
+# ---------------------------------------------------------------------------
+# 2026-08-15, added after a real installer's footer status bar reported
+# "YARA: not installed", "Capa: not installed", "SSDEEP: not installed" on
+# every real Windows test despite all three genuinely being bundled and
+# working (real scans were producing real YARA hits and capa results the
+# whole time - only the VERSION LOOKUP was broken, not the tools
+# themselves). Root cause: core/tool_metadata.py reads each tool's version
+# via importlib.metadata.version(dist_name) - a real, working approach when
+# running from a normal pip install, but PyInstaller's static analysis only
+# follows and bundles actual IMPORTABLE CODE by default; it does not bundle
+# a package's .dist-info metadata directory unless a hook explicitly asks
+# for it. Without that directory present in the frozen build,
+# importlib.metadata.version() can't find an entry for the package at all
+# and raises PackageNotFoundError - which tool_metadata.py's own
+# _package_version() already catches and reports as "not installed", a
+# perfectly reasonable fallback for an actually-missing package, just not
+# what was actually happening here. copy_metadata() is PyInstaller's own
+# documented mechanism for exactly this gap - bundles just the .dist-info
+# folder (small, no extra code) for each named package, letting
+# importlib.metadata keep working unmodified inside the frozen build.
+# ---------------------------------------------------------------------------
+yara_metadata = copy_metadata("yara-python")
+capa_metadata = copy_metadata("flare-capa")
+ssdeep_metadata = copy_metadata("ppdeep")
+
 # capa-rules are NOT bundled here on purpose - matches BinSifter's existing
 # design (both Rowan and Winnow expect the analyst to point Settings'
 # "Path to capa rules" field at a separately-downloaded capa-rules
@@ -114,7 +139,10 @@ a = Analysis(
     [str(repo_root / "binsifter" / "gui" / "__main__.py")],
     pathex=[str(repo_root)],
     binaries=[*mscerts_binaries, *speakeasy_binaries, *unicorn_binaries],
-    datas=[*own_datas, *mscerts_datas, *speakeasy_datas, *unicorn_datas],
+    datas=[
+        *own_datas, *mscerts_datas, *speakeasy_datas, *unicorn_datas,
+        *yara_metadata, *capa_metadata, *ssdeep_metadata,
+    ],
     hiddenimports=[
         *mscerts_hidden, *speakeasy_hidden, *unicorn_hidden,
         *vivisect_hidden, *envi_hidden, *capa_hidden,

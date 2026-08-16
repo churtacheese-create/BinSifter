@@ -125,7 +125,28 @@ def _cache_path_for(nsrl_path: str, report_directory: str) -> str:
     though the NSRL data itself parsed fine. Named by a hash of the
     (case-normalized) source path so multiple differently-located NSRL
     files can't collide on a cache filename.
+
+    2026-08-15: report_directory is guarded against being blank here -
+    ReportDirectory is an optional Settings field (several other features,
+    e.g. archive extraction and CSV report writing in engine.py, already
+    skip cleanly rather than assume it's set), but this call site never had
+    that guard. A blank report_directory used to make `Path("") / ...`
+    resolve to a plain RELATIVE path (".bsifter-nsrl-cache/...") - which
+    directory that actually lands in then depends entirely on the
+    process's current working directory at launch, something a GUI app
+    started via a Start Menu shortcut has no reliable, consistent control
+    over (the exact same class of "silently landed somewhere unexpected"
+    bug already found and fixed once for Rowan's $BinSifterRoot resolution
+    landing on System32). A cache built under one CWD and looked up under a
+    different one on the next launch would appear to "rebuild every time"
+    with no error and nothing wrong with the freshness check itself -
+    falling back to a stable, always-real location instead removes that
+    failure mode entirely rather than just making it less likely.
     """
+    if not report_directory:
+        from binsifter.core.config import get_binsifter_data_root
+
+        report_directory = str(get_binsifter_data_root() / "Reports")
     cache_dir = Path(report_directory) / ".bsifter-nsrl-cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     digest = hashlib.sha256(os.path.normcase(nsrl_path).encode("utf-8")).hexdigest()[:16]

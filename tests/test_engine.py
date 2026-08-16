@@ -321,6 +321,90 @@ def test_stalled_worker_is_abandoned_instead_of_hanging_forever(tmp_path, monkey
     assert other_statuses == ["Completed", "Completed"]
 
 
+def test_stop_clicked_mid_scan_actually_stops_instead_of_reverting(tmp_path, monkeypatch):
+    """2026-08-14: real-world report - clicking Stop mid-scan showed
+    "Stopping..." in the status bar and then went right back to
+    "Scanning...", repeatedly, with no way to actually abort short of
+    force-closing the whole app. Root cause: should_stop() was only ever
+    polled in the SUBMISSION loop (between dispatching each file to the
+    pool) - but pool.apply_async() doesn't block on worker availability, so
+    every file is typically already queued to the pool within milliseconds
+    of a scan starting, long before a human could click anything. Once
+    submission finished, should_stop() was never checked again for the
+    rest of the scan.
+
+    Same fake-pool approach as test_stalled_worker_is_abandoned_instead_of_
+    hanging_forever above: two files (file1/file2) never call back,
+    simulating work still in flight when Stop gets clicked - confirms the
+    draining loop (not just the submission loop) now actually reacts to
+    should_stop(), marking still-outstanding files Cancelled instead of
+    waiting on them forever.
+    """
+    import binsifter.core.engine as engine_mod
+
+    src_dir = _make_files(tmp_path, 3)  # file0.bin, file1.bin, file2.bin
+    still_running_paths = {
+        str(tmp_path / "src" / "file1.bin"),
+        str(tmp_path / "src" / "file2.bin"),
+    }
+    config = _config(src_dir)
+
+    class _FakePool:
+        def __init__(self, *, processes, initializer, initargs):
+            initializer(*initargs)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            return False
+
+        def apply_async(self, func, args, callback=None, error_callback=None):
+            path = args[0]
+            if path in still_running_paths:
+                return  # simulated in-flight worker - callback never fires
+            try:
+                result = func(*args)
+            except Exception as exc:  # noqa: BLE001 - mirrors error_callback's real contract
+                if error_callback:
+                    error_callback(exc)
+            else:
+                if callback:
+                    callback(result)
+
+    monkeypatch.setattr(engine_mod, "_NoDaemonPool", _FakePool)
+    monkeypatch.setattr(engine_mod, "RESULT_STALL_TIMEOUT_SECONDS", 0.2)
+    # 2026-08-15: STOP_GRACE_SECONDS is a separate, shorter threshold added
+    # after this test first exposed a real bug - see its own comment in
+    # engine.py. Left at the real default (5s) this fake-pool test would
+    # need to actually wait out 5 real seconds of Empty polling before the
+    # draining loop would honor should_stop(); shrunk here the same way
+    # RESULT_STALL_TIMEOUT_SECONDS already is above, purely to keep this a
+    # fast unit test.
+    monkeypatch.setattr(engine_mod, "STOP_GRACE_SECONDS", 0.05)
+
+    # should_stop() is polled once per file in the submission loop too
+    # (before each dispatch) - False for those first 3 calls so all 3 files
+    # actually get dispatched, matching the real pool.apply_async()
+    # behavior this fake pool stands in for (it never blocks on worker
+    # availability, so submission always finishes before a human could
+    # click anything). True from the 4th call onward - the draining loop's
+    # first check - simulates a user clicking Stop just after the scan
+    # starts, while two files are still "running".
+    calls = {"count": 0}
+
+    def should_stop():
+        calls["count"] += 1
+        return calls["count"] > 3
+
+    result = scan_directory(config, should_stop=should_stop)
+
+    by_path = {r.Path: r for r in result.records}
+    assert by_path[str(tmp_path / "src" / "file0.bin")].Status == "Completed"
+    for p in still_running_paths:
+        assert by_path[p].Status == "Cancelled"
+
+
 def test_archive_contents_scanned_through_real_worker_pool_with_source_archive_set(tmp_path):
     """End-to-end check for 2026-08-07's archive-expansion wiring (see
     core/archive.py and this module's own archive-expansion block) run

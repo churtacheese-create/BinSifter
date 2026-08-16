@@ -128,6 +128,25 @@ MAX_SCAN_WORKERS = 16
 # genuinely slow-but-progressing file, only on a real hang.
 RESULT_STALL_TIMEOUT_SECONDS = 1200
 
+# 2026-08-14: separate, much shorter grace period governing how long the
+# draining loop will wait with zero forward progress before it honors a
+# should_stop() request - deliberately NOT the same value as the stall
+# ceiling above. An early version of the Stop-button fix checked
+# should_stop() on every Empty timeout with no grace at all, which passed
+# every test using a fake, instant-callback pool but broke a real scan: a
+# freshly-submitted worker still needs real wall-clock time just to spawn
+# its process and import this module before it can even start hashing a
+# file, let alone finish - a single trivial file measured at ~2.2s
+# end-to-end in this dev sandbox, well over the old 1s poll interval. With
+# no grace period, a Stop click (or, worse, a should_stop() callback that
+# happens to already read "true" for unrelated reasons right as the loop
+# starts polling) could cancel a file that was never actually stuck, just
+# not back yet. 5s leaves comfortable margin over that measured spawn
+# overhead without meaningfully changing what the user experiences as
+# "stop happened quickly" - a low-single-digit-second wait is still a huge
+# improvement over the multi-hour hang this whole fix exists to prevent.
+STOP_GRACE_SECONDS = 5
+
 
 def _default_worker_count() -> int:
     return max(1, min(MAX_SCAN_WORKERS, os.cpu_count() or 4))
@@ -999,16 +1018,61 @@ def scan_directory(
             completed = 0
             last_progress_monotonic = time.monotonic()
             stalled = False
-            # min(30, ...) so a shorter-than-30s stall ceiling (only ever
-            # done in tests - production always uses the real 1200s default)
-            # still gets checked promptly instead of waiting out a fixed 30s
-            # poll first regardless of how small the ceiling is.
-            poll_seconds = min(30, RESULT_STALL_TIMEOUT_SECONDS)
+            stopped_early = False
+            # 1s (min()'d against a shorter-than-1s ceiling, only ever done
+            # in tests) - short enough that a Stop click (checked once per
+            # loop iteration, below) takes effect almost immediately instead
+            # of waiting out a long poll first. Negligible overhead even
+            # across a 1200s stall ceiling - a few thousand extra wakeups
+            # over the worst case, not a busy loop.
+            poll_seconds = min(1, RESULT_STALL_TIMEOUT_SECONDS)
             while completed < submitted:
                 try:
                     status, payload = result_queue.get(timeout=poll_seconds)
                 except queue.Empty:
-                    if time.monotonic() - last_progress_monotonic >= RESULT_STALL_TIMEOUT_SECONDS:
+                    # 2026-08-14: real-world report - clicking Stop mid-scan
+                    # showed "Stopping..." in the status bar and then just
+                    # went right back to "Scanning...", repeatedly, with no
+                    # way to actually abort short of force-closing the app.
+                    # Root cause: should_stop() used to only ever be polled
+                    # in the SUBMISSION loop above, between dispatching each
+                    # file to the pool - but pool.apply_async() doesn't
+                    # block on worker availability, so all `submitted` files
+                    # are typically queued to the pool within milliseconds
+                    # of a scan starting, long before a human could ever
+                    # click anything. Once submission finished, should_stop()
+                    # was never checked again for the rest of the scan - the
+                    # flag Stop sets was real, just permanently too late to
+                    # matter. Checked here now, so it's reachable for the
+                    # entire time the scan is waiting on results.
+                    #
+                    # Deliberately checked only here, in the Empty branch -
+                    # NOT unconditionally at the top of every iteration. A
+                    # first draft did check it at the top, and that silently
+                    # discarded already-finished results: if a worker's
+                    # result was already sitting in result_queue the instant
+                    # this loop started (a real possibility - fast files can
+                    # finish during submission itself, before the draining
+                    # loop even begins), checking should_stop() first would
+                    # throw that real, already-obtained result away and mark
+                    # the file "Cancelled" even though it had actually
+                    # succeeded. Checking only when the queue is genuinely
+                    # empty means a Stop click can never pre-empt a result
+                    # that already came back - it only ever stops further
+                    # WAITING for results that haven't arrived yet, which is
+                    # the actual behavior "Stop" should have.
+                    #
+                    # Also gated on STOP_GRACE_SECONDS (see its own comment
+                    # above) rather than honored the instant should_stop()
+                    # reads true - a real, still-in-flight worker (already
+                    # dispatched, genuinely about to finish) needs a little
+                    # real wall-clock time to spawn and start running before
+                    # its result can show up here at all.
+                    since_last_result = time.monotonic() - last_progress_monotonic
+                    if should_stop and should_stop() and since_last_result >= STOP_GRACE_SECONDS:
+                        stopped_early = True
+                        break
+                    if since_last_result >= RESULT_STALL_TIMEOUT_SECONDS:
                         stalled = True
                         break
                     continue
@@ -1067,6 +1131,32 @@ def scan_directory(
                 # (see that class's docstring) - this is what actually kills
                 # the permanently-stuck worker and frees it, the same
                 # mechanism a normal scan completion already relies on.
+
+            if stopped_early:
+                # Same "still shows the placeholder Scanning status" check
+                # the stall-recovery block above uses - everything already
+                # submitted but not yet back with a real result. "Cancelled"
+                # (not "Error") since this is a deliberate user action, not
+                # a failure - matches the status the stopped_at handling
+                # below already uses for files that were never even
+                # submitted.
+                still_running_paths = [p for p in paths[:submitted] if records[p].Status == "Scanning"]
+                logger.info(
+                    "Scan stopped by request while %d file(s) were still in flight - "
+                    "abandoning them rather than waiting for results that may never "
+                    "come back quickly.",
+                    len(still_running_paths),
+                )
+                for running_path in still_running_paths:
+                    running_record = records[running_path]
+                    running_record.Status = "Cancelled"
+                    completed += 1
+                    if progress_callback:
+                        progress_callback(completed, len(paths), running_path, running_record)
+                # Same pool.terminate()-on-exit mechanism as the stall-
+                # recovery path above - this is what actually kills every
+                # in-flight worker immediately instead of waiting for
+                # whatever they're in the middle of to finish on its own.
 
         # Pool.__exit__ (just ran, above) tears down worker processes via
         # terminate() - an abrupt kill that does NOT clean up each worker's

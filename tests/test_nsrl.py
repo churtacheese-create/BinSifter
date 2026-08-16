@@ -134,6 +134,32 @@ def test_cache_path_lives_under_report_directory_not_beside_source(tmp_path):
     assert os.path.isfile(cache_path)
 
 
+def test_blank_report_directory_falls_back_to_stable_location_not_cwd(tmp_path, monkeypatch):
+    """2026-08-15: a blank ReportDirectory (a legitimate, supported Settings
+    state - several other engine.py features already skip cleanly rather
+    than assume it's set) used to make get_cache_path() resolve to a plain
+    RELATIVE path (".bsifter-nsrl-cache/..."), landing wherever the
+    process's current working directory happened to be at launch - not
+    guaranteed consistent across separate launches of a GUI app, the same
+    class of bug already found once for Rowan's $BinSifterRoot/System32
+    resolution. Confirms the fallback now goes through
+    get_binsifter_data_root() (monkeypatched here to a tmp_path so this
+    test doesn't touch the real user's actual data directory) instead of a
+    CWD-relative path, and that the resulting path is a real, stable
+    absolute path - not just "not blank".
+    """
+    from binsifter.core import config as config_mod
+
+    fake_data_root = tmp_path / "fake_data_root"
+    monkeypatch.setattr(config_mod, "get_binsifter_data_root", lambda: fake_data_root)
+
+    cache_path = nsrl.get_cache_path(str(tmp_path / "nsrl.txt"), "")
+
+    assert os.path.isabs(cache_path)
+    assert str(fake_data_root) in cache_path
+    assert cache_path == nsrl.get_cache_path(str(tmp_path / "nsrl.txt"), "")
+
+
 def test_cache_is_fresh_true_immediately_after_build(tmp_path):
     src = tmp_path / "nsrl.txt"
     _write_plain_list(src, [_random_sha1_hex() for _ in range(10)])
