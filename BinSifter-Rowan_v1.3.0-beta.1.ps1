@@ -77,6 +77,22 @@ function Show-MainWindow {
     $null = $ps.AddScript({
         Add-Type -AssemblyName System.Windows.Forms
         Add-Type -AssemblyName System.Drawing
+        # 2026-08-17: real report from a display scaled above 100% - every
+        # tile/nav-button label in this app is positioned with a hardcoded
+        # pixel Location/Size (see the New-StatTile/nav-button construction
+        # further down, and widgets.py's matching 2026-08-17 comment on the
+        # Winnow side for the fuller explanation of why fixed pixel geometry
+        # and DPI scaling don't mix well by default). WinForms has a real,
+        # simple, built-in fix for exactly this: SetHighDpiMode(PerMonitorV2)
+        # tells WinForms the app understands per-monitor DPI, which then
+        # makes Form.AutoScaleMode = Dpi (set on $form itself, below, where
+        # it's created) automatically rescale every already-positioned child
+        # control's Location/Size by the actual runtime-vs-design DPI ratio -
+        # no per-control code changes needed anywhere else in this file.
+        # Must be called before EnableVisualStyles() or any Form/control is
+        # created - Microsoft's own documented requirement, not incidental
+        # ordering; calling it any later is a documented no-op.
+        [void][System.Windows.Forms.Application]::SetHighDpiMode([System.Windows.Forms.HighDpiMode]::PerMonitorV2)
         [System.Windows.Forms.Application]::EnableVisualStyles()
 
         # ================= Native hot paths (compiled C#) =================
@@ -94,8 +110,42 @@ function Show-MainWindow {
         # broke YARA/CAPA in v1.2.1 when the guard checked NsrlLoader, which
         # predated it.) When adding new types in a future version, update this
         # check to reference one of them.
+        #
+        # 2026-08-17: -ErrorAction Stop plus an explicit try/catch added around
+        # the whole Add-Type call, after a real FLARE VM install let a scan
+        # start, run for zero seconds, and die with "Unable to find type
+        # [BinSifter.NsrlLoader]" - a type this SAME Add-Type call defines,
+        # with no compile error ever shown anywhere. Root cause: this entire
+        # scriptblock runs inside the dedicated STA runspace New-STARunspace()
+        # creates above, which starts from a fresh
+        # InitialSessionState.CreateDefault() - it does NOT inherit
+        # $ErrorActionPreference = 'Stop' from the outer script's scope (only
+        # variables explicitly passed via SessionStateProxy.SetVariable() cross
+        # that boundary, and this isn't one of them). Inside this runspace,
+        # $ErrorActionPreference silently defaults back to PowerShell's own
+        # 'Continue' - so if Add-Type ever hits a genuine C# compile error here
+        # (a bad reference, a language feature the older .NET Core 3.1 runtime
+        # this same FLARE VM was already found running doesn't support, or
+        # anything else), it was ALWAYS just a non-terminating warning: nothing
+        # stopped execution, the rest of this scriptblock kept running straight
+        # through to the main window and Settings page (both fully functional,
+        # matching exactly what was seen), and the actual compiler diagnostic
+        # only ever reached $ps.Streams.Error, at the very bottom of this
+        # function - which only gets read out (via a bare Write-Warning, not
+        # even a visible dialog) AFTER Application]::Run($form) RETURNS, i.e.
+        # after the user closes the whole app. The only place this failure
+        # could ever have surfaced before now was hours later, as a completely
+        # unrelated-looking "type not found" error the first time anything
+        # actually tried to USE one of the types that silently failed to
+        # compile - exactly the report this fixes. -ErrorAction Stop makes a
+        # real compile failure terminate right here regardless of the
+        # runspace's ambient preference, and the catch below shows it
+        # immediately, in a real dialog, with the actual compiler diagnostic
+        # attached - turning an untraceable downstream symptom into an
+        # instant, actionable error naming the real problem.
         if (-not ('BinSifter.ImphashClusterer' -as [type])) {
-        Add-Type -Language CSharp -TypeDefinition @'
+        try {
+        Add-Type -Language CSharp -ErrorAction Stop -TypeDefinition @'
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -1340,6 +1390,26 @@ namespace BinSifter
 }
 '@
         }
+        catch {
+            # See the 2026-08-17 comment above this try block for the full
+            # story - this is the dialog that failure used to reach nobody
+            # until a scan tried to use one of these types hours later.
+            # $_.Exception.Message for an Add-Type compile failure already
+            # includes the underlying CompilerErrorCollection's own
+            # file/line/message detail (PowerShell formats it in, it isn't
+            # just a generic wrapper message), so no extra parsing is needed
+            # to make this actionable.
+            [System.Windows.Forms.MessageBox]::Show(
+                "BinSifter failed to compile its native (C#) components and cannot start.`n`n" +
+                "This is almost always a PowerShell/.NET runtime difference on this machine, not a corrupted install - please report the exact text below.`n`n" +
+                $_.Exception.Message,
+                'BinSifter - Startup Error',
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Error
+            ) | Out-Null
+            return
+        }
+        }
 
         # Icon.FromHandle(bitmap.GetHicon()) below creates a native HICON that
         # Icon.Dispose() does NOT release (per .NET docs, the caller owns handles
@@ -1838,6 +1908,7 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             $reportForm.Text = $Title
             $reportForm.Width = 860
             $reportForm.Height = 620
+            $reportForm.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi  # see the main $form's 2026-08-17 comment
             $reportForm.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterParent
             $reportForm.BackColor = $theme.WindowBack
 
@@ -2178,6 +2249,7 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             $dialog.Text = 'BinSifter - Password-Protected Archives'
             $dialog.Width = 640
             $dialog.Height = 540
+            $dialog.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi  # see the main $form's 2026-08-17 comment
             $dialog.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterParent
             $dialog.BackColor = $theme.WindowBack
             $dialog.ForeColor = $theme.Fore
@@ -4509,6 +4581,14 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
         $form.BackColor = $theme.WindowBack
         $form.ForeColor = $theme.Fore
         $form.MinimumSize = New-Object System.Drawing.Size(1200, 760)
+        # 2026-08-17: pairs with SetHighDpiMode(PerMonitorV2) above - Dpi
+        # (not the default Font mode) rescales every child control's
+        # Location/Size proportionally to the runtime DPI vs. the 96-DPI
+        # values this whole form was designed at, which is what actually
+        # fixes tiles/nav-button text not fitting on a scaled display. Must
+        # be set before any child controls are added to $form, which every
+        # page-building function below does.
+        $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi
         $windowIconBitmap = $null
         $windowIcon = $null
         $windowIconHandle = [IntPtr]::Zero

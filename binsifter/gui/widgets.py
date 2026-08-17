@@ -7,6 +7,37 @@ tile/chart is built with fixed child positions (setGeometry), matching the
 original's absolute Location/Size approach - the point of this pass is
 visual fidelity to an existing, approved design, not idiomatic Qt layout
 usage.
+
+2026-08-17: the fixed pixel widths/heights below (copied 1:1 from the
+PowerShell version's own absolute Location/Size values, as noted above) are
+NOT DPI-safe on their own, unlike WinForms - a real report from a display
+scaled above 100% showed dashboard tile and sidebar nav-button text
+"skewed and does not fit." Root cause is specific to how these two
+frameworks differ, not a simple "DPI scaling is broken" bug: WinForms'
+Form.AutoScaleMode = Dpi (see Rowan's own 2026-08-17 fix, added the same
+day, in Show-MainWindow) automatically rescales every child control's
+Location/Size by the runtime/design DPI ratio, so hardcoded pixel values
+there stay proportionally correct at any scale factor with zero extra
+work. Qt has no equivalent auto-rescaling of already-fixed
+setGeometry() calls - Qt's own High-DPI scaling (on by default in Qt6)
+scales rendered fonts and physical pixels together, but a label's fixed
+LOGICAL-pixel box does not grow to match whatever width its font happens
+to need. At clean integer scale factors (100%/200%) this mostly goes
+unnoticed since font and box scale in the same direction; at the
+FRACTIONAL scale factors Windows actually recommends by default on most
+real laptop/high-res displays (125%/150%/175% - the exact range a
+scaled-up display would use), font-metric rounding and logical-pixel
+rounding can diverge just enough to clip or crowd text that fit fine at
+100%. `_ensure_label_fits()` below is the fix: after a label's real font
+and text are both set, it grows (never shrinks below the original design
+width/height, so a 100%-scale render looks identical to before) the
+label's box to whatever QFontMetrics says the CURRENT font+text actually
+needs, with a small margin - correct at any DPI/scale factor, and also
+fixes a second, DPI-unrelated latent bug the same way: StatTile's numeric
+value label was sized to fit a couple of digits ("0"-"999"), so a tile
+showing a much larger real scan count (e.g. "12,483") could already have
+clipped even at 100% scaling - set_value() now re-fits the label to its
+new text on every update, not just once at construction.
 """
 
 from __future__ import annotations
@@ -14,11 +45,31 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QMouseEvent, QPaintEvent, QPainter, QPen
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QMouseEvent, QPaintEvent, QPainter, QPen
 from PySide6.QtWidgets import QFrame, QLabel, QWidget
 
 from binsifter.gui.icons import make_line_icon
 from binsifter.gui.theme import ThemePalette
+
+
+def _ensure_label_fits(label: QLabel, h_pad: int = 6, v_pad: int = 2) -> None:
+    """Grows (never shrinks) `label`'s current geometry so its actual
+    current font+text always fits, with a small margin. Call after both
+    setFont() and setText() (or setGeometry(), for the original design
+    width/height to use as a floor) have already been applied - see this
+    module's 2026-08-17 docstring note for why this is needed at all
+    (Qt, unlike WinForms, doesn't auto-rescale fixed pixel geometries for
+    DPI, and this also covers dynamic text like StatTile's value label
+    outgrowing its original design width regardless of DPI).
+    """
+    metrics = QFontMetrics(label.font())
+    needed_width = metrics.horizontalAdvance(label.text()) + h_pad
+    needed_height = metrics.height() + v_pad
+    geo = label.geometry()
+    new_width = max(geo.width(), needed_width)
+    new_height = max(geo.height(), needed_height)
+    if new_width != geo.width() or new_height != geo.height():
+        label.setGeometry(geo.x(), geo.y(), new_width, new_height)
 
 
 def merge_color(color_a: QColor, color_b: QColor, t: float) -> QColor:
@@ -88,19 +139,23 @@ class StatTile(QFrame):
         if compact:
             caption_label.setFont(QFont("Segoe UI", 9))
             caption_label.setGeometry(10, 10, 160, 18)
+            _ensure_label_fits(caption_label)
             icon_size = 38
             icon_label.setPixmap(make_line_icon(icon_name, accent_color, size=icon_size))
             icon_label.setGeometry(10, 48, icon_size, icon_size)
             self._value_label.setFont(_semibold_font(23))
             self._value_label.setGeometry(54, 46, 140, 40)
+            _ensure_label_fits(self._value_label)
         else:
             caption_label.setFont(QFont("Segoe UI", 10))
             caption_label.setGeometry(18, 14, 220, 20)
+            _ensure_label_fits(caption_label)
             icon_size = 48
             icon_label.setPixmap(make_line_icon(icon_name, accent_color, size=icon_size))
             icon_label.setGeometry(16, 47, icon_size, icon_size)
             self._value_label.setFont(_semibold_font(25))
             self._value_label.setGeometry(70, 44, 160, 44)
+            _ensure_label_fits(self._value_label)
 
             if subtitle:
                 subtitle_label = QLabel(subtitle, self)
@@ -109,9 +164,15 @@ class StatTile(QFrame):
                 )
                 subtitle_label.setFont(QFont("Segoe UI", 8))
                 subtitle_label.setGeometry(72, 87, 220, 18)
+                _ensure_label_fits(subtitle_label)
 
     def set_value(self, value: object) -> None:
         self._value_label.setText(str(value))
+        # Re-fit on every update, not just at construction - a growing scan
+        # count (e.g. "12,483") can need more room than the original design
+        # width/height, same reasoning as the DPI case this function was
+        # added for, just triggered by content instead of scale factor.
+        _ensure_label_fits(self._value_label)
 
     def set_value_color(self, color: QColor) -> None:
         self._value_label.setStyleSheet(f"color: {accent_to_css(color)}; border: none; background: transparent;")
@@ -294,6 +355,7 @@ class NavButton(QFrame):
         self._text_label.setFont(QFont("Segoe UI", 10.5))
         self._text_label.setStyleSheet("background: transparent; border: none;")
         self._text_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+        _ensure_label_fits(self._text_label, v_pad=0)  # height (48) already has vertical room by design; only width needs to track the font
 
         self.set_active(False)
 

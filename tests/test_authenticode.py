@@ -233,3 +233,61 @@ def test_default_trust_store_is_actually_populated():
     certs = list(TRUSTED_CERTIFICATE_STORE)
     assert len(certs) > 0
     assert any("Microsoft" in cert.subject.dn for cert in certs)
+
+
+def test_certificate_trust_list_subjects_are_cached_not_reparsed_every_call():
+    """2026-08-17: regression guard for a real, severe performance bug found
+    via a real 652-file FLARE VM scan's per-stage timing summary -
+    authenticode averaged 61.8 SECONDS per file (92.5% of all worker CPU
+    time) once CatalogDirectory pointed at a real Windows CatRoot folder
+    (5730 real .cat files). Root cause traced to signify 0.9.2 itself, not
+    BinSifter's own code: CertificateTrustList._subjects and
+    ._subjects_by_indirect_data_hash (both used by find_subject(), which
+    add_catalog(catalog, check=True) calls once per catalog per file - see
+    signify/authenticode/signed_file/base.py's add_catalog()) are plain
+    @property with no caching at all, so the full ASN.1 trusted_subjects
+    decode was being repeated on literally every single find_subject() call,
+    even though the exact same CertificateTrustList object is intentionally
+    reused for every file in a worker's queue (parse_catalogs() already only
+    reads each .cat file's raw bytes once per worker - this was a second,
+    hidden re-parse happening one level deeper that reuse never prevented).
+
+    authenticode.py patches both properties to functools.cached_property at
+    import time - this confirms that patch is actually in effect and doing
+    its job: repeated access to _subjects on the SAME instance must only
+    trigger the underlying (expensive) .subjects decode once, not once per
+    access. Uses a minimal CertificateTrustList subclass that skips the
+    real ASN.1 __init__ entirely and replaces .subjects with a call-counting
+    stub - the goal here is pinning down the caching behavior itself, not
+    re-testing ASN.1 parsing (which signify's own test suite already
+    covers).
+    """
+    from signify.authenticode.trust_list import CertificateTrustList
+
+    call_count = {"n": 0}
+
+    class _CountingCatalog(CertificateTrustList):
+        def __init__(self):
+            pass  # deliberately skip the real (ASN.1-parsing) __init__
+
+        @property
+        def subjects(self):
+            call_count["n"] += 1
+            return []
+
+    catalog = _CountingCatalog()
+    for _ in range(5):
+        _ = catalog._subjects
+        _ = catalog._subjects_by_indirect_data_hash
+
+    # Without the fix this would be 10 (5 accesses x 2 properties, each
+    # re-running .subjects's decode every time) - the whole point of the fix
+    # is that a SECOND catalog instance still recomputes fresh (correctness:
+    # no cross-instance leakage) while repeat access on the SAME instance
+    # does not (performance: the actual bug).
+    assert call_count["n"] <= 2
+
+    call_count["n"] = 0
+    second_catalog = _CountingCatalog()
+    _ = second_catalog._subjects
+    assert call_count["n"] == 1

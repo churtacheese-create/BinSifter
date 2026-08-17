@@ -80,6 +80,7 @@ unaffected by this correction and is still real.
 from __future__ import annotations
 
 import dataclasses
+import functools
 import logging
 from pathlib import Path
 
@@ -93,6 +94,65 @@ try:
     _SIGNIFY_AVAILABLE = True
 except ImportError:  # signify not installed - degrade to UnknownError, don't crash the scan
     _SIGNIFY_AVAILABLE = False
+
+if _SIGNIFY_AVAILABLE:
+    # 2026-08-17: patches a real, severe performance bug in signify 0.9.2
+    # itself (not BinSifter's own code) - found by reading a real scan's new
+    # per-stage timing summary (engine.py's 2026-08-14 addition) after a
+    # 652-file FLARE VM scan took over 4 hours: "authenticode" was 92.5% of
+    # ALL worker CPU time, averaging 61.8 SECONDS per file - roughly 400x
+    # slower than hashing or YARA on the exact same files. That scan had
+    # CatalogDirectory pointed at a real Windows CatRoot folder with 5730
+    # real .cat files (the catalog-verification feature added 2026-08-08,
+    # whose own TODO note in this file already flagged "only tested against
+    # synthetic data, not a genuine catalog end-to-end" - this is that
+    # end-to-end test, and it found a real problem).
+    #
+    # check_signature() below calls signed_file.add_catalog(catalog,
+    # check=True) once per configured catalog, per file - up to 5730 times
+    # per file here. Each of those internally calls the catalog's own
+    # find_subject(), which looks up the file's hash in
+    # CertificateTrustList._subjects / ._subjects_by_indirect_data_hash.
+    # Read directly in signify's installed source
+    # (signify/authenticode/trust_list.py): both are plain @property, with
+    # NO caching at all - `return {subj.identifier_str: subj for subj in
+    # self.subjects}`, where .subjects itself re-decodes every ASN.1
+    # trusted_subjects entry in that catalog from scratch. A property has no
+    # memory of being read before, so this full re-parse-and-rebuild-the-
+    # whole-dict cost was being paid on EVERY SINGLE find_subject() call -
+    # i.e. once per catalog per file, even though the exact same catalog
+    # object gets reused for every file in a worker's queue (parse_catalogs()
+    # already only parses each .cat file's raw bytes once per worker - this
+    # was the second, hidden re-parse happening underneath that, one level
+    # deeper, that reuse never actually prevented).
+    #
+    # Reproduced and confirmed the fix in isolation before applying it here:
+    # patching these two properties to functools.cached_property (which
+    # computes once per instance and reuses the result from then on,
+    # identical values, just computed once instead of on every access) took
+    # a synthetic 5-calls-recomputes-5-times case down to 5-calls-recomputes-
+    # once. Since every real CertificateTrustList instance here is already
+    # long-lived (parsed once per worker in parse_catalogs(), then handed to
+    # every check_signature() call that worker makes for the rest of the
+    # scan - see this module's own docstring), caching per-instance is
+    # exactly correct, not just an expedient shortcut: a catalog's trusted-
+    # subjects list cannot change out from under an already-parsed object.
+    #
+    # Deliberately a monkeypatch of the installed library's class, not a
+    # vendored fork or a request upstream (also worth filing, but this
+    # can't wait on that) - CertificateTrustList has no __slots__ (confirmed
+    # directly), so cached_property's normal per-instance __dict__ caching
+    # works with no other changes needed, and this runs once at import time
+    # in every worker process, before any file is scanned.
+    def _patch_signify_trust_list_caching() -> None:
+        for attr in ("_subjects", "_subjects_by_indirect_data_hash"):
+            current = CertificateTrustList.__dict__.get(attr)
+            if isinstance(current, property) and current.fget is not None:
+                cached = functools.cached_property(current.fget)
+                cached.__set_name__(CertificateTrustList, attr)
+                setattr(CertificateTrustList, attr, cached)
+
+    _patch_signify_trust_list_caching()
 
 
 @dataclasses.dataclass
