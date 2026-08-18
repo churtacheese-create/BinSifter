@@ -193,6 +193,31 @@ def parse_catalogs(catalog_directory: str) -> list["CertificateTrustList"]:
     rather than aborting the whole batch, since one bad file in what could
     be a large CatRoot-style directory shouldn't silently disable catalog
     checking for every other, valid one.
+
+    2026-08-18: also checks one level of subdirectories if catalog_directory
+    itself has no *.cat files directly in it - found via a real side-by-side
+    comparison between two real machines' logs, where one showed "Loaded
+    5119 catalog file(s) from ...CatRoot\\{F750E6C3-...}" and the other
+    showed "Loaded 0 catalog file(s) from ...CatRoot" for the exact same
+    feature. Root cause: Windows' real catalog store is
+    C:\\Windows\\System32\\CatRoot\\{GUID}\\*.cat - the .cat files themselves
+    live one level below CatRoot in a versioned GUID subfolder, never
+    directly inside CatRoot itself. Pointing CatalogDirectory at the bare,
+    obviously-named CatRoot folder (rather than the far less discoverable
+    GUID subfolder inside it) is the far more natural, likely first guess
+    for anyone configuring this setting - and it silently found zero
+    catalogs with no error or warning surfaced anywhere in the GUI, only a
+    log line nobody was looking for. That's not just a missed-catalogs
+    inconvenience: every catalog-signed system binary that setup would have
+    correctly resolved to "Valid" instead landed in some other status
+    unnoticed - a real, silent correctness gap, not merely a config typo.
+    Checking exactly one level of subdirectories (not a fully recursive
+    walk - CatRoot's own real layout is exactly one GUID-named level deep,
+    and an unbounded walk would be a real performance/footgun risk if
+    CatalogDirectory ever got pointed at something far larger) means both
+    the bare CatRoot folder and its GUID subfolder now work identically,
+    with no configuration change needed on any machine already set up
+    either way.
     """
     if not _SIGNIFY_AVAILABLE or not catalog_directory:
         return []
@@ -202,8 +227,12 @@ def parse_catalogs(catalog_directory: str) -> list["CertificateTrustList"]:
         logger.warning("CatalogDirectory does not exist or is not a directory: %s", catalog_directory)
         return []
 
+    cat_paths = sorted(directory.glob("*.cat"))
+    if not cat_paths:
+        cat_paths = sorted(directory.glob("*/*.cat"))
+
     catalogs: list[CertificateTrustList] = []
-    for cat_path in sorted(directory.glob("*.cat")):
+    for cat_path in cat_paths:
         try:
             with open(cat_path, "rb") as f:
                 catalogs.append(CertificateTrustList.from_envelope(f.read()))

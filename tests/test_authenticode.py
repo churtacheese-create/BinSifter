@@ -128,6 +128,53 @@ def test_parse_catalogs_skips_malformed_cat_file_without_raising(tmp_path):
     assert authenticode.parse_catalogs(str(tmp_path)) == []
 
 
+def test_parse_catalogs_finds_cat_files_one_subdirectory_deep(tmp_path, monkeypatch):
+    """2026-08-18: real-world CatRoot layout is
+    C:\\Windows\\System32\\CatRoot\\{GUID}\\*.cat - the .cat files live one
+    level below CatRoot, never directly inside it. A real side-by-side log
+    comparison showed CatalogDirectory pointed at the bare CatRoot folder
+    (the more natural, discoverable choice) silently finding zero catalogs,
+    while a GUID subfolder found thousands - this pins down the fix: a
+    directory with no *.cat files directly inside it should still find
+    ones exactly one level down.
+    """
+    guid_subdir = tmp_path / "{F750E6C3-38EE-11D1-85E5-00C04FC295EE}"
+    guid_subdir.mkdir()
+    cat_path = guid_subdir / "one.cat"
+    cat_path.write_bytes(b"irrelevant - parsing itself is mocked below")
+
+    captured_paths = []
+
+    def _fake_from_envelope(data):
+        return object()
+
+    monkeypatch.setattr(
+        authenticode.CertificateTrustList, "from_envelope", staticmethod(_fake_from_envelope)
+    )
+
+    result = authenticode.parse_catalogs(str(tmp_path))
+    assert len(result) == 1
+
+
+def test_parse_catalogs_prefers_top_level_cat_files_over_subdirectories(tmp_path, monkeypatch):
+    """When the configured directory DOES have *.cat files directly inside
+    it, the subdirectory fallback should never even be consulted - matches
+    every existing real install where CatalogDirectory is already pointed
+    correctly (a GUID subfolder, or any other directory that already has
+    real .cat files right in it)."""
+    (tmp_path / "top_level.cat").write_bytes(b"irrelevant - parsing itself is mocked below")
+    nested = tmp_path / "some_subdir"
+    nested.mkdir()
+    (nested / "nested.cat").write_bytes(b"irrelevant")
+
+    monkeypatch.setattr(
+        authenticode.CertificateTrustList, "from_envelope", staticmethod(lambda data: object())
+    )
+
+    result = authenticode.parse_catalogs(str(tmp_path))
+    assert len(result) == 1  # only top_level.cat, nested.cat never considered
+
+
 def test_parse_catalogs_path_that_is_a_file_not_a_directory_returns_empty_list(tmp_path):
     a_file = tmp_path / "some.cat"
     a_file.write_bytes(b"irrelevant")

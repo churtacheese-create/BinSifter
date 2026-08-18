@@ -1908,7 +1908,8 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             $reportForm.Text = $Title
             $reportForm.Width = 860
             $reportForm.Height = 620
-            $reportForm.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi  # see the main $form's 2026-08-17 comment
+            $reportForm.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi  # see the main $form's 2026-08-17/08-18 comments
+            $reportForm.AutoScaleDimensions = New-Object System.Drawing.SizeF(96, 96)  # required - AutoScaleMode alone is a no-op without this baseline, see the main $form's 2026-08-18 comment
             $reportForm.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterParent
             $reportForm.BackColor = $theme.WindowBack
 
@@ -2249,7 +2250,8 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             $dialog.Text = 'BinSifter - Password-Protected Archives'
             $dialog.Width = 640
             $dialog.Height = 540
-            $dialog.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi  # see the main $form's 2026-08-17 comment
+            $dialog.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi  # see the main $form's 2026-08-17/08-18 comments
+            $dialog.AutoScaleDimensions = New-Object System.Drawing.SizeF(96, 96)  # required - AutoScaleMode alone is a no-op without this baseline, see the main $form's 2026-08-18 comment
             $dialog.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterParent
             $dialog.BackColor = $theme.WindowBack
             $dialog.ForeColor = $theme.Fore
@@ -4589,6 +4591,30 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
         # be set before any child controls are added to $form, which every
         # page-building function below does.
         $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi
+        # 2026-08-18: THE MISSING PIECE - AutoScaleMode alone did nothing on
+        # a real 150%/175%-scaled machine (confirmed via real screenshots:
+        # the top-bar Settings/Help/About buttons were still cut down to
+        # "Settin"/"Hel"/"Ab", exactly their original 100%-scale pixel
+        # widths). Root cause: AutoScaleMode.Dpi rescales every child control
+        # by comparing CURRENT DPI against Form.AutoScaleDimensions, a
+        # baseline that a WinForms-Designer-generated form gets set
+        # automatically (InitializeComponent() stamps `AutoScaleDimensions =
+        # new SizeF(96F, 96F)` before adding any controls) - but this whole
+        # UI is built by hand, imperatively, with no Designer and no
+        # equivalent statement anywhere. With no baseline ever recorded,
+        # WinForms has nothing to compare the runtime DPI against, so
+        # PerformAutoScale() computes a scale ratio of 1.0 (effectively a
+        # no-op) - every control stayed at its exact hand-picked pixel size
+        # regardless of AutoScaleMode being set correctly. Explicitly
+        # stamping the same 96x96 baseline a Designer would have used - the
+        # actual DPI every pixel value in this file was chosen against -
+        # gives PerformAutoScale() a real ratio to compute, which is what
+        # actually rescales the top-bar buttons (and every other hardcoded
+        # Location/Size in this file) to fit their DPI-scaled font. Must be
+        # set immediately after AutoScaleMode and still before any child
+        # control is added - same ordering requirement as AutoScaleMode
+        # itself.
+        $form.AutoScaleDimensions = New-Object System.Drawing.SizeF(96, 96)
         $windowIconBitmap = $null
         $windowIcon = $null
         $windowIconHandle = [IntPtr]::Zero
