@@ -1920,6 +1920,25 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                 if ($liveDpi -ne 96) {
                     $dpiRatio = $liveDpi / 96.0
                     $reportForm.Scale((New-Object System.Drawing.SizeF($dpiRatio, $dpiRatio)))
+                    # Same Size-vs-screen clamp as the main $form's Add_Shown
+                    # (2026-08-19 round 2 comment there has the full story) -
+                    # this window has no MinimumSize set so it can't get
+                    # permanently "stuck" too large the way the main window
+                    # did, but a scaled 860x620 (-> ~1505x1085 at 175%) can
+                    # still open partly off-screen on a smaller monitor.
+                    $screenArea = [System.Windows.Forms.Screen]::FromControl($reportForm).WorkingArea
+                    $maxWidth = [Math]::Max(600, $screenArea.Width - 40)
+                    $maxHeight = [Math]::Max(400, $screenArea.Height - 40)
+                    if ($reportForm.Width -gt $maxWidth -or $reportForm.Height -gt $maxHeight) {
+                        $reportForm.Size = New-Object System.Drawing.Size(
+                            ([Math]::Min($reportForm.Width, $maxWidth)),
+                            ([Math]::Min($reportForm.Height, $maxHeight))
+                        )
+                    }
+                    $reportForm.Location = New-Object System.Drawing.Point(
+                        ($screenArea.X + [Math]::Max(0, [int](($screenArea.Width - $reportForm.Width) / 2))),
+                        ($screenArea.Y + [Math]::Max(0, [int](($screenArea.Height - $reportForm.Height) / 2)))
+                    )
                 }
             })
 
@@ -2277,6 +2296,25 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                 if ($liveDpi -ne 96) {
                     $dpiRatio = $liveDpi / 96.0
                     $dialog.Scale((New-Object System.Drawing.SizeF($dpiRatio, $dpiRatio)))
+                    # Same Size-vs-screen clamp as the main $form's Add_Shown
+                    # (2026-08-19 round 2 comment there has the full story) -
+                    # this dialog has no MinimumSize set so it can't get
+                    # permanently "stuck" too large the way the main window
+                    # did, but a scaled 640x540 (-> ~1120x945 at 175%) can
+                    # still open partly off-screen on a smaller monitor.
+                    $screenArea = [System.Windows.Forms.Screen]::FromControl($dialog).WorkingArea
+                    $maxWidth = [Math]::Max(500, $screenArea.Width - 40)
+                    $maxHeight = [Math]::Max(400, $screenArea.Height - 40)
+                    if ($dialog.Width -gt $maxWidth -or $dialog.Height -gt $maxHeight) {
+                        $dialog.Size = New-Object System.Drawing.Size(
+                            ([Math]::Min($dialog.Width, $maxWidth)),
+                            ([Math]::Min($dialog.Height, $maxHeight))
+                        )
+                    }
+                    $dialog.Location = New-Object System.Drawing.Point(
+                        ($screenArea.X + [Math]::Max(0, [int](($screenArea.Width - $dialog.Width) / 2))),
+                        ($screenArea.Y + [Math]::Max(0, [int](($screenArea.Height - $dialog.Height) / 2)))
+                    )
                 }
             })
 
@@ -7437,7 +7475,76 @@ For repeatable case work, preserve the report directory (Reports\ next to BinSif
                 $liveDpi = $form.DeviceDpi
                 if ($liveDpi -ne 96) {
                     $dpiRatio = $liveDpi / 96.0
+                    # Captured BEFORE Scale() below mutates $form.MinimumSize -
+                    # Size is a value type, so this copy (96-DPI 1200x760) is
+                    # unaffected by that later mutation. See the round-3
+                    # comment further down for why this is needed again.
+                    $originalMinimumSize = $form.MinimumSize
                     $form.Scale((New-Object System.Drawing.SizeF($dpiRatio, $dpiRatio)))
+
+                    # 2026-08-19 (round 3 - rounds 1/2's clamp-to-screen
+                    # approach, confirmed via real hardware testing, was
+                    # STILL wrong): Control.Scale() on a Form scales the
+                    # FORM's own Size and MinimumSize by the same ratio as
+                    # every child control, since both were assigned as plain
+                    # 96-DPI pixel values above ($form.Size = 1400x900,
+                    # $form.MinimumSize = 1200x760). Round 2's fix clamped
+                    # the DPI-inflated MinimumSize down to "whatever fits the
+                    # screen's WorkingArea" - but on a normal 1920x1080
+                    # monitor that clamp still landed around 1880x1040,
+                    # nearly the whole screen, so the window could shrink a
+                    # LITTLE (from its scaled starting Size down to that
+                    # still-huge floor) and then get stuck again - exactly
+                    # the follow-up report ("shrinks a little then won't
+                    # shrink any further"). The actual problem was scaling
+                    # MinimumSize by the DPI ratio at all: MinimumSize is a
+                    # UX floor ("smallest usable window"), not a rendering
+                    # measurement that needs to grow with DPI the way
+                    # font/control sizes genuinely do - every scrollable page
+                    # already sets AutoScroll = $true specifically to handle
+                    # content that doesn't fit the window (see the Dashboard
+                    # page's own comment on this), so a smaller window at
+                    # high DPI just means more scrolling, not clipped or
+                    # broken content. Restoring the plain, un-scaled 1200x760
+                    # baseline gives back exactly the same resizability that
+                    # existed before any DPI fix touched this file, on every
+                    # monitor, regardless of scale factor - while everything
+                    # Scale() did to child controls (the actual text-
+                    # truncation fix, already confirmed working against real
+                    # hardware) is completely untouched by this.
+                    $form.MinimumSize = $originalMinimumSize
+
+                    # Still worth a defensive floor-vs-screen clamp in case a
+                    # much smaller/older monitor can't even fit 1200x760 -
+                    # keeps this safe on hardware nobody's tested it against,
+                    # without being the primary mechanism the fix relies on
+                    # (unlike round 2, where this WAS the primary mechanism
+                    # and that was the bug).
+                    $screenArea = [System.Windows.Forms.Screen]::FromControl($form).WorkingArea
+                    $margin = 40
+                    $maxWidth = [Math]::Max(800, $screenArea.Width - $margin)
+                    $maxHeight = [Math]::Max(600, $screenArea.Height - $margin)
+                    if ($form.MinimumSize.Width -gt $maxWidth -or $form.MinimumSize.Height -gt $maxHeight) {
+                        $form.MinimumSize = New-Object System.Drawing.Size(
+                            ([Math]::Min($form.MinimumSize.Width, $maxWidth)),
+                            ([Math]::Min($form.MinimumSize.Height, $maxHeight))
+                        )
+                    }
+                    if ($form.Width -gt $maxWidth -or $form.Height -gt $maxHeight) {
+                        $form.Size = New-Object System.Drawing.Size(
+                            ([Math]::Min($form.Width, $maxWidth)),
+                            ([Math]::Min($form.Height, $maxHeight))
+                        )
+                    }
+                    # Scale() leaves the window's top-left Location exactly
+                    # where CenterScreen positioned it BEFORE this handler
+                    # grew the window's Size, which can strand a chunk of it
+                    # off-screen bottom/right on a smaller monitor - re-center
+                    # against the final Size now that it's stable.
+                    $form.Location = New-Object System.Drawing.Point(
+                        ($screenArea.X + [Math]::Max(0, [int](($screenArea.Width - $form.Width) / 2))),
+                        ($screenArea.Y + [Math]::Max(0, [int](($screenArea.Height - $form.Height) / 2)))
+                    )
                 }
             }
             Move-TopBarControls
