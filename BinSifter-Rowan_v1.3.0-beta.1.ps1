@@ -5877,6 +5877,34 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             $page.Dock = [System.Windows.Forms.DockStyle]::Fill
             $page.AutoScroll = $true
             $page.BackColor = $theme.WindowBack
+            # 2026-08-19 (round 5): a real diagnostic (diagnose_settings_
+            # layout3.ps1) proved Save Settings/the Antivirus section/the
+            # Windows Defender section were collapsing to ~1px wide BEFORE
+            # $form.Scale() ever ran, while this page was still invisible -
+            # this was never actually a DPI-scaling bug. $page is a bare
+            # Panel with no explicit Size, and the TableLayoutPanel built
+            # below it (AutoSize, with a Percent(100) middle column) gets
+            # its very first layout pass long before Show-Page ever makes
+            # this page visible or $content Dock=Fill-resizes it - that
+            # first pass runs against WinForms' bare default Control size
+            # (200x100), leaving almost nothing for the Percent(100) column.
+            # TableLayoutPanel then permanently shrinks every non-anchored,
+            # fixed-Size child in that column (Save Settings, the AV/
+            # Defender buttons, the explainer labels) to fit - and never
+            # grows them back later even once the page is genuinely resized
+            # to the real window (confirmed directly in the diagnostic:
+            # once properly Dock=Fill-resized, the page and an anchored
+            # textbox were correctly sized, but the buttons stayed
+            # collapsed). AutoSize labels (the bold section headers) were
+            # immune since they always recompute their own size fresh -
+            # which is why only SOME controls on this page ever looked
+            # broken. Giving $page a generous starting Size before any
+            # child control is added means that first, premature layout
+            # pass has real room to work with instead of squeezing the
+            # Percent(100) column down to nothing - confirmed directly via
+            # the diagnostic script, both immediately and after real
+            # Show-Page navigation.
+            $page.Size = New-Object System.Drawing.Size(1200, 900)
 
             $layout = New-Object System.Windows.Forms.TableLayoutPanel
             $layout.ColumnCount = 3
@@ -5996,9 +6024,20 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
 
             $lblAvExplainer = New-Object System.Windows.Forms.Label
             $lblAvExplainer.Text = "Detects which antivirus product(s) are registered with Windows Security on this machine. The automated exclusion button below only works for Windows Defender - for any other product, this points you at where to add the exclusion yourself."
-            $lblAvExplainer.AutoSize = $false
-            $lblAvExplainer.Width = 620
-            $lblAvExplainer.Height = 50
+            # 2026-08-19 (round 6): was AutoSize=false with a hardcoded
+            # Height=50 - fine at design (96 DPI) resolution, but a fixed
+            # Height label CLIPS any text that doesn't fit, and how many
+            # lines this paragraph wraps to at a given Width isn't something
+            # that scales perfectly predictably just by multiplying the
+            # original Height by the DPI ratio (font-metric/wrap-point
+            # rounding can push an extra word onto a new line at some scale
+            # factors). AutoSize=true + MaximumSize (constrains WRAPPING
+            # width only, Height 0 = unconstrained) makes the label always
+            # grow to fit however many lines its real, current-DPI content
+            # actually needs - the same reason every AutoSize label on this
+            # page never had a clipping problem in the first place.
+            $lblAvExplainer.AutoSize = $true
+            $lblAvExplainer.MaximumSize = New-Object System.Drawing.Size(620, 0)
             $lblAvExplainer.Margin = New-Object System.Windows.Forms.Padding(3, 0, 8, 6)
             $lblAvExplainer.ForeColor = $theme.MutedFore
             $null = $layout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))
@@ -6012,9 +6051,13 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             $rowIndex++
 
             $lblAvStatus = New-Object System.Windows.Forms.Label
-            $lblAvStatus.AutoSize = $false
-            $lblAvStatus.Width = 620
-            $lblAvStatus.Height = 60
+            # 2026-08-19 (round 6): same fixed-Height clipping risk as
+            # $lblAvExplainer/$lblDefenderExplainer above - this one is
+            # empty until "Detect installed antivirus" is clicked, so it
+            # hadn't visibly clipped yet, but a real multi-product detection
+            # result would have hit the exact same bug once populated.
+            $lblAvStatus.AutoSize = $true
+            $lblAvStatus.MaximumSize = New-Object System.Drawing.Size(620, 0)
             $lblAvStatus.Font = New-Object System.Drawing.Font('Segoe UI', 9)
             $lblAvStatus.Margin = New-Object System.Windows.Forms.Padding(3, 6, 0, 0)
             $lblAvStatus.ForeColor = $theme.MutedFore
@@ -6042,9 +6085,13 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
 
             $lblDefenderExplainer = New-Object System.Windows.Forms.Label
             $lblDefenderExplainer.Text = "If real-time protection is quarantining extracted archive contents before BinSifter can finish scanning them, you can exclude the extraction folder from Defender's scanning. This requires administrator approval (a UAC prompt) and means Defender will NOT automatically flag anything placed in that folder - only use this on a machine where you're comfortable with that tradeoff for malware analysis."
-            $lblDefenderExplainer.AutoSize = $false
-            $lblDefenderExplainer.Width = 620
-            $lblDefenderExplainer.Height = 60
+            # 2026-08-19 (round 6): same fixed-Height clipping bug as
+            # $lblAvExplainer above (see its comment) - this is the control
+            # that was actually reported cut off mid-sentence ("...will NOT
+            # automatically flag anything placed in that" with the rest of
+            # the paragraph missing) on a real 175%-scale screenshot.
+            $lblDefenderExplainer.AutoSize = $true
+            $lblDefenderExplainer.MaximumSize = New-Object System.Drawing.Size(620, 0)
             $lblDefenderExplainer.Margin = New-Object System.Windows.Forms.Padding(3, 0, 8, 6)
             $lblDefenderExplainer.ForeColor = $theme.MutedFore
             $null = $layout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))
@@ -7480,6 +7527,11 @@ For repeatable case work, preserve the report directory (Reports\ next to BinSif
                     # unaffected by that later mutation. See the round-3
                     # comment further down for why this is needed again.
                     $originalMinimumSize = $form.MinimumSize
+                    # Same reasoning as $originalMinimumSize just above -
+                    # captured before Scale() mutates it, see the round-7
+                    # comment further down for why the starting Size gets
+                    # the identical treatment now too.
+                    $originalFormSize = $form.Size
                     $form.Scale((New-Object System.Drawing.SizeF($dpiRatio, $dpiRatio)))
 
                     # 2026-08-19 (round 3 - rounds 1/2's clamp-to-screen
@@ -7514,12 +7566,37 @@ For repeatable case work, preserve the report directory (Reports\ next to BinSif
                     # hardware) is completely untouched by this.
                     $form.MinimumSize = $originalMinimumSize
 
+                    # 2026-08-19 (round 7): reported directly - "why does the
+                    # Rowan window open so large? It takes nearly the entire
+                    # screen and has to be sized down every time?" Round 2's
+                    # clamp-to-screen logic (further down) was written as a
+                    # defensive EDGE CASE, but it turned out to be firing as
+                    # the NORMAL case: 1400x900 scaled by a real 1.75x ratio
+                    # is 2450x1575, which is bigger than most actual monitors
+                    # outright (a common 1920x1080 display can't fit that
+                    # height at all) - so the clamp was silently pinning the
+                    # window to just-under-fullscreen on ordinary hardware
+                    # every single launch, not just on some rare tiny/old
+                    # monitor as originally intended. Exactly the same
+                    # reasoning as MinimumSize above applies here: the
+                    # window's STARTING Size is a UX/comfort choice, not a
+                    # rendering measurement that has to scale with DPI the
+                    # way font/control sizes do - AutoScroll on every
+                    # scrollable page already handles content that doesn't
+                    # fully fit. Restoring the plain, un-scaled 1400x900
+                    # baseline (identical physical window size to what this
+                    # app has always opened at, on any monitor, at any scale
+                    # factor) fixes this the same way it fixed MinimumSize -
+                    # while, again, everything Scale() did to child controls
+                    # (the actual DPI-scaling fix) stays completely untouched.
+                    $form.Size = $originalFormSize
+
                     # Still worth a defensive floor-vs-screen clamp in case a
-                    # much smaller/older monitor can't even fit 1200x760 -
-                    # keeps this safe on hardware nobody's tested it against,
-                    # without being the primary mechanism the fix relies on
-                    # (unlike round 2, where this WAS the primary mechanism
-                    # and that was the bug).
+                    # much smaller/older monitor can't even fit 1200x760 /
+                    # 1400x900 - keeps this safe on hardware nobody's tested
+                    # it against, without being the primary mechanism either
+                    # fix relies on (unlike round 2, where this WAS the
+                    # primary mechanism and that was the bug).
                     $screenArea = [System.Windows.Forms.Screen]::FromControl($form).WorkingArea
                     $margin = 40
                     $maxWidth = [Math]::Max(800, $screenArea.Width - $margin)
