@@ -1908,10 +1908,20 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             $reportForm.Text = $Title
             $reportForm.Width = 860
             $reportForm.Height = 620
-            $reportForm.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi  # see the main $form's 2026-08-17/08-18 comments
-            $reportForm.AutoScaleDimensions = New-Object System.Drawing.SizeF(96, 96)  # required - AutoScaleMode alone is a no-op without this baseline, see the main $form's 2026-08-18 comment
+            $reportForm.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi  # doesn't do the real scaling - see the main $form's 2026-08-19 Add_Shown comment
+            $reportForm.AutoScaleDimensions = New-Object System.Drawing.SizeF(96, 96)  # harmless, kept for DPI-aware font metrics only
             $reportForm.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterParent
             $reportForm.BackColor = $theme.WindowBack
+            # Same evidence-based manual-Scale() fix as the main $form's
+            # Add_Shown (see its 2026-08-19 comment) - this window's own
+            # 860x620 size is a hardcoded 96-DPI value too.
+            $reportForm.Add_Shown({
+                $liveDpi = $reportForm.DeviceDpi
+                if ($liveDpi -ne 96) {
+                    $dpiRatio = $liveDpi / 96.0
+                    $reportForm.Scale((New-Object System.Drawing.SizeF($dpiRatio, $dpiRatio)))
+                }
+            })
 
             $txt = New-Object System.Windows.Forms.TextBox
             $txt.Multiline = $true
@@ -2250,13 +2260,25 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             $dialog.Text = 'BinSifter - Password-Protected Archives'
             $dialog.Width = 640
             $dialog.Height = 540
-            $dialog.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi  # see the main $form's 2026-08-17/08-18 comments
-            $dialog.AutoScaleDimensions = New-Object System.Drawing.SizeF(96, 96)  # required - AutoScaleMode alone is a no-op without this baseline, see the main $form's 2026-08-18 comment
+            $dialog.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi  # doesn't do the real scaling - see the main $form's 2026-08-19 Add_Shown comment
+            $dialog.AutoScaleDimensions = New-Object System.Drawing.SizeF(96, 96)  # harmless, kept for DPI-aware font metrics only
             $dialog.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterParent
             $dialog.BackColor = $theme.WindowBack
             $dialog.ForeColor = $theme.Fore
             $dialog.MinimizeBox = $false
             $dialog.MaximizeBox = $false
+            # Same evidence-based manual-Scale() fix as the main $form's
+            # Add_Shown (see its 2026-08-19 comment) - every row below is
+            # positioned with hardcoded Location values at 96 DPI, so this
+            # dialog is exactly the kind of Location-based layout the
+            # truncation bug hits hardest.
+            $dialog.Add_Shown({
+                $liveDpi = $dialog.DeviceDpi
+                if ($liveDpi -ne 96) {
+                    $dpiRatio = $liveDpi / 96.0
+                    $dialog.Scale((New-Object System.Drawing.SizeF($dpiRatio, $dpiRatio)))
+                }
+            })
 
             $continueButton = New-Object System.Windows.Forms.Button
             $continueButton.Text = 'Continue Scan'
@@ -4583,37 +4605,25 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
         $form.BackColor = $theme.WindowBack
         $form.ForeColor = $theme.Fore
         $form.MinimumSize = New-Object System.Drawing.Size(1200, 760)
-        # 2026-08-17: pairs with SetHighDpiMode(PerMonitorV2) above - Dpi
-        # (not the default Font mode) rescales every child control's
-        # Location/Size proportionally to the runtime DPI vs. the 96-DPI
-        # values this whole form was designed at, which is what actually
-        # fixes tiles/nav-button text not fitting on a scaled display. Must
-        # be set before any child controls are added to $form, which every
-        # page-building function below does.
+        # 2026-08-17/08-18: two earlier attempts here (SetHighDpiMode +
+        # AutoScaleMode.Dpi, then also stamping AutoScaleDimensions to the
+        # Designer-standard 96x96 baseline) were both textbook-correct per
+        # Microsoft's documented WinForms behavior, and both had ZERO effect
+        # on real 150%/175%-scaled hardware (confirmed via screenshots: the
+        # top-bar Settings/Help/About buttons stayed truncated to
+        # "Settin"/"Hel"/"Ab", their exact 100%-scale pixel widths). A
+        # standalone diagnostic script (diagnose_dpi.ps1) run directly on the
+        # affected hardware on 2026-08-19 proved why: by the time any of our
+        # code runs, Form.AutoScaleDimensions already reads the CURRENT
+        # runtime DPI (168x168 on the 175%-scale machine), not the 96x96
+        # design baseline these two lines stamp - something in this
+        # PowerShell 7 / .NET WinForms combination silently re-stamps it
+        # first. PerformAutoScale() then computes ratio = 168/168 = 1.0 and
+        # correctly does nothing. These two lines are left in place below
+        # since they're harmless and still give DPI-aware font metrics, but
+        # they are NOT what fixes the truncation. See $form.Add_Shown further
+        # down for the real, evidence-based fix.
         $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi
-        # 2026-08-18: THE MISSING PIECE - AutoScaleMode alone did nothing on
-        # a real 150%/175%-scaled machine (confirmed via real screenshots:
-        # the top-bar Settings/Help/About buttons were still cut down to
-        # "Settin"/"Hel"/"Ab", exactly their original 100%-scale pixel
-        # widths). Root cause: AutoScaleMode.Dpi rescales every child control
-        # by comparing CURRENT DPI against Form.AutoScaleDimensions, a
-        # baseline that a WinForms-Designer-generated form gets set
-        # automatically (InitializeComponent() stamps `AutoScaleDimensions =
-        # new SizeF(96F, 96F)` before adding any controls) - but this whole
-        # UI is built by hand, imperatively, with no Designer and no
-        # equivalent statement anywhere. With no baseline ever recorded,
-        # WinForms has nothing to compare the runtime DPI against, so
-        # PerformAutoScale() computes a scale ratio of 1.0 (effectively a
-        # no-op) - every control stayed at its exact hand-picked pixel size
-        # regardless of AutoScaleMode being set correctly. Explicitly
-        # stamping the same 96x96 baseline a Designer would have used - the
-        # actual DPI every pixel value in this file was chosen against -
-        # gives PerformAutoScale() a real ratio to compute, which is what
-        # actually rescales the top-bar buttons (and every other hardcoded
-        # Location/Size in this file) to fit their DPI-scaled font. Must be
-        # set immediately after AutoScaleMode and still before any child
-        # control is added - same ordering requirement as AutoScaleMode
-        # itself.
         $form.AutoScaleDimensions = New-Object System.Drawing.SizeF(96, 96)
         $windowIconBitmap = $null
         $windowIcon = $null
@@ -7400,7 +7410,36 @@ For repeatable case work, preserve the report directory (Reports\ next to BinSif
             if ($windowIconHandle -ne [IntPtr]::Zero) { [BinSifter.NativeIcon]::DestroyIcon($windowIconHandle) | Out-Null }
         })
 
+        $script:DpiManualScaleApplied = $false
         $form.Add_Shown({
+            # 2026-08-19: the real fix for the DPI text-truncation bug, found
+            # via diagnose_dpi.ps1 (see the AutoScaleMode/AutoScaleDimensions
+            # comment above for the full story of why the two documented,
+            # textbook-correct prior attempts both did nothing). The
+            # diagnostic proved Control.Scale(SizeF) - the lower-level,
+            # UNCONDITIONAL method PerformAutoScale() is documented to call
+            # internally - actually resizes controls when called directly,
+            # bypassing whatever is silently defeating PerformAutoScale()'s
+            # own ratio calculation on this PowerShell 7 / .NET combination.
+            # Ratio is computed straight from DeviceDpi/96.0 (96 is the DPI
+            # every hardcoded pixel value in this file was hand-picked
+            # against) rather than trusted from AutoScaleDimensions, since
+            # that property was shown to already be stale/wrong by the time
+            # this handler runs. Guarded by a flag since Shown can in
+            # principle fire more than once (e.g. after a minimize/restore
+            # cycle on some Windows builds) and Scale() is not idempotent -
+            # calling it twice would double-scale every control. Must run
+            # before Move-TopBarControls immediately below, since that
+            # function positions the top-bar buttons based on their
+            # (now-scaled) actual .Width.
+            if (-not $script:DpiManualScaleApplied) {
+                $script:DpiManualScaleApplied = $true
+                $liveDpi = $form.DeviceDpi
+                if ($liveDpi -ne 96) {
+                    $dpiRatio = $liveDpi / 96.0
+                    $form.Scale((New-Object System.Drawing.SizeF($dpiRatio, $dpiRatio)))
+                }
+            }
             Move-TopBarControls
             # Resolve a cached ToolsDir/GhidraDir's derived tool paths now
             # that the window is actually on screen, rather than blocking
