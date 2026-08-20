@@ -7500,13 +7500,30 @@ For repeatable case work, preserve the report directory (Reports\ next to BinSif
 # ================= Bootstrap =================
 $isDarkMode = Test-SystemDarkMode
 $threadLimit = [Math]::Min(16, [Math]::Max(2, [Environment]::ProcessorCount * 2))
-$logoHorizontal = if ($isDarkMode) {
-    Join-Path $PSScriptRoot 'BinSifter-Logo-Horizontal-Dark.png'
+
+# $PSScriptRoot comes back as an empty string (not $null) when running
+# from the PS2EXE-compiled portable .exe, since the script is run from an
+# embedded resource rather than a real .ps1 file on disk - Join-Path
+# rejects that empty string outright ("Cannot bind argument to parameter
+# 'Path' because it is an empty string"), which is what crashed the
+# portable build on launch. $PSCommandPath is tried as a fallback for the
+# same reason it's used in Show-MainWindow's own root resolution above.
+# If neither resolves, logo/icon just stay unset - both Import-ThemedLogo
+# and Show-MainWindow's icon loader already handle a blank/missing path
+# by skipping the image rather than crashing, so the portable .exe (which
+# doesn't bundle these PNGs alongside itself anyway) still launches, just
+# without a logo/window icon.
+$bootstrapScriptRoot = if ($PSScriptRoot) { $PSScriptRoot } elseif ($PSCommandPath) { Split-Path -Parent $PSCommandPath } else { $null }
+$logoHorizontal = if ($bootstrapScriptRoot) {
+    if ($isDarkMode) {
+        Join-Path $bootstrapScriptRoot 'BinSifter-Logo-Horizontal-Dark.png'
+    }
+    else {
+        Join-Path $bootstrapScriptRoot 'BinSifter-Logo-Horizontal.png'
+    }
 }
-else {
-    Join-Path $PSScriptRoot 'BinSifter-Logo-Horizontal.png'
-}
-$windowIconPath = Join-Path $PSScriptRoot 'BinSifter-WindowIcon.png'
+else { $null }
+$windowIconPath = if ($bootstrapScriptRoot) { Join-Path $bootstrapScriptRoot 'BinSifter-WindowIcon.png' } else { $null }
 
 Show-MainWindow -IsDarkMode $isDarkMode -LogoHorizontalPath $logoHorizontal -WindowIconPath $windowIconPath -ThrottleLimit $threadLimit
 
