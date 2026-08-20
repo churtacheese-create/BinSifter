@@ -17,7 +17,7 @@
 ; installer\Output\BinSifter-Rowan-Setup.exe
 
 #define MyAppName "BinSifter Rowan"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.1"
 #define MyAppPublisher "BinSifter Project"
 #define MyScriptName "BinSifter-Rowan.ps1"
 
