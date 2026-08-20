@@ -25,6 +25,15 @@ $installerDir = $PSScriptRoot
 $repoRoot = Split-Path -Parent $installerDir
 $outputDir = Join-Path $installerDir 'Output'
 
+# Machines with the default Restricted/AllSigned execution policy block
+# Import-Module from loading ps2exe's .psm1 at all (PSSecurityException),
+# even though this script itself was allowed to run via `pwsh -File`.
+# -Scope Process only affects this one pwsh.exe instance for its
+# lifetime - it doesn't touch the machine's or user's persistent policy,
+# so it's safe to set unconditionally here rather than asking the user
+# to change a system-wide setting just to build an installer.
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+
 if (-not (Get-Module -ListAvailable -Name ps2exe)) {
     Write-Host 'ps2exe module not found - installing for the current user...' -ForegroundColor Yellow
     Install-Module -Name ps2exe -Scope CurrentUser -Force -AllowClobber
@@ -39,12 +48,18 @@ $sourceScript = Join-Path $repoRoot 'BinSifter-Rowan.ps1'
 $targetExe = Join-Path $outputDir 'BinSifter-Rowan.exe'
 $iconFile = Join-Path $repoRoot 'BinSifter-WindowIcon.ico'
 
-# -Core targets pwsh.exe (PowerShell 7+) rather than legacy Windows
-# PowerShell 5.1 - Rowan needs .NET 5+'s HashData/ToHexString APIs (see
-# TODO.md's cross-machine PS7.0 fix), so this has to match. -STA is
-# required for WinForms. -NoConsole hides the console window a plain
-# pwsh.exe launch would otherwise show. -DPIAware/-WinFormsDPIAware match
-# the DPI-scaling work already done inside the script itself.
+# No -Core flag here: that belongs to a different, newer module
+# (PS2EXE.Core by Fabien Tschanz), not the one this script installs
+# (MScholtes/ps2exe from the PowerShell Gallery), whose Invoke-ps2exe
+# has no such parameter at all. That module instead compiles against
+# whichever PowerShell host actually runs Invoke-ps2exe - since this
+# script requires pwsh.exe (PowerShell 7) per its own prerequisite
+# above, the resulting exe already targets PS7's engine, which is what
+# Rowan needs for its .NET 5+ HashData/ToHexString APIs (see TODO.md's
+# cross-machine PS7.0 fix). -STA is required for WinForms. -NoConsole
+# hides the console window a plain pwsh.exe launch would otherwise
+# show. -DPIAware/-WinFormsDPIAware match the DPI-scaling work already
+# done inside the script itself.
 Invoke-ps2exe `
     -InputFile $sourceScript `
     -OutputFile $targetExe `
@@ -53,7 +68,6 @@ Invoke-ps2exe `
     -Product 'BinSifter' `
     -Company 'BinSifter Project' `
     -Version '1.0.0.0' `
-    -Core `
     -STA `
     -NoConsole `
     -DPIAware `
