@@ -116,6 +116,61 @@ except Exception as exc:  # noqa: BLE001 - deliberately broad: any import-time f
     _IMPORT_ERROR = exc
     logger.warning("Speakeasy emulation is unavailable - failed to import: %s", exc)
 
+
+def _patch_speakeasy_root_path_normalization() -> None:
+    """2026-08-19: real scan log found this - a genuine bug in the installed
+    speakeasy 1.5.11 package itself, not BinSifter's own code. The default
+    config's module_directory_x86/x64 values are literal strings like
+    "$ROOT$/winenv/decoys/x86" (forward slash, hardcoded in
+    speakeasy/configs/default.json). speakeasy.common.normalize_package_path()
+    resolves "$ROOT$" with a plain str.replace(root_var, root) - no path
+    normalization afterward - so on Windows, where the package root is a
+    backslash path, the result is a literally mixed-separator string like
+    "...\\_internal\\speakeasy/winenv/decoys/x86". winemu.py's
+    get_native_module_path() then os.path.join()s a filename onto that
+    (Windows tolerates forward slashes for os.listdir/os.path.join, so this
+    part silently succeeds), but the resulting path is handed to pefile.PE()
+    to actually open the decoy module - and pefile.py's open()/mmap() call
+    on that malformed path is what raised the real, observed failure:
+    "Unable to access file '...\\_internal\\speakeasy/winenv/decoys/x86\\
+    default_exe.exe': [Errno 22] Invalid argument". This is why it worked on
+    one machine (FLARE VM) and failed on another (host PC) with the exact
+    same code and file - it's a path-string correctness bug that Windows'
+    filesystem APIs happen to tolerate most of the time, not a
+    machine-specific difference in the decoy file itself.
+
+    Same monkeypatch-the-installed-library pattern already used twice in
+    authenticode.py for real signify bugs - not a vendored fork. Wrapping
+    the result in os.path.normpath() collapses the mixed separators (and
+    resolves any stray ".."/"." segments) into a single, unambiguous
+    OS-native path, with zero behavior change on Linux/macOS where "/" was
+    already the only separator in play.
+    """
+    if speakeasy is None:
+        return
+    try:
+        from speakeasy import common as _speakeasy_common
+    except Exception:  # noqa: BLE001 - if this submodule ever moves/renames, degrade to the unpatched (occasionally-broken) behavior rather than crashing import
+        return
+
+    original = _speakeasy_common.normalize_package_path
+    if getattr(original, "_bs_patched", False):
+        return
+
+    def _normalize_package_path(path):
+        return os.path.normpath(original(path))
+
+    _normalize_package_path._bs_patched = True
+    _speakeasy_common.normalize_package_path = _normalize_package_path
+    # winemu.py does `from .. import common` (or similar) and calls
+    # common.normalize_package_path(...) through that module reference, so
+    # patching the attribute on the common module itself (above) is enough
+    # to reach every call site - no need to also patch winenv/winemu.py's
+    # own namespace.
+
+
+_patch_speakeasy_root_path_normalization()
+
 _DEFAULT_CONFIG_PATH = (
     os.path.join(os.path.dirname(speakeasy.__file__), "configs", "default.json")
     if speakeasy is not None else ""

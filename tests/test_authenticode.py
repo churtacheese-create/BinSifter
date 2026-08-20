@@ -338,3 +338,73 @@ def test_certificate_trust_list_subjects_are_cached_not_reparsed_every_call():
     second_catalog = _CountingCatalog()
     _ = second_catalog._subjects
     assert call_count["n"] == 1
+
+
+def test_signed_pe_file_fingerprint_is_cached_not_rehashed_every_catalog():
+    """2026-08-19: regression guard for the second half of the 2026-08-17
+    catalog-verification slowdown. The prior fix (see the test above) only
+    cached the CATALOG side of add_catalog(check=True) - a real scan log
+    from today showed one large file (WindowsXP-KB936929-SP3-x86-RUS.exe)
+    still took 2299.4s (38+ minutes) to authenticode-check on its own,
+    because check_signature() calls signed_file.add_catalog() once per
+    configured catalog (~5700 of them against a real CatRoot directory), and
+    each call's find_subject() (trust_list.py) does
+    subject.get_fingerprint(...) on that SAME signed_file object every time.
+    Confirmed directly in signify's installed source: SignedPEFile's (and
+    the MSI/flat-signature equivalents') get_fingerprint() builds a brand-
+    new Fingerprinter and re-hashes the whole file from disk on every call -
+    unlike the neighbouring page_size property on the same class, which IS a
+    @cached_property. So a single large file was being fully re-hashed once
+    per catalog: O(catalogs x filesize) instead of O(filesize + catalogs).
+
+    authenticode.py patches SignedPEFile/SignedMsiFile/FlatFile's
+    get_fingerprint() at import time to cache per-instance, keyed on the
+    exact call arguments. This pins down that the patch is in effect: repeat
+    calls for the SAME digest algorithm on the SAME instance must only
+    trigger the real (expensive) hashing work once, while a genuinely
+    different digest algorithm still computes fresh - same
+    correctness-vs-performance split as the catalog-side test above.
+    """
+    import hashlib
+
+    from signify.authenticode.signed_file.pe import SignedPEFile
+
+    call_count = {"n": 0}
+
+    class _FakeFingerprinter:
+        def add_signed_pe_hashers(self, *args, **kwargs):
+            pass  # real get_fingerprint() calls this before .hash(); no-op stub
+
+        def hash(self):
+            call_count["n"] += 1
+            return {"sha1": b"a" * 20, "sha256": b"b" * 32}
+
+    pe_file = SignedPEFile.__new__(SignedPEFile)  # skip real PE-parsing __init__
+    pe_file.get_fingerprinter = lambda: _FakeFingerprinter()
+    pe_file.page_size = 0x1000
+
+    for _ in range(5):
+        fp = pe_file.get_fingerprint(hashlib.sha1)
+        assert fp == b"a" * 20
+
+    # Without the fix this would be 5 (one full re-hash per call, exactly
+    # the shape of the real bug against a multi-thousand-catalog directory)
+    # - the whole point is that repeat requests for the identical algorithm
+    # on the same instance are served from cache instead.
+    assert call_count["n"] == 1
+
+    # A genuinely different digest algorithm on the same instance must still
+    # compute fresh - this isn't allowed to become a stale, one-size-fits-all
+    # cache that returns the wrong hash for a different algorithm.
+    fp_sha256 = pe_file.get_fingerprint(hashlib.sha256)
+    assert fp_sha256 == b"b" * 32
+    assert call_count["n"] == 2
+
+    # A second, independent instance must not see the first instance's
+    # cached value - caching is per-file, not global.
+    second_pe_file = SignedPEFile.__new__(SignedPEFile)
+    second_pe_file.get_fingerprinter = lambda: _FakeFingerprinter()
+    second_pe_file.page_size = 0x1000
+    call_count["n"] = 0
+    _ = second_pe_file.get_fingerprint(hashlib.sha1)
+    assert call_count["n"] == 1

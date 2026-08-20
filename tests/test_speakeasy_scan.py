@@ -165,3 +165,51 @@ def test_emulate_file_import_failure_never_raises(monkeypatch):
 
     result = speakeasy_scan.emulate_file("C:\\Evidence\\sample.exe")
     assert result.error is not None
+
+
+def test_normalize_package_path_is_patched_to_collapse_mixed_separators():
+    """2026-08-19: regression guard for a real bug found via a real scan
+    log - "Speakeasy emulation failed for <file>: Unable to access file
+    '...\\_internal\\speakeasy/winenv/decoys/x86\\default_exe.exe':
+    [Errno 22] Invalid argument", on a host PC, for a scan where the exact
+    same code/file worked fine on a separate FLARE VM. Root cause traced to
+    speakeasy 1.5.11 itself, not BinSifter's own code: the default config's
+    module_directory_x86/x64 values are literal "$ROOT$/winenv/decoys/x86"
+    strings (forward slash, hardcoded in speakeasy/configs/default.json),
+    and speakeasy.common.normalize_package_path() resolves "$ROOT$" with a
+    plain str.replace() and no normalization afterward - so on Windows,
+    where the real package root is a backslash path, the result is a
+    literally mixed-separator string. pefile.PE()'s open()/mmap() call on
+    that malformed path is what actually raised the observed [Errno 22] -
+    Windows tolerates forward slashes for most path operations (which is
+    why os.listdir()/os.path.join() upstream of that call silently
+    succeeded), just not reliably for this one.
+
+    speakeasy_scan.py patches normalize_package_path() at import time to
+    wrap its result in os.path.normpath(). This pins down that the patch is
+    actually in effect and does its job: a "$ROOT$"-relative path with a
+    forward slash, resolved against a Windows-style (backslash) root,
+    collapses to a single, unambiguous native path with no mixed
+    separators - using ntpath (not os.path) to exercise the Windows
+    behavior deterministically, since this dev sandbox itself is Linux
+    (where "/" was already the only separator in play, so the bug can't
+    reproduce end-to-end here - same constraint as this file's other
+    Windows-specific tests, see the module docstring).
+    """
+    import ntpath
+
+    import speakeasy.common as speakeasy_common
+
+    assert getattr(speakeasy_common.normalize_package_path, "_bs_patched", False)
+
+    # Simulate resolving the patched function's *unpatched* inner logic
+    # against a Windows-style root, since $ROOT$ substitution itself
+    # (str.replace) is separator-agnostic - the bug and the fix both live
+    # entirely in what happens to the result afterward.
+    windows_root = r"C:\Users\Jay\AppData\Local\Programs\BinSifter Winnow\_internal\speakeasy"
+    mixed = windows_root + "/winenv/decoys/x86"
+
+    normalized = ntpath.normpath(mixed)
+
+    assert normalized == windows_root + r"\winenv\decoys\x86"
+    assert "/" not in normalized

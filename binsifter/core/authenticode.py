@@ -154,6 +154,59 @@ if _SIGNIFY_AVAILABLE:
 
     _patch_signify_trust_list_caching()
 
+    # 2026-08-19: a second, distinct signify 0.9.2 performance bug, found by
+    # reading a real scan log rather than guessing - a single large PE file
+    # (WindowsXP-KB936929-SP3-x86-RUS.exe) took 2299.4s (38+ minutes) for its
+    # authenticode check alone on the host PC, and on the FLARE VM it blew
+    # straight through the scan's 1200s stall watchdog and got abandoned as
+    # an error. The 2026-08-17 fix above only cached the CATALOG side of
+    # add_catalog() (parsing a .cat file's own subject list once instead of
+    # on every lookup). This is the other half: check_signature() below
+    # calls signed_file.add_catalog(catalog, check=True) once per configured
+    # catalog - up to ~5700 times for one file, with a real Windows CatRoot
+    # directory - and each call's find_subject() (trust_list.py) does
+    # subject.get_fingerprint(self.subject_algorithm), where "subject" is
+    # this same signed_file object every time. Read directly in signify's
+    # installed source: SignedPEFile.get_fingerprint() (and the MSI/flat-
+    # signature equivalents) build a brand-new Fingerprinter and re-hash the
+    # entire file from disk on every single call - unlike the neighbouring
+    # page_size property on the same class, which IS a @cached_property.
+    # So a big file was being re-hashed from scratch once per catalog:
+    # O(catalogs x filesize) instead of O(filesize + catalogs). Fixed the
+    # same way as above - a monkeypatch of the installed library, not a
+    # vendored fork - but since all three concrete AuthenticodeFile
+    # subclasses (PE/MSI/flat) implement get_fingerprint() independently
+    # (no shared base implementation to patch just once), each is wrapped
+    # with a small per-instance cache keyed on the exact call arguments, so
+    # a genuinely different digest algorithm or byte range still computes
+    # fresh - only a repeat of the same request is served from cache. Since
+    # a single AuthenticodeFile instance is created once per file in
+    # check_signature() and reused for every catalog in that file's loop,
+    # this caching is scoped exactly right: the file's own bytes can't
+    # change out from under an already-open instance.
+    def _patch_signify_fingerprint_caching() -> None:
+        from signify.authenticode.signed_file.flat import FlatFile
+        from signify.authenticode.signed_file.msi import SignedMsiFile
+        from signify.authenticode.signed_file.pe import SignedPEFile
+
+        for cls in (SignedPEFile, SignedMsiFile, FlatFile):
+            original = cls.__dict__.get("get_fingerprint")
+            if original is None or getattr(original, "_bs_cached", False):
+                continue
+
+            @functools.wraps(original)
+            def _cached_get_fingerprint(self, *args, _original=original, **kwargs):
+                cache = self.__dict__.setdefault("_bs_fingerprint_cache", {})
+                key = (args, tuple(sorted(kwargs.items())))
+                if key not in cache:
+                    cache[key] = _original(self, *args, **kwargs)
+                return cache[key]
+
+            _cached_get_fingerprint._bs_cached = True
+            cls.get_fingerprint = _cached_get_fingerprint
+
+    _patch_signify_fingerprint_caching()
+
 
 @dataclasses.dataclass
 class AuthenticodeResult:
