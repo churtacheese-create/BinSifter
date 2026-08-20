@@ -2,7 +2,7 @@
 
 Ports $BinSifterRoot / $ToolFileNames / Find-ToolPath /
 Set-ToolPathsFromDirectory and the default Reports/Attack/Blocklist
-location logic from the PowerShell version (BinSifter-Rowan_v1.3.0-beta.1.ps1,
+location logic from the PowerShell version (BinSifter-Rowan.ps1,
 roughly lines 1694-1830).
 
 Field names below are kept in PascalCase, matching the PowerShell $Config
@@ -33,13 +33,13 @@ def get_binsifter_root() -> Path:
     console-script entry point, unlike PowerShell's $PSScriptRoot /
     $MyInvocation.MyCommand.Path, which came back empty under VS Code's
     "Run and Debug" on the FRED and needed a defensive fallback chain (see
-    BinSifter-Rowan_v1.3.0-beta.1.ps1's $BinSifterRoot block for that whole
+    BinSifter-Rowan.ps1's $BinSifterRoot block for that whole
     saga).
 
-    2026-08-08 addition: when frozen by PyInstaller (installer/winnow.spec),
-    `sys.frozen` is set and `__file__`-based resolution no longer means
-    anything real - the "package" isn't sitting on disk as loose .py files
-    at all anymore. Deliberately reads `sys.executable`'s OWN directory in
+    When frozen by PyInstaller (installer/winnow.spec), `sys.frozen` is set
+    and `__file__`-based resolution no longer means anything real - the
+    "package" isn't sitting on disk as loose .py files at all anymore.
+    Deliberately reads `sys.executable`'s OWN directory in
     that case (stable across launches), NOT `sys._MEIPASS` (which, for a
     --onefile build, is a fresh temp-extraction folder every single launch -
     would silently break the Reports/settings-cache persistence this
@@ -63,9 +63,9 @@ def get_binsifter_data_root() -> Path:
     per-user, always-writable location if that directory turns out not to
     be writable.
 
-    2026-08-13 addition: a real installer test crashed Winnow at startup
-    with an unhandled PermissionError ([WinError 5] Access is denied)
-    trying to mkdir 'C:\\Program Files\\BinSifter Winnow\\Reports'.
+    An installer test crashed Winnow at startup with an unhandled
+    PermissionError ([WinError 5] Access is denied) trying to mkdir
+    'C:\\Program Files\\BinSifter Winnow\\Reports'.
     Winnow.iss deliberately offers a per-user (default) OR an all-users/
     admin install choice (PrivilegesRequiredOverridesAllowed=dialog) - the
     per-user path lands under %LOCALAPPDATA%\\Programs, which is always
@@ -108,13 +108,11 @@ def get_bundled_asset_path(filename: str) -> Path:
     stay stable across launches (see that function's docstring on why it
     avoids sys._MEIPASS for exactly that reason).
 
-    2026-08-14: the very first real-Windows test round where Winnow's
-    window actually rendered (every earlier one crashed at or before
-    MainWindow.__init__ - the eager unicorn import crash, then the
-    Program-Files write-permission crash) surfaced every logo (sidebar,
-    About page) coming up blank on BOTH a host machine and a FLARE VM,
-    with no error anywhere - meaning this was very likely broken from
-    Winnow's very first installer build, just never observed until now.
+    The first real-Windows test round where Winnow's window actually
+    rendered surfaced every logo (sidebar, About page) coming up blank on
+    BOTH a host machine and a FLARE VM, with no error anywhere - likely
+    broken since Winnow's very first installer build, just never observed
+    until now.
 
     Root cause: installer/winnow.spec's own_datas (the two logo PNGs)
     are bundled with a "." destination, which used to land directly next
@@ -214,7 +212,7 @@ class BinSifterConfig:
     CapaRules: str = ""
     ToolsDir: str = ""
     GhidraDir: str = ""
-    # 2026-08-08: catalog-based (.cat) Authenticode verification - see
+    # Catalog-based (.cat) Authenticode verification - see
     # authenticode.py's module docstring for why this exists (a large
     # fraction of Windows' own inbox binaries are validated via a system
     # catalog rather than an embedded signature, and signify doesn't check

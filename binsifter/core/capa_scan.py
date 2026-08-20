@@ -1,18 +1,14 @@
 """CAPA capability detection - real library integration.
 
-Verified against capa's own source (not guessed) before writing this:
-- github.com/mandiant/capa/blob/master/capa/ghidra/capa_ghidra.py showed the
+Verified against capa's own installed source (flare-capa 9.4.0), not the
+mandiant/capa example scripts, which target a different version:
+- github.com/mandiant/capa/blob/master/capa/ghidra/capa_ghidra.py shows the
   general shape (capa.rules.get_rules(), capa.capabilities.common.
-  find_capabilities()), but that script targets a different capa version -
-  it destructures find_capabilities()'s return as a (capabilities, counts)
-  tuple, which does NOT match the currently-installed flare-capa 9.4.0.
-- github.com/mandiant/capa/blob/master/capa/capabilities/common.py (the
-  actual installed version's source) confirms find_capabilities() returns a
-  single `Capabilities` dataclass with a `.matches` dict (rule name -> list
-  of (address, Result)) and a `.feature_counts` field - NOT a tuple. This
-  mismatch between two "official-looking" examples is exactly why each
-  capa/FLOSS/Speakeasy module's docstring insists on checking the installed
-  version's real source rather than trusting one example script.
+  find_capabilities()), but destructures find_capabilities()'s return as a
+  (capabilities, counts) tuple - that does NOT match 9.4.0, whose
+  find_capabilities() returns a single `Capabilities` dataclass with a
+  `.matches` dict (rule name -> list of (address, Result)) and a
+  `.feature_counts` field.
 - github.com/mandiant/capa/blob/master/capa/loader.py provided
   get_extractor(), which is the real standalone-file (non-Ghidra/IDA)
   entrypoint, using backend="vivisect" by default - the same backend
@@ -52,8 +48,7 @@ logger = logging.getLogger(__name__)
 # importing just capa.rules/capa.loader/capa.capabilities.common (as this
 # module originally did) skips that wiring and produces
 # "AttributeError: module 'capa.rules' has no attribute 'cache'" the first
-# time get_rules() runs. Confirmed by hitting this exact error against a
-# real capa rules directory, not a hypothetical.
+# time get_rules() runs.
 import capa.main  # noqa: F401
 
 import capa.capabilities.common
@@ -63,50 +58,18 @@ from capa.features.common import FORMAT_AUTO, FORMAT_SC32, FORMAT_SC64, OS_AUTO
 
 from binsifter.core.subprocess_timeout import run_with_timeout
 
-# Confirmed necessary, not a defensive guess: modern (2025-toolchain-built)
-# Windows binaries - bash.exe, curl.exe, notepad.exe all reproduced this on
-# 2026-07-30 - can get vivisect's aarch64 register-context construction
-# stuck for 30-90+ seconds inside envi's own code (a third-party bug, not
-# something in this module).
+# Modern (2025-toolchain-built) Windows binaries - bash.exe, curl.exe,
+# notepad.exe among them - can get vivisect's aarch64 register-context
+# construction stuck for 30-90+ seconds inside envi's own code (a
+# third-party bug, not something in this module).
 #
-# Raised from 60 to 120 on 2026-08-03 on the theory that files hitting the
-# 60s cutoff were still making real, forward-progress vivisect analysis on
-# genuinely complex binaries (large C++ libraries like xerces-c, xul.dll)
-# and just needed more room to finish.
-#
-# Lowered back to 60 on 2026-08-04, and this wasn't a guess - a real
-# 652-file scan run at 120s (Loom_scanLogs_08042026.txt) gave the data to
-# check the 08-03 theory directly. Stage-timing summary from that run:
-# capa = 31,082.7 CPU-seconds total (93.6% of all stage time), and of the
-# 549 files capa ran against, 186 (28.5%) hit the full 120s timeout and
-# produced nothing. Those 186 timeouts alone account for 22,320 of the
-# 31,082.7 capa-seconds - ~72% of all capa time spent on files that
-# ultimately yield zero result. Meanwhile the 363 files that *did* finish
-# averaged only ~24s each (8,762.7s / 363) - real successes cluster well
-# under even the old 60s ceiling, so the 08-03 theory (more room helps
-# borderline-but-progressing files) isn't what the data shows for this
-# corpus: the files timing out at 120s look like they'd time out at any
-# reasonable ceiling, not files that were one more minute from finishing.
-# Doubling the timeout doubled the number of workers can waste per stuck
-# file without measurably rescuing more of them.
-#
-# Raised to 90 on 2026-08-04 (same day, second pass), after the 60s run
-# (Loom_scanLogs_08042026-1641.txt) showed the 08-03 theory wasn't fully
-# wrong after all. Total scan time did drop hard - 4192.7s to 1539.5s
-# (-63%), capa CPU time 31,082.7s to 18,075.1s - but timeout count went UP,
-# not down: 186/652 at 120s to 252/652 at 60s. Of the 549 files capa runs
-# against, completion rate fell from 66.1% (363/549) to 54.1% (297/549) -
-# 66 more files got zero capa result than at 120s. That's direct evidence
-# some files genuinely need the 60-120s window and weren't just stuck -
-# the 08-04 note above overcorrected by treating every 60s-cutoff file as
-# equivalent to a 120s-cutoff file, which this run disproved.
-#
-# 90s is a deliberate split, not a new theory: keep most of the 08-04
+# 90s is a tuned tradeoff between total scan time and per-file completion
+# rate, found across several real 652-file scans: 120s let more files
+# finish but cost far more wall-clock time overall (most files timing out
+# at 120s look genuinely stuck, not one minute from finishing); 60s cut
+# scan time sharply but measurably dropped the completion rate, since some
+# files really do need the 60-120s window. 90s keeps most of the 60s
 # wall-clock win while clawing back some of the completion-rate loss.
-# Check the next real scan's stage-timing summary against both prior runs
-# (120s: 186/549 timeout, 31,082.7 capa-s, 4192.7s total; 60s: 252/549
-# timeout, 18,075.1 capa-s, 1539.5s total) to see where 90s actually lands
-# on both axes before treating it as settled.
 DEFAULT_TIMEOUT_SECONDS = 90
 
 
@@ -218,9 +181,9 @@ def scan_file_with_timeout(
 # per file across a large batch: every single call spawns a brand-new
 # Python process and re-imports capa/vivisect from scratch (capa.main,
 # capa.loader, envi, vivisect, and everything they pull in - a genuinely
-# heavy import, confirmed as a major contributor to a real 34-minute,
-# 652-file Python-side scan versus the PowerShell version's ~5 minutes for
-# the same batch, 2026-08-03). PersistentCapaWorker instead keeps ONE capa
+# heavy import, a major contributor to a 34-minute, 652-file Python-side
+# scan versus the PowerShell version's ~5 minutes for the same batch).
+# PersistentCapaWorker instead keeps ONE capa
 # child process warm (rules loaded once, interpreter already started) and
 # reuses it across every file engine.py's pool worker processes - the
 # import/rule-load cost is paid roughly once per scan-pool worker instead

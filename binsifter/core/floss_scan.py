@@ -1,7 +1,7 @@
 """FLOSS string-extraction fallback - real library integration.
 
-Verified against flare-floss's own source (not guessed) before writing
-this:
+Verified against flare-floss's own source, since the packaged docs aren't
+enough to build on:
 - github.com/mandiant/flare-floss doc/installation.md only shows
   `import floss; print(dir(floss))` - not enough to build on.
 - floss/main.py has no small standalone "extract_strings(path)" library
@@ -20,9 +20,8 @@ this:
   subprocess spawn (no process-launch overhead, no floss.exe path lookup).
 - floss/results.py confirms the exact JSON shape: top-level "strings" key
   with static_strings/stack_strings/tight_strings/decoded_strings lists,
-  each entry a dict with a "string" key holding the actual text - verified
-  directly from the ResultDocument/StaticString/StackString/DecodedString
-  dataclasses, not assumed.
+  each entry a dict with a "string" key holding the actual text, per the
+  ResultDocument/StaticString/StackString/DecodedString dataclasses.
 
 Deliberately passes `--only static stack tight decoded` (all four types
 explicitly) rather than leaving FLOSS's defaults untouched: main() has an

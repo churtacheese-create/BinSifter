@@ -1,9 +1,9 @@
 """CSV report writing - direct port of the C# CsvWriter class embedded in
-BinSifter-Rowan_v1.3.0-beta.1.ps1 (lines ~431-499).
+BinSifter-Rowan.ps1 (lines ~431-499).
 
 Deliberately NOT a generic "dump every FileRecord field" writer - the
-original hand-picks a specific 36-column list (37 as of 2026-08-07's
-SourceArchive addition - see COLUMNS below), in a specific order, and
+original hand-picks a specific 37-column list (see COLUMNS below,
+including SourceArchive), in a specific order, and
 applies specific blank-if-default formatting per column (Entropy to 3
 decimal places; several -1/0-sentinel int fields blanked instead of shown
 as "-1"/"0"/negative numbers). Matching that exactly matters here since

@@ -1,8 +1,8 @@
 """NSRL known-good hash lookup - cached, memory-mapped binary index.
 
-Rewritten 2026-08-04 to replace the original in-memory `set[str]`
-implementation, after a real 652-file scan showed exactly why that design
-doesn't scale to a real NSRL RDS export (72,015,335 hashes here):
+Replaces an earlier in-memory `set[str]` implementation, which doesn't
+scale to a real NSRL RDS export (72,015,335 hashes in one real-world
+case):
 
 1. Parsing was the dominant cost of the whole scan's "setup" phase: 1468s
    (24.5 minutes) of pure-Python CSV row iteration + a per-row regex match,
@@ -35,14 +35,14 @@ machine; it just may page fault more often, not fail or force full-set
 duplication.
 
 The one-time (per source-file-version) parse+sort itself also got faster:
-numpy's void20 dtype sort (verified 2026-08-04 to produce byte-identical
-ordering to Python's own lexicographic bytes sort on the same input) avoids
-the per-object overhead of sorting 72 million individual Python `bytes`
-objects - benchmarked at ~2.3s for 5,000,000 records, extrapolating to
-roughly 30-60s for 72 million, versus multiple minutes the naive approach
-would cost on top of the parse itself.
+numpy's void20 dtype sort produces byte-identical ordering to Python's own
+lexicographic bytes sort on the same input, and avoids the per-object
+overhead of sorting 72 million individual Python `bytes` objects -
+benchmarked at ~2.3s for 5,000,000 records, extrapolating to roughly
+30-60s for 72 million, versus multiple minutes the naive approach would
+cost on top of the parse itself.
 
-Cross-reference: the PowerShell version (BinSifter-Rowan_v1.3.0-beta.1.ps1,
+Cross-reference: the PowerShell version (BinSifter-Rowan.ps1,
 BinSifter.NsrlLoader, ~line 147) already does something similar - parse
 once, cache a flat 20-byte-record file, fast-load from cache on repeat
 runs - and that's a real, legitimate contributor to its faster NSRL
@@ -119,29 +119,25 @@ class NsrlIndex:
 def _cache_path_for(nsrl_path: str, report_directory: str) -> str:
     """Cache lives under report_directory/.bsifter-nsrl-cache/, NOT beside
     the NSRL source file - mirrors the PowerShell version's own reasoning
-    (BinSifter-Rowan_v1.3.0-beta.1.ps1, ~line 2656): NSRL reference sets are
+    (BinSifter-Rowan.ps1, ~line 2656): NSRL reference sets are
     routinely staged on read-only or write-blocked evidentiary drives, and
     a cache-write failure there shouldn't be able to affect the scan even
     though the NSRL data itself parsed fine. Named by a hash of the
     (case-normalized) source path so multiple differently-located NSRL
     files can't collide on a cache filename.
 
-    2026-08-15: report_directory is guarded against being blank here -
-    ReportDirectory is an optional Settings field (several other features,
-    e.g. archive extraction and CSV report writing in engine.py, already
-    skip cleanly rather than assume it's set), but this call site never had
-    that guard. A blank report_directory used to make `Path("") / ...`
-    resolve to a plain RELATIVE path (".bsifter-nsrl-cache/...") - which
-    directory that actually lands in then depends entirely on the
-    process's current working directory at launch, something a GUI app
-    started via a Start Menu shortcut has no reliable, consistent control
-    over (the exact same class of "silently landed somewhere unexpected"
-    bug already found and fixed once for Rowan's $BinSifterRoot resolution
-    landing on System32). A cache built under one CWD and looked up under a
-    different one on the next launch would appear to "rebuild every time"
-    with no error and nothing wrong with the freshness check itself -
-    falling back to a stable, always-real location instead removes that
-    failure mode entirely rather than just making it less likely.
+    report_directory is guarded against being blank here - ReportDirectory
+    is an optional Settings field, but a blank value used to make
+    `Path("") / ...` resolve to a plain RELATIVE path
+    (".bsifter-nsrl-cache/...") - which directory that lands in then
+    depends on the process's current working directory at launch, which a
+    GUI app started via a Start Menu shortcut has no reliable control over
+    (the same class of "silently landed somewhere unexpected" bug as
+    Rowan's $BinSifterRoot resolution landing on System32). A cache built
+    under one CWD and looked up under a different one on the next launch
+    would appear to "rebuild every time" with nothing wrong with the
+    freshness check itself - falling back to a stable, always-real location
+    removes that failure mode entirely.
     """
     if not report_directory:
         from binsifter.core.config import get_binsifter_data_root
@@ -256,10 +252,10 @@ def build_index(source_path: str, cache_path: str) -> int:
     if count:
         # np.frombuffer over a (mutable) bytearray gives a WRITABLE view,
         # not a copy - sorting it in place sorts `buf` itself too, avoiding
-        # a second ~1.4GB-at-72M-records allocation just to sort. Verified
-        # 2026-08-04 that this in-place sort on a bytearray-backed view
-        # produces byte-identical results to Python's own list.sort() over
-        # the equivalent bytes objects.
+        # a second ~1.4GB-at-72M-records allocation just to sort. This
+        # in-place sort on a bytearray-backed view produces byte-identical
+        # results to Python's own list.sort() over the equivalent bytes
+        # objects.
         np.frombuffer(buf, dtype="V20").sort()
 
     st = os.stat(source_path)

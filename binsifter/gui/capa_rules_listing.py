@@ -1,6 +1,6 @@
 """Capa rules directory listing - pure Python (no Qt import), split out from
 the page widget so it's unit-testable without a display. Port of
-Update-CapaRulesList's file-enumeration half (BinSifter-Rowan_v1.3.0-beta.1.ps1,
+Update-CapaRulesList's file-enumeration half (BinSifter-Rowan.ps1,
 lines ~5485-5496).
 
 One minor, deliberate UX-only deviation: results are returned sorted by

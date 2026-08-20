@@ -1,6 +1,6 @@
 """Regression tests for binsifter.core.attack_db - the MITRE ATT&CK
 technique-resolution logic ported from the C# BinSifter.AttackDb class
-(BinSifter-Rowan_v1.3.0-beta.1.ps1, lines ~655-860). Uses a small hand-built
+(BinSifter-Rowan.ps1, lines ~655-860). Uses a small hand-built
 STIX-shaped fixture rather than the real ~50MB enterprise-attack.json (that
 file is user-provided, gitignored, and far too large to check in) - the
 fixture below covers the same object/relationship shapes actually read by

@@ -1,4 +1,4 @@
-"""Dashboard page - port of New-DashboardPage (BinSifter-Rowan_v1.3.0-beta.1.ps1,
+"""Dashboard page - port of New-DashboardPage (BinSifter-Rowan.ps1,
 lines ~3514-3920). Visual order top-to-bottom matches the reference
 screenshot (BinSifter_Dash.png) exactly: Enrichment Summary (two tile
 rows), SSDEEP Cluster Heat Map (one tile row), YARA Severity Breakdown
@@ -47,21 +47,14 @@ class DashboardPage(QWidget):
         enrichment_row = QGridLayout()
         enrichment_row.setSpacing(16)
         self.tile_imphash = StatTile(theme, "Imphash Clusters", theme.Accent, "layers", compact=True)
-        # 2026-08-06: went "Unsigned" (SignatureStatus != Valid, one tile) ->
-        # "Not Signed" + "Not Verifiable" (two tiles, broke the 5-tile row
-        # alignment with the row below) -> back to one tile: report the
-        # positive "Signed" count instead of explaining every way
-        # a file can fail to be Valid. Simpler to read, and every status
-        # that isn't "Valid" is implicitly "not signed or not verified"
-        # without needing its own tile.
-        # 2026-08-06: Signed and NSRL Matches (below) both recolored to
-        # theme.Success (green) - both are "this file is accounted for/
-        # trustworthy" signals, not neutral-info like Imphash Clusters, so
-        # they get the same treatment as the "Ready"/"Completed" status
-        # indicators elsewhere in the app rather than sharing Accent blue
-        # with everything else. Files With IOCs recolored to theme.Warning
-        # to match YARA Hits - both are "found something worth a look"
-        # signals of the same weight.
+        # Reports the positive "Signed" count rather than bucketing every
+        # way SignatureStatus can fail to be Valid - simpler to read, and
+        # keeps the row at 5 tiles. Signed and NSRL Matches use
+        # theme.Success (green), the same "accounted for/trustworthy"
+        # treatment as the Ready/Completed status indicators elsewhere,
+        # rather than the neutral Accent blue. Files With IOCs uses
+        # theme.Warning to match YARA Hits - both flag something worth a
+        # look.
         self.tile_signed = StatTile(theme, "Signed", theme.Success, "check", compact=True)
         self.tile_known_bad = StatTile(theme, "Known-Bad", theme.Danger, "target", compact=True)
         self.tile_iocs = StatTile(theme, "Files With IOCs", theme.Warning, "document", compact=True)

@@ -1,12 +1,9 @@
 """Archive/compressed-file support - decompress and expand the contents of
 zip/tar/gzip/7z archives found under the scan source directory, so their
 contents get scanned as ordinary files rather than the archive being
-scanned only as an opaque single blob. Added 2026-08-07 per a
-2026-08-06 request (see TODO.md's "Planned - next session" entry for the
-original ask and open design questions).
+scanned only as an opaque single blob.
 
-Three design decisions confirmed directly (AskUserQuestion,
-2026-08-06/07) that this module and its call site in engine.py's
+Three design decisions this module and its call site in engine.py's
 scan_directory() are built around:
 
 1. **Password-protected archives are handled by a pre-scan pass**, not a
@@ -143,7 +140,7 @@ def needs_password(path: str | Path) -> bool:
     if fmt == "zip":
         try:
             # Deliberately still stdlib zipfile, not pyzipper, here - unlike
-            # _extract_zip() (see its docstring, 2026-08-08), this only
+            # _extract_zip() (see its docstring), this only
             # reads each entry's flag_bits out of the central directory,
             # which doesn't require decompressing/decrypting anything, so
             # stdlib zipfile opens and lists an AES-encrypted zip just fine
@@ -220,8 +217,8 @@ def _unique_path(path: Path) -> Path:
 
 
 def _extract_zip(path: str, dest_dir: str, password: str | None) -> list[str]:
-    """Uses pyzipper.AESZipFile, not stdlib zipfile.ZipFile (2026-08-08 fix)
-    - stdlib zipfile can only decrypt legacy ZipCrypto-encrypted entries; it
+    """Uses pyzipper.AESZipFile, not stdlib zipfile.ZipFile - stdlib
+    zipfile can only decrypt legacy ZipCrypto-encrypted entries; it
     can open/list a WinZip AE-x (AES-256) encrypted zip fine (reading the
     central directory doesn't need the key), but raises
     NotImplementedError("That compression method is not supported") the

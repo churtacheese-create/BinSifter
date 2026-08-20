@@ -1,4 +1,4 @@
-"""About page - port of New-AboutPage (BinSifter-Rowan_v1.3.0-beta.1.ps1, lines
+"""About page - port of New-AboutPage (BinSifter-Rowan.ps1, lines
 ~4933-4971). Logo, version line, short description, integrated-tools line.
 
 Version now comes from binsifter.__version__ (this port's real single
@@ -27,14 +27,9 @@ class AboutPage(QWidget):
         root.setContentsMargins(28, 24, 28, 24)
         root.setSpacing(0)
 
-        # 2026-08-06: was a hardcoded dark-mode filename, same fix/reasoning
-        # as main_window.py's sidebar logo - see theme.logo_horizontal_filename().
-        # 2026-08-08: switched from a __file__-relative parent chain to
-        # get_binsifter_root(), which resolves correctly under a frozen/
-        # installed exe too (see that function's docstring).
-        # 2026-08-14: switched again, to get_bundled_asset_path() - see that
-        # function's docstring for why get_binsifter_root() alone stopped
-        # finding this file under a real installed build.
+        # Theme-dependent filename (see theme.logo_horizontal_filename()) via
+        # get_bundled_asset_path(), which resolves correctly under a frozen/
+        # installed exe - see that function's docstring.
         logo_path = get_bundled_asset_path(logo_horizontal_filename(theme))
         if logo_path.is_file():
             logo_label = QLabel()
@@ -45,7 +40,7 @@ class AboutPage(QWidget):
 
         root.addSpacing(16)
 
-        version_label = QLabel(f"BinSifter Winnow {__version__}")
+        version_label = QLabel(f"BinSifter Winnow {__version__} (Beta)")
         font = version_label.font()
         font.setFamily("Segoe UI")
         font.setPointSize(12)

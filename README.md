@@ -10,21 +10,19 @@ BinSifter ships as multiple independently-developed variants, each with its own 
 
 | Codename | Platform | Status |
 | --- | --- | --- |
-| **Rowan** | PowerShell 7 + WinForms (Windows-only) | Proven original, pre-1.0, run against real casework |
-| **Winnow** | Python + PySide6 (cross-platform goal) | **Beta - available for testing.** Full GUI and scan engine, run against real malware samples end-to-end |
+| **Rowan** | PowerShell 7 + WinForms (Windows-only) | **Released.** Proven original, run against real casework, installers available (standard, MSI, portable) |
+| **Winnow** | Python + PySide6 (cross-platform goal) | **Beta.** Full GUI and scan engine, run against real malware samples end-to-end, still expect rough edges |
 | **Ingot** | Rust | Planned, not yet started |
 
 ## Status
 
-Rowan (`BinSifter-Rowan_v1.3.0-beta.1.ps1`) is a PowerShell 7 + WinForms desktop app. It's functional and has been run against real casework on a FRED forensic workstation, but it's still pre-1.0 and Windows-only.
+**Rowan has a release.** `BinSifter-Rowan.ps1` is a PowerShell 7 + WinForms desktop app, proven against real casework on a FRED forensic workstation, and now packaged as a real release - see "Getting started" below for the four ways to install or run it.
 
-**Winnow is now available for testing.** It's a full rewrite in Python and PySide6 (see the `binsifter/` package), built to get BinSifter off Windows-only WinForms and onto something that can eventually run on Linux too. Both the scan engine and the GUI are real and working, not a placeholder: a full desktop app (Dashboard, Results grid, Scan Queue, Settings, Logs, YARA/capa rule management, Help, About) backed by the same detection pipeline as Rowan - hashing/entropy, NSRL, blocklist, YARA with MITRE ATT&CK enrichment, CAPA, FLOSS, Speakeasy emulation, Authenticode (embedded + catalog-based) verification, archive/compressed-file expansion (zip/tar/gzip/7z, including password-protected and AES-encrypted zips), IOC extraction, SSDEEP/imphash clustering, draft YARA rule generation, and CSV reporting. It's been run end-to-end against real malware samples, not just synthetic test fixtures. `pip install -e .` then `python -m binsifter.gui` launches the desktop app, and `binsifter-scan --src-dir ... --yara-rules ... --nsrl-path ...` runs a full headless scan. See `BinSifter_CHANGELOG.md` for Rowan's history.
+**Winnow is now in BETA.** It's a full rewrite in Python and PySide6 (see the `binsifter/` package), built to get BinSifter off Windows-only WinForms and onto something that can eventually run on Linux too. Both the scan engine and the GUI are real and working, not a placeholder: a full desktop app (Dashboard, Results grid, Scan Queue, Settings, Logs, YARA/capa rule management, Help, About) backed by the same detection pipeline as Rowan - hashing/entropy, NSRL, blocklist, YARA with MITRE ATT&CK enrichment, CAPA, FLOSS, Speakeasy emulation, Authenticode (embedded + catalog-based) verification, archive/compressed-file expansion (zip/tar/gzip/7z, including password-protected and AES-encrypted zips), IOC extraction, SSDEEP/imphash clustering, draft YARA rule generation, and CSV reporting. It's been run end-to-end against real malware samples, not just synthetic test fixtures. `pip install -e .` then `python -m binsifter.gui` launches the desktop app, and `binsifter-scan --src-dir ... --yara-rules ... --nsrl-path ...` runs a full headless scan. See `BinSifter_CHANGELOG.md` for Rowan's history.
 
 Winnow is beta, not 1.0 - expect rough edges, and please report anything that looks wrong rather than assuming it's expected. It hasn't seen as much real-casework mileage as Rowan yet.
 
 **NSRL caching:** the first scan against a given NSRL hash set builds a cached, memory-mapped index from it - a one-time cost that scales with the NSRL file's size, not the number of files being scanned (around 30 minutes for a full ~430-million-hash NSRL RDS set, measured directly). Every scan after that against the same NSRL file and Report Directory loads the cache directly (well under a second) instead of re-parsing it, so don't be alarmed if the very first scan against a new NSRL set takes noticeably longer than every scan after it. The cache lives under `<ReportDirectory>/.bsifter-nsrl-cache/` and rebuilds automatically if the source NSRL file's size or modified date changes, so switching Report Directory or NSRL file costs one more full rebuild, not a lasting slowdown.
-
-<img src="BinSifter_Dash.png" alt="BinSifter dashboard" width="100%">
 
 ## Core features
 
@@ -54,9 +52,16 @@ Winnow is beta, not 1.0 - expect rough edges, and please report anything that lo
 
 ## Getting started
 
-**Rowan:** Run `Create-BinSifterShortcut.ps1` once to generate a desktop shortcut, or launch `BinSifter-Rowan_v1.3.0-beta.1.ps1` directly with `pwsh.exe -File`.
+**Rowan** - four ways to get it running, pick whichever fits:
 
-**Winnow:** `pip install -e .` from the repo root, then `python -m binsifter.gui` to launch the desktop app (or `binsifter-scan --src-dir ... --yara-rules ... --nsrl-path ...` for a headless scan). No desktop-shortcut script yet - see the Status section above.
+- **Standard installer** (`BinSifter-Rowan-Setup.exe`) - the usual install/uninstall flow, Start Menu shortcut, optional desktop icon.
+- **MSI** (`BinSifter-Rowan.msi`) - the same install, packaged for managed/enterprise deployment (Group Policy, SCCM, Intune) instead of a standard installer.
+- **Portable** (`BinSifter-Rowan.exe`) - a single file, no install/uninstall, run it directly.
+- Or skip packaging entirely and launch `BinSifter-Rowan.ps1` directly with `pwsh.exe -File`.
+
+All four need PowerShell 7 (`pwsh.exe`) already installed. See `installer/README.md` for how each package is built.
+
+**Winnow:** `pip install -e .` from the repo root, then `python -m binsifter.gui` to launch the desktop app (or `binsifter-scan --src-dir ... --yara-rules ... --nsrl-path ...` for a headless scan). A packaged installer (`BinSifter-Winnow-Setup.exe`) is also available - see `installer/README.md`.
 
 Full configuration details for either variant are in the in-app Help page.
 

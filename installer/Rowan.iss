@@ -17,9 +17,9 @@
 ; installer\Output\BinSifter-Rowan-Setup.exe
 
 #define MyAppName "BinSifter Rowan"
-#define MyAppVersion "1.3.0-beta.1"
-#define MyAppPublisher "Steven C. Lauterbach"
-#define MyScriptName "BinSifter-Rowan_v1.3.0-beta.1.ps1"
+#define MyAppVersion "1.0.0"
+#define MyAppPublisher "BinSifter Project"
+#define MyScriptName "BinSifter-Rowan.ps1"
 
 [Setup]
 ; Generated once, fixed forever after - see Winnow.iss's identical note on
@@ -30,9 +30,7 @@ AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\BinSifter Rowan
 DefaultGroupName=BinSifter
-; Same reasoning as Winnow.iss - installable without admin rights, matching
-; Create-BinSifterShortcut.ps1's existing "does not need admin rights"
-; convention for Rowan.
+; Same reasoning as Winnow.iss - installable without admin rights.
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 OutputDir=Output

@@ -9,7 +9,7 @@ description = "Winnow - BinSifter's Python/PySide6 variant, a forensic binary tr
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
-authors = [{ name = "Steven C. Lauterbach" }]
+authors = [{ name = "BinSifter Project" }]
 
 # Pinned to library-based integrations wherever the PowerShell version had to
 # shell out to an external .exe - see project memory "BinSifter post-prototype

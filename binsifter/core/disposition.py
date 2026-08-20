@@ -1,5 +1,5 @@
 """Triage disposition history - port of Save-DispositionEntry
-(BinSifter-Rowan_v1.3.0-beta.1.ps1, lines ~5341-5364). One "SHA1|Disposition"
+(BinSifter-Rowan.ps1, lines ~5341-5364). One "SHA1|Disposition"
 line per file, keyed by SHA-1 so the same binary keeps its analyst-set
 disposition across re-scans and across different source directories.
 

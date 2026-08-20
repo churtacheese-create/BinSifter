@@ -3,7 +3,7 @@
 Uses `ppdeep` (pure Python, ssdeep-hash-compatible) instead of a compiled
 ssdeep.exe - see pyproject.toml for why. The union-find clustering logic
 below is a direct port of the C# SsdeepClusterer class
-(BinSifter-Rowan_v1.3.0-beta.1.ps1, lines ~973-1047): two files land in the same
+(BinSifter-Rowan.ps1, lines ~973-1047): two files land in the same
 cluster if there's a *chain* of above-threshold matches between them, even
 if they don't match each other directly (transitive "these are all variants
 of one family" grouping). Threshold=40 and the high-similarity cutoff of 85
@@ -35,18 +35,16 @@ class SsdeepClusterInfo:
 
 
 def compute_ssdeep_hash(path: str) -> str | None:
-    # 2026-08-06: ppdeep.hash_from_file() instead of reading the whole file
-    # ourselves and calling ppdeep.hash(data) - avoids one full extra
-    # buffer copy (ppdeep.hash() wraps bytes in a BytesIO and re-reads it
-    # in 64KB chunks internally regardless), which matters more than it
-    # sounds like on this stage - ppdeep's underlying _spamsum() is a
-    # pure-Python per-byte loop with no
-    # C acceleration, confirmed by direct benchmark to run at roughly
-    # 850-890ms per MB (~1.16 MB/s) - so avoiding one redundant full-size
-    # copy is a real, if small, saving on genuinely large files, not a
-    # rounding error. ppdeep.hash_from_file() raises IOError (an alias for
-    # OSError in Python 3) for missing/unreadable files, same as the
-    # open()/read() path this replaces - no change to the except below.
+    # ppdeep.hash_from_file() instead of reading the whole file ourselves
+    # and calling ppdeep.hash(data) - avoids one full extra buffer copy
+    # (ppdeep.hash() wraps bytes in a BytesIO and re-reads it in 64KB
+    # chunks internally regardless). This matters here because ppdeep's
+    # underlying _spamsum() is a pure-Python per-byte loop with no C
+    # acceleration (~850-890ms per MB, ~1.16 MB/s by benchmark), so
+    # avoiding one redundant full-size copy is a real saving on large
+    # files. ppdeep.hash_from_file() raises IOError (an alias for OSError
+    # in Python 3) for missing/unreadable files, same as the open()/read()
+    # path this replaces.
     try:
         return ppdeep.hash_from_file(path)
     except OSError:

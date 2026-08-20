@@ -1,10 +1,9 @@
-"""Windows Defender exclusion helper - added 2026-08-08 after a real
-scan against live Malware Bazaar samples showed Defender's real-time
-protection racing BinSifter's own worker pool: files extracted from a
-password-protected archive got quarantined/removed between extraction and
-BinSifter opening them to hash/scan, surfacing as OSError [Errno 22] mid-scan
-(see TODO.md's archive-support entries). This module adds a folder to
-Defender's scan-exclusion list so that race can't happen.
+"""Windows Defender exclusion helper - a scan against live Malware Bazaar
+samples showed Defender's real-time protection racing BinSifter's own
+worker pool: files extracted from a password-protected archive got
+quarantined/removed between extraction and BinSifter opening them to
+hash/scan, surfacing as OSError [Errno 22] mid-scan. This module adds a
+folder to Defender's scan-exclusion list so that race can't happen.
 
 Deliberately opt-in only, never triggered automatically by a scan - this is
 a real, meaningful security tradeoff (Defender will not automatically flag
@@ -28,16 +27,15 @@ module, bundled with every supported Windows version) is Microsoft's own
 supported mechanism for this, so this shells out to it via PowerShell
 rather than reimplementing anything at the WMI/COM level.
 
-Verification caveat, stated plainly: this dev sandbox is Linux-only, so the
-actual UAC-elevation flow, `-EncodedCommand` round-trip, and `Add-MpPreference`
-call have NOT been run against a real Windows machine - only reasoned
+Not yet run against a real Windows machine - the UAC-elevation flow,
+`-EncodedCommand` round-trip, and `Add-MpPreference` call are reasoned
 through against PowerShell/Windows' own documented behavior (see this
 module's own comments for the specific gotchas addressed: Start-Process
 -Verb RunAs throwing rather than returning a bad exit code when UAC is
 declined, PowerShell's -EncodedCommand requiring UTF-16LE, and
 Add-MpPreference's own error behavior needing an explicit try/catch to turn
-into a reliable exit code). This should be tested for real on a genuine
-Windows machine before being relied on.
+into a reliable exit code). Should be tested on a genuine Windows machine
+before being relied on.
 """
 
 from __future__ import annotations

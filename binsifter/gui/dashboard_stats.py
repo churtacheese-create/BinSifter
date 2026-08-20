@@ -1,6 +1,6 @@
 """Dashboard aggregate statistics - pure-Python (no Qt import) port of the
 per-file metric accumulation and SSDEEP-metrics computation in the
-PowerShell version (BinSifter-Rowan_v1.3.0-beta.1.ps1, lines ~5663-5691 for the
+PowerShell version (BinSifter-Rowan.ps1, lines ~5663-5691 for the
 UiTotals metrics, ~3117-3174 for SsdeepMetrics). Kept separate from the Qt
 page widget so these aggregations are unit-testable without a display.
 
@@ -88,19 +88,11 @@ class DashboardStats:
 
             if r.ImphashClusterId >= 0 and r.ImphashClusterSize >= 2:
                 stats.imphash_clustered += 1
-            # 2026-08-06: was a single "Unsigned" tile (any non-empty status
-            # != "Valid", per the PowerShell original's
-            # `$r.SignatureStatus -and $r.SignatureStatus -ne 'Valid'`),
-            # then briefly a 2-way split (Not Signed / Not Verifiable) after
-            # a real scan showed that predicate lumping three different
-            # meanings (genuinely unsigned, unparseable format, real check
-            # failure) into one number. Reverted: rather than
-            # explaining what's wrong with the non-Valid files, just report
-            # how many files ARE cleanly signed and verified - simpler to
-            # read, and every SignatureStatus that isn't "Valid" (NotSigned,
+            # Counts cleanly signed-and-verified files rather than trying to
+            # bucket the various non-Valid reasons (NotSigned,
             # NotSupportedFileFormat, NotTrusted, HashMismatch,
-            # UnknownError, or empty) is implicitly "not signed or not
-            # verified" without needing its own tile or bucket.
+            # UnknownError, or empty) - those meanings are different enough
+            # that lumping them into one "Unsigned" tile was misleading.
             if r.SignatureStatus == "Valid":
                 stats.signed += 1
             if r.ReputationStatus == "KnownBad":
@@ -128,14 +120,10 @@ class DashboardStats:
                 all_scores.extend(int(m) for m in _SCORE_RE.findall(r.SsdeepMatches))
 
         stats.num_clusters = len(cluster_sizes)
-        # Strictly-greater-than comparison over insertion order (matches
-        # each cluster's first-encountered-in-scan order, same as the
-        # PowerShell version's Dictionary enumeration) - so on a tie, the
-        # cluster that was FIRST seen during this scan wins, same
-        # tie-break as BinSifter-Rowan_v1.3.0-beta.1.ps1 lines ~3118-3123
-        # (`foreach ($kvp in $clusterSizes.GetEnumerator()) { if
-        # ($kvp.Value -gt $largestClusterSize) ... }`), not just "whichever
-        # dict.values() happens to return max() for".
+        # Strictly-greater-than over insertion order, so on a size tie the
+        # cluster first seen during this scan wins - matches the PowerShell
+        # version's Dictionary enumeration order (BinSifter-Rowan.ps1
+        # lines ~3118-3123), not just whatever max() would pick.
         largest_id, largest_size = -1, 0
         for cid, size in cluster_sizes.items():
             if size > largest_size:

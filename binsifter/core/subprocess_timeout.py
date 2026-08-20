@@ -3,26 +3,23 @@ a child process so a slow/hung/pathological call can be forcibly
 terminated rather than merely "asked" to stop.
 
 Built specifically to guard capa_scan.py's vivisect-backed analysis (see
-that module for the real-world incident this exists to cover: certain
-modern Windows binaries getting vivisect's aarch64 register-context
-construction stuck for 30-90+ seconds - confirmed 2026-07-30 against
-bash.exe/curl.exe/notepad.exe, a third-party bug in the installed
-`envi`/`vivisect` packages, not something fixable by asking BinSifter's own
-code to behave differently). Kept generic/reusable rather than
-capa-specific, since any other in-process analysis library (FLOSS,
-Speakeasy) could hit a similar pathological-input problem against some
-future real-world sample.
+that module: certain modern Windows binaries - bash.exe, curl.exe,
+notepad.exe among them - get vivisect's aarch64 register-context
+construction stuck for 30-90+ seconds, a third-party bug in the installed
+`envi`/`vivisect` packages, not something fixable in BinSifter's own code).
+Kept generic/reusable rather than capa-specific, since any other
+in-process analysis library (FLOSS, Speakeasy) could hit a similar
+pathological-input problem against some future real-world sample.
 
 A subprocess, not a signal-based timeout (e.g. `signal.alarm`), is used
-deliberately, for two independent reasons, both confirmed directly rather
-than assumed:
+deliberately, for two independent reasons:
 1. A SIGALRM-raised exception can be silently swallowed by a broad
    except-Exception deep inside vivisect's own analysis loop, letting the
-   "cancelled" work run to completion anyway - reproduced directly against
-   bash.exe (a signal.alarm(30) fired mid-analysis, but the surrounding
-   vivisect code caught the resulting exception and kept going, finishing
-   ~10 seconds later regardless of the "timeout"). A signal can be caught
-   and ignored by code that doesn't know it's supposed to stop; a forceful
+   "cancelled" work run to completion anyway - reproduced against bash.exe
+   (a signal.alarm(30) fired mid-analysis, but the surrounding vivisect
+   code caught the resulting exception and kept going, finishing ~10
+   seconds later regardless of the "timeout"). A signal can be caught and
+   ignored by code that doesn't know it's supposed to stop; a forceful
    process terminate()/kill() cannot.
 2. `signal.alarm` is POSIX-only and unavailable on Windows, BinSifter's
    primary target platform - a non-starter regardless of point 1.

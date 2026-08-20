@@ -1,12 +1,12 @@
 """Procedural line-icon drawing - direct port of the PowerShell version's
-New-LineIconBitmap function (BinSifter-Rowan_v1.3.0-beta.1.ps1, lines
+New-LineIconBitmap function (BinSifter-Rowan.ps1, lines
 ~1384-1522). Same 64x64 canvas, same 4px round-cap/round-join pen, same
 coordinates for every shape - icons are drawn at runtime rather than
 loaded from bundled image files, same self-contained rationale as the
 original ("the application stays self-contained and scales cleanly
 without relying on font-specific glyph alignment").
 
-Angle-convention note (the one real translation subtlety, not a guess):
+Angle-convention note (the one real translation subtlety):
 GDI+'s Graphics.DrawArc(pen, x, y, w, h, startAngle, sweepAngle) measures
 both angles in degrees, 0 at the 3-o'clock position, and sweeps CLOCKWISE
 for positive sweepAngle. Qt's QPainter.drawArc(rect, startAngle, spanAngle)

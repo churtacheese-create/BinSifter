@@ -1,6 +1,6 @@
 """PE/ELF/shellcode magic-byte sniffing and capa-eligibility classification.
 
-Direct port of BinSifter-Rowan_v1.3.0-beta.1.ps1, lines ~2087/2258-2301 - copied
+Direct port of BinSifter-Rowan.ps1, lines ~2087/2258-2301 - copied
 byte-for-byte in logic (4096-byte header buffer, same MZ/PE and \\x7fELF
 checks, same shellcode extension/size heuristic, same PossibleFalseNegative
 condition) since this determines which files get real capa/FLOSS analysis

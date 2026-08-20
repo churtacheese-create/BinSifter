@@ -23,8 +23,9 @@ name: Build and release installers
 #      installer has been compiled even once yet.
 #   2. Pushing a tag matching v* (e.g. `git tag v2.0.0-beta.1 && git push
 #      origin v2.0.0-beta.1`) - builds both installers AND publishes a
-#      GitHub Release for that tag, marked as a pre-release, with both
-#      .exe installers attached as downloadable assets.
+#      GitHub Release for that tag, marked as a pre-release, with all
+#      four packages attached as downloadable assets (Winnow's .exe
+#      installer, and Rowan's .exe installer, .msi, and portable .exe).
 
 on:
   push:
@@ -82,16 +83,34 @@ jobs:
       - name: Install Inno Setup
         run: choco install innosetup -y --no-progress
 
-      - name: Compile Rowan installer
+      - name: Compile Rowan installer (.exe, Inno Setup)
         run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path -LiteralPath $iscc)) { throw "ISCC.exe not found after choco install - Inno Setup's install location may have changed." }
           & $iscc installer\Rowan.iss
 
+      - name: Build Rowan MSI (WiX)
+        run: pwsh -File installer\build_rowan_msi.ps1
+
+      - name: Build Rowan portable .exe (PS2EXE)
+        run: pwsh -File installer\build_rowan_exe.ps1
+
       - uses: actions/upload-artifact@v4
         with:
           name: BinSifter-Rowan-Setup
           path: installer\Output\BinSifter-Rowan-Setup.exe
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BinSifter-Rowan-Msi
+          path: installer\Output\BinSifter-Rowan.msi
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BinSifter-Rowan-Portable
+          path: installer\Output\BinSifter-Rowan.exe
           if-no-files-found: error
 
   release:
@@ -116,13 +135,17 @@ jobs:
           gh release create "${{ github.ref_name }}" \
             "artifacts/BinSifter-Winnow-Setup/BinSifter-Winnow-Setup.exe" \
             "artifacts/BinSifter-Rowan-Setup/BinSifter-Rowan-Setup.exe" \
+            "artifacts/BinSifter-Rowan-Msi/BinSifter-Rowan.msi" \
+            "artifacts/BinSifter-Rowan-Portable/BinSifter-Rowan.exe" \
             --title "BinSifter ${{ github.ref_name }}" \
             --prerelease \
-            --notes "Beta release - both variants below.
+            --notes "Beta release.
 
           **BinSifter-Winnow-Setup.exe** - Python/PySide6 variant, self-contained (no separate Python install needed).
-          **BinSifter-Rowan-Setup.exe** - PowerShell 7 + WinForms variant, needs PowerShell 7 (pwsh.exe) already installed; the installer will tell you if it's missing.
+          **BinSifter-Rowan-Setup.exe** - PowerShell 7 + WinForms variant, standard installer. Needs PowerShell 7 (pwsh.exe) already installed; it will tell you if it's missing.
+          **BinSifter-Rowan.msi** - same Rowan variant, packaged as an MSI for managed/enterprise deployment instead of the standard installer.
+          **BinSifter-Rowan.exe** - same Rowan variant, packaged as a single portable executable (no install/uninstall) instead of the standard installer. Still needs PowerShell 7 present on the machine.
 
-          Both installers: no administrator rights required, Start Menu shortcut, optional desktop icon (asked during setup, off by default). See the repo README for setup/configuration (NSRL, YARA rules, capa rules, etc.) after installing.
+          All packages: no administrator rights required, Start Menu shortcut, optional desktop icon (off by default). See the repo README for setup/configuration (NSRL, YARA rules, capa rules, etc.) after installing.
 
           This is a beta - please report anything that looks wrong rather than assuming it's expected."

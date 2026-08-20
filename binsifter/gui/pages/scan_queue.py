@@ -1,4 +1,4 @@
-"""Scan Queue page - port of New-ScanQueuePage (BinSifter-Rowan_v1.3.0-beta.1.ps1,
+"""Scan Queue page - port of New-ScanQueuePage (BinSifter-Rowan.ps1,
 lines ~3945-4088): a toolbar (Start Scan/Pause/Stop/Clear Completed), a
 summary label, and a per-file grid with a live status glyph, a real
 progress bar, and color-highlighted YARA/Capa/NSRL cells.
@@ -93,14 +93,12 @@ class ScanQueuePage(QWidget):
     # ---------- construction ----------
 
     def _build_progress_row(self) -> QWidget:
-        """Overall scan progress (added 2026-08-04) - separate from the
-        per-row progress bars in the table (col 2, one per file), which only
-        ever show 0% or 100% for that single file and don't answer "how far
-        along is the WHOLE batch". This is the first thing a user sees
-        change on scan start, before the table has any rows yet - see
-        set_progress()/set_indeterminate() below, called from MainWindow's
-        immediate "starting scan" feedback and from every progress signal
-        after that, not just file completions."""
+        """Overall scan progress - separate from the per-row progress bars
+        in the table (col 2, one per file), which only show 0%/100% for
+        that single file and don't answer "how far along is the whole
+        batch". This is the first thing a user sees change on scan start,
+        before the table has any rows yet - see set_progress()/
+        set_indeterminate() below."""
         theme = self._theme
         row = QFrame()
         row.setFixedHeight(40)

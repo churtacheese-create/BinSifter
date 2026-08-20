@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  WiX Toolset v5 source for an MSI build of Rowan, alongside the existing
+  Inno Setup .exe installer (Rowan.iss) - an alternative package format for
+  environments that specifically need an .msi (managed software deployment
+  via Group Policy/SCCM/Intune, some enterprise install policies that only
+  accept MSI packages). Not a replacement for Rowan.iss - both formats
+  install the same files.
+
+  This targets WiX v5's simplified schema (Package as the root element,
+  StandardDirectory shortcuts) - see build_rowan_msi.ps1 for how to compile
+  this with the wix.exe dotnet tool. Same honest caveat as the rest of
+  installer/: written from a Linux-only dev sandbox with no Windows
+  environment to actually compile/test this against, so treat it as a
+  solid first draft rather than a verified build.
+
+  Deliberately narrower scope than Rowan.iss in one respect: MSI has no
+  built-in equivalent to Inno's post-install MsgBox popup checking for
+  pwsh.exe/7z.exe on PATH. Building that would mean either a custom action
+  (extra native code) or a Burn bootstrapper chain (a second installer
+  layer meant for prerequisite chaining) - both real scope beyond "package
+  the same files as an MSI." The pwsh.exe/7z.exe prerequisites are
+  documented in installer/README.md and the main README instead. The
+  Start Menu/desktop shortcuts still work exactly like Rowan.iss's -
+  targeting a bare "pwsh.exe" PATH lookup via cmd.exe /C at the moment the
+  shortcut is clicked, not a path resolved once at install time - so
+  installing PowerShell 7 after BinSifter still works with no shortcut
+  repair needed.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="BinSifter Rowan"
+           Manufacturer="BinSifter Project"
+           Version="1.0.0"
+           UpgradeCode="9B1C2E4A-7F3D-4A6B-8E1C-3D5F7A9B1C2E"
+           InstallerVersion="500"
+           Compressed="yes">
+
+    <SummaryInformation Description="BinSifter Rowan - PowerShell 7 + WinForms binary triage tool" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of BinSifter Rowan is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Per-user install, no elevation prompt - matches Rowan.iss's
+         PrivilegesRequired=lowest choice, since this is an analyst tool
+         with no reason to need admin rights just to install. -->
+    <Property Id="ALLUSERS" Value="" />
+    <Property Id="MSIINSTALLPERUSER" Value="1" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="INSTALLFOLDER" Name="BinSifter Rowan" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="AppProgramMenuFolder" Name="BinSifter" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="DesktopFolder" />
+
+    <Feature Id="Main" Title="BinSifter Rowan" Level="1">
+      <ComponentGroupRef Id="RowanFiles" />
+      <ComponentRef Id="StartMenuShortcut" />
+    </Feature>
+
+    <!-- Level 1000 (well above the standard InstallLevel=100) means this
+         feature is excluded from a plain "msiexec /i BinSifter-Rowan.msi"
+         install, matching Rowan.iss's unchecked-by-default desktop-icon
+         checkbox - opt in explicitly with "msiexec /i BinSifter-Rowan.msi
+         ADDLOCAL=Main,DesktopIcon". -->
+    <Feature Id="DesktopIcon" Title="Desktop shortcut" Level="1000">
+      <ComponentRef Id="DesktopShortcutComponent" />
+    </Feature>
+
+    <ComponentGroup Id="RowanFiles" Directory="INSTALLFOLDER">
+      <Component Id="ScriptFile">
+        <File Id="RowanScript" Source="..\BinSifter-Rowan.ps1" KeyPath="yes" />
+      </Component>
+      <Component Id="LogoHorizontalDark">
+        <File Source="..\BinSifter-Logo-Horizontal-Dark.png" KeyPath="yes" />
+      </Component>
+      <Component Id="LogoHorizontal">
+        <File Source="..\BinSifter-Logo-Horizontal.png" KeyPath="yes" />
+      </Component>
+      <Component Id="LogoFull">
+        <File Source="..\BinSifter-Logo-Full.png" KeyPath="yes" />
+      </Component>
+      <Component Id="WindowIconPng">
+        <File Source="..\BinSifter-WindowIcon.png" KeyPath="yes" />
+      </Component>
+      <Component Id="WindowIconIco">
+        <File Id="WindowIconIcoFile" Source="..\BinSifter-WindowIcon.ico" KeyPath="yes" />
+      </Component>
+      <Component Id="DesktopIconIco">
+        <File Source="..\BinSifter-Desktop.ico" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- Target is cmd.exe /C pwsh.exe ... rather than pwsh.exe directly -
+         MSI Shortcut targets normally resolve to a specific installed
+         File's path, and pwsh.exe isn't a file this package installs.
+         Routing through cmd.exe /C makes Windows do its own PATH search
+         for "pwsh.exe" at the moment the shortcut is actually clicked,
+         the same bare-name-PATH-lookup behavior Rowan.iss's Filename:
+         "pwsh.exe" gets from Inno's ShellExecute - so installing
+         PowerShell 7 after BinSifter still works with no shortcut repair
+         needed either way. -->
+    <Component Id="StartMenuShortcut" Directory="AppProgramMenuFolder">
+      <Shortcut Id="RowanStartMenuShortcut"
+                Name="BinSifter Rowan"
+                Target="[SystemFolder]cmd.exe"
+                Arguments="/C pwsh.exe -NoLogo -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]BinSifter-Rowan.ps1&quot;"
+                WorkingDirectory="INSTALLFOLDER"
+                Icon="WindowIconIcoFile"
+                IconIndex="0" />
+      <Shortcut Id="UninstallShortcut"
+                Name="Uninstall BinSifter Rowan"
+                Target="[System64Folder]msiexec.exe"
+                Arguments="/x [ProductCode]" />
+      <RemoveFolder Id="RemoveAppProgramMenuFolder" On="uninstall" />
+      <RegistryValue Root="HKCU" Key="Software\BinSifter\Rowan" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+
+    <!-- Excluded by default via the DesktopIcon Feature's Level=1000
+         above - matches Rowan.iss's unchecked-by-default "Create a
+         desktop icon" checkbox. A bare .msi has no interactive checkbox
+         the way Inno's wizard does; see installer/README.md for the
+         ADDLOCAL command line that opts in. -->
+    <Component Id="DesktopShortcutComponent" Directory="DesktopFolder">
+      <Shortcut Id="RowanDesktopShortcut"
+                Name="BinSifter Rowan"
+                Target="[SystemFolder]cmd.exe"
+                Arguments="/C pwsh.exe -NoLogo -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]BinSifter-Rowan.ps1&quot;"
+                WorkingDirectory="INSTALLFOLDER"
+                Icon="WindowIconIcoFile"
+                IconIndex="0" />
+      <RegistryValue Root="HKCU" Key="Software\BinSifter\Rowan" Name="desktop_icon" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+
+  </Package>
+</Wix>

@@ -1,4 +1,4 @@
-"""Help page - port of New-HelpPage (BinSifter-Rowan_v1.3.0-beta.1.ps1, lines
+"""Help page - port of New-HelpPage (BinSifter-Rowan.ps1, lines
 ~4773-4930). Read-only field guide, same role as the original's RichTextBox:
 a single scrollable block of reference text, no interactive controls.
 

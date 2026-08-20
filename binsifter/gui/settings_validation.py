@@ -1,7 +1,7 @@
 """Settings-Save validation - pure Python (no Qt import), split out from the
 page widget so it's unit-testable without a display. Ports the validation
 block from the PowerShell version's $settings.BtnSave.Add_Click handler
-(BinSifter-Rowan_v1.3.0-beta.1.ps1, lines ~5092-5178).
+(BinSifter-Rowan.ps1, lines ~5092-5178).
 
 One deliberate deviation from the original, not a bug: the PowerShell
 version additionally requires yara64.exe/capa.exe/ssdeep.exe to be found
@@ -79,13 +79,12 @@ def validate_settings(values: dict[str, str], report_directory: str) -> Settings
 
     # Existence isn't the same as write access - catching a read-only report
     # folder here beats finding out only after a multi-hour scan finishes.
-    # Only the WRITE is checked for real; cleanup deliberately swallows its
-    # own error and never fails Save - matches the PowerShell version's
+    # Only the write is checked for real; cleanup deliberately swallows its
+    # own error and never fails Save, matching the PowerShell version's
     # `Remove-Item ... -ErrorAction SilentlyContinue` sitting outside the
     # try/catch that guards WriteAllText (lines ~5169-5178). A filesystem
-    # that permits creating a file but not deleting it (seen for real on
-    # this port's sandboxed cross-boundary mount) is still "writable" by
-    # this definition, same as the original.
+    # that permits creating a file but not deleting it is still "writable"
+    # by this definition, same as the original.
     probe_path = Path(report_directory) / f".bsifter-write-test-{uuid.uuid4().hex}.tmp"
     try:
         probe_path.write_text("test", encoding="utf-8")

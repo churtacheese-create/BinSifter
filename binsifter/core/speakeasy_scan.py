@@ -1,7 +1,7 @@
 """Speakeasy isolated code emulation - real library integration.
 
 Direct port of the PowerShell version's "Run isolated Speakeasy emulation"
-Results-grid quick-launch action (BinSifter-Rowan_v1.3.0-beta.1.ps1, lines
+Results-grid quick-launch action (BinSifter-Rowan.ps1, lines
 ~4407-4473): confirmation-gated (execution-adjacent), a longer timeout than
 other captured tools (emulation of a nontrivial sample routinely runs past
 30s), and a best-effort summary (API call count, file operations, network
@@ -18,11 +18,9 @@ port" step, and was never how the original worked. This module is the
 building block a future Results-grid action calls for one analyst-selected
 file at a time.
 
-Verified against the installed speakeasy 1.5.11's own cli.py (not guessed)
-before writing this - and it's a good thing it was verified, because the
+Verified against the installed speakeasy 1.5.11's own cli.py - the
 PowerShell version's assumed JSON shape (top-level .apis/.network/
-.file_access, per its own "guessed, not verified" note in project memory)
-does not match the real library output at all:
+.file_access) does not match the real library output:
   - speakeasy.Speakeasy(config=...).load_module(path) + .run_module(module,
     all_entrypoints=True) is the real in-process API (cli.py's own
     emulate_binary() helper), not a "-t <file> -o json" CLI invocation -
@@ -30,39 +28,34 @@ does not match the real library output at all:
   - se.get_report() returns a dict (get_json_report() is just
     json.dumps(get_report())) whose real per-entry-point data lives under
     report["entry_points"][i], not at the report's top level. Each entry
-    point only gains an "apis" list unconditionally, but "network_events"/
+    point only gains an "apis" list unconditionally; "network_events"/
     "file_access"/"registry_access"/"process_events"/"dropped_files" are
-    only present AT ALL when speakeasy's own profiler.get_report()
-    actually found something to report for that key (confirmed by reading
-    profiler.py directly, not assumed) - so summarization below must
-    treat every one of those keys as optional, not default-empty.
+    only present when speakeasy's own profiler.get_report() actually found
+    something for that key - so summarization below treats every one of
+    those keys as optional, not default-empty.
   - Network data is further split into report["entry_points"][i]
     ["network_events"]["dns"] (list of {"query", "response"} dicts) and
     ["network_events"]["traffic"] (list of {"server", "proto", "port", ...}
     dicts from profiler.py's log_http/log_network) - not a flat list of
-    strings the way the PowerShell version's guessed ".network" field
-    implied.
-  - A per-entry-point "error" key (e.g. an unsupported-API-stub hit mid-
-    emulation) is a NORMAL, expected part of a real report - Speakeasy
-    itself does not raise a Python exception for this, it just records
-    what it could and stops that entry point's run early. Confirmed
-    against a real sample (calc.exe hit an api-ms-win-core-* forwarder
-    stub, the same API Set forwarding quirk noted in the capa API Set
-    project memory - a different tool, the same underlying Windows
-    mechanism tripping it up). Only a genuine Python-level exception
-    (bad PE pefile can't parse at all, etc.) should surface as
-    SpeakeasyResult.error here.
+    strings the way the PowerShell version's ".network" field implied.
+  - A per-entry-point "error" key (e.g. an unsupported-API-stub hit
+    mid-emulation) is a NORMAL, expected part of a real report - Speakeasy
+    does not raise a Python exception for this, it just records what it
+    could and stops that entry point's run early (seen in practice: calc.exe
+    hitting an api-ms-win-core-* forwarder stub). Only a genuine
+    Python-level exception (bad PE pefile can't parse at all, etc.) should
+    surface as SpeakeasyResult.error here.
   - The emulation timeout is a REAL, engine-enforced cutoff, not merely
     advisory: config["timeout"] (seconds) is converted to microseconds and
     passed straight into Unicorn's own emu_start(..., timeout=...)
-    (confirmed in speakeasy/engines/unicorn_eng.py's start() method) -
-    Unicorn's C core enforces it directly, so running this in-process
-    (like capa/FLOSS already do, no subprocess needed) is safe from a
-    "will this hang forever" perspective. The one residual risk versus the
-    original's subprocess-isolated design is a genuine Unicorn/native-code
-    crash taking down the whole BinSifter process instead of just a
-    disposable child process - a real, deliberate tradeoff (same one
-    capa/FLOSS already made), not something worked around here.
+    (speakeasy/engines/unicorn_eng.py's start() method) - Unicorn's C core
+    enforces it directly, so running this in-process (like capa/FLOSS
+    already do, no subprocess needed) is safe from a "will this hang
+    forever" perspective. The one residual risk versus the original's
+    subprocess-isolated design is a genuine Unicorn/native-code crash
+    taking down the whole BinSifter process instead of just a disposable
+    child process - a deliberate tradeoff (same one capa/FLOSS already
+    made).
 
 Known, deliberate scope limit: only PE/module emulation (se.load_module +
 run_module) is implemented, matching exactly what the PowerShell quick-
@@ -82,32 +75,28 @@ from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
-# 2026-08-09: real installer test, on TWO separate machines (a host and a
-# FLARE VM), crashed the entire app at STARTUP - before the main window
-# ever appeared - with an ImportError chain ending in unicorn's own
-# "ERROR: fail to load the dynamic library." speakeasy's own __init__.py
-# eagerly imports its full Windows-emulation stack down to `unicorn`
-# (speakeasy -> speakeasy.windows.win32 -> ... -> speakeasy.binemu ->
-# speakeasy.engines.unicorn_eng -> unicorn), which loads unicorn's native
-# DLL via ctypes at IMPORT TIME, not lazily. Since this module used to do a
-# plain top-level `import speakeasy`, and results.py imports THIS module
-# at ITS OWN top level (so the whole GUI can build the Speakeasy quick-
-# launch menu item), any failure to load that one native DLL took down
-# the entire application for every user - even someone who never intends
-# to use Speakeasy emulation at all. speakeasy-emulator pins an old
-# unicorn release (1.0.2, see pyproject.toml's dependency comment) whose
-# prebuilt Windows wheel is known in the wider community to need the
-# Microsoft Visual C++ Redistributable (x64) present on the target
-# machine - very plausibly the real root cause here, though it wasn't
-# possible to confirm which machine had it missing from this dev sandbox.
-# Fixed with the same graceful-degradation philosophy emulate_file()
-# below already uses for a target file speakeasy can't handle: the import
-# itself is now wrapped, the failure is stored instead of raised, and
+# Importing speakeasy used to crash the entire app at STARTUP - before the
+# main window ever appeared - with an ImportError chain ending in
+# unicorn's own "ERROR: fail to load the dynamic library." speakeasy's own
+# __init__.py eagerly imports its full Windows-emulation stack down to
+# `unicorn` (speakeasy -> speakeasy.windows.win32 -> ... -> speakeasy.binemu
+# -> speakeasy.engines.unicorn_eng -> unicorn), which loads unicorn's native
+# DLL via ctypes at IMPORT TIME, not lazily. Since results.py imports this
+# module at ITS OWN top level (to build the Speakeasy quick-launch menu
+# item), any failure to load that native DLL took down the entire
+# application, even for a user who never intends to use Speakeasy at all.
+# speakeasy-emulator pins an old unicorn release (1.0.2, see pyproject.toml)
+# whose prebuilt Windows wheel is known to need the Microsoft Visual C++
+# Redistributable (x64) - the likely root cause on affected machines.
+#
+# Fixed with the same graceful-degradation philosophy emulate_file() below
+# already uses for a target file speakeasy can't handle: the import itself
+# is now wrapped, the failure is stored instead of raised, and
 # emulate_file() returns a normal, actionable SpeakeasyResult.error instead
-# of ever letting this exception propagate up through results.py's import
-# and crash app startup. Every other BinSifter feature (YARA, capa, ssdeep,
+# of letting this exception propagate up through results.py's import and
+# crash app startup. Every other BinSifter feature (YARA, capa, ssdeep,
 # hashing, Authenticode, the whole rest of the Results grid) has zero
-# dependency on unicorn/speakeasy and is completely unaffected either way.
+# dependency on unicorn/speakeasy and is unaffected either way.
 try:
     import speakeasy
     _IMPORT_ERROR: Exception | None = None
@@ -118,26 +107,23 @@ except Exception as exc:  # noqa: BLE001 - deliberately broad: any import-time f
 
 
 def _patch_speakeasy_root_path_normalization() -> None:
-    """2026-08-19: real scan log found this - a genuine bug in the installed
-    speakeasy 1.5.11 package itself, not BinSifter's own code. The default
-    config's module_directory_x86/x64 values are literal strings like
+    """Works around a genuine bug in the installed speakeasy 1.5.11 package
+    itself, not BinSifter's own code. The default config's
+    module_directory_x86/x64 values are literal strings like
     "$ROOT$/winenv/decoys/x86" (forward slash, hardcoded in
     speakeasy/configs/default.json). speakeasy.common.normalize_package_path()
-    resolves "$ROOT$" with a plain str.replace(root_var, root) - no path
-    normalization afterward - so on Windows, where the package root is a
-    backslash path, the result is a literally mixed-separator string like
+    resolves "$ROOT$" with a plain str.replace(root_var, root) with no path
+    normalization afterward, so on Windows, where the package root is a
+    backslash path, the result is a mixed-separator string like
     "...\\_internal\\speakeasy/winenv/decoys/x86". winemu.py's
     get_native_module_path() then os.path.join()s a filename onto that
     (Windows tolerates forward slashes for os.listdir/os.path.join, so this
-    part silently succeeds), but the resulting path is handed to pefile.PE()
-    to actually open the decoy module - and pefile.py's open()/mmap() call
-    on that malformed path is what raised the real, observed failure:
-    "Unable to access file '...\\_internal\\speakeasy/winenv/decoys/x86\\
-    default_exe.exe': [Errno 22] Invalid argument". This is why it worked on
-    one machine (FLARE VM) and failed on another (host PC) with the exact
-    same code and file - it's a path-string correctness bug that Windows'
-    filesystem APIs happen to tolerate most of the time, not a
-    machine-specific difference in the decoy file itself.
+    part silently succeeds), but pefile.PE()'s open()/mmap() call on the
+    resulting malformed path raises "[Errno 22] Invalid argument". This is
+    why it worked on one machine and failed on another with the exact same
+    code and file - a path-string correctness bug that Windows' filesystem
+    APIs happen to tolerate most of the time, not a machine-specific
+    difference in the decoy file itself.
 
     Same monkeypatch-the-installed-library pattern already used twice in
     authenticode.py for real signify bugs - not a vendored fork. Wrapping
@@ -301,7 +287,7 @@ def _format_dns(entry: dict) -> str:
 
 def _format_traffic(conn: dict) -> str:
     # {"server", "proto", "port", ...} per profiler.py's log_http()/
-    # log_network() - field names confirmed against both, not guessed.
+    # log_network().
     server = conn.get("server") or ""
     if not server:
         return ""

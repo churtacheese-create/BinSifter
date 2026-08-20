@@ -1,7 +1,7 @@
 """Data models for the scan engine.
 
 FileRecord below is a field-for-field port of the C# `BinSifter.FileRecord`
-class embedded in the PowerShell version (BinSifter-Rowan_v1.3.0-beta.1.ps1,
+class embedded in the PowerShell version (BinSifter-Rowan.ps1,
 around line 262). Field names are kept in PascalCase (not idiomatic Python)
 and in the original order, deliberately - the whole point of this pass is a
 close, low-risk 1:1 port with the old version open side by side, so extra
@@ -101,10 +101,10 @@ class FileRecord:
 
     # Authenticode verification result. Status is a string, not a bool,
     # since "not signed" and "signed but invalid" are very different triage
-    # signals. Ported 2026-07-30 using the `signify` library (pure Python,
-    # cross-platform) in place of the PowerShell version's
-    # Get-AuthenticodeSignature - see core/authenticode.py for the real
-    # implementation and important caveats about trust-store differences.
+    # signals. Uses the `signify` library (pure Python, cross-platform) in
+    # place of the PowerShell version's Get-AuthenticodeSignature - see
+    # core/authenticode.py for the real implementation and important
+    # caveats about trust-store differences.
     SignatureStatus: str = ""
     SignerName: str = ""
 
@@ -125,16 +125,15 @@ class FileRecord:
     # keeps prior calls.
     Disposition: str = "Untriaged"
 
-    # ===== Archive/compressed-file support (2026-08-07) =====
+    # ===== Archive/compressed-file support =====
 
     # "" (the default) = this file was found directly under SrcDir, not
     # extracted from an archive. Non-empty = the path of the archive this
     # file was extracted from - the immediate CONTAINING archive if
     # archives are nested (e.g. a zip inside a zip), not necessarily the
     # top-level one under SrcDir, so provenance is never lost even a few
-    # levels deep. Per the confirmed design (2026-08-06/07, see
-    # core/archive.py's module docstring): extracted files show up in
-    # Results as their own ordinary rows, distinguished from a
+    # levels deep. See core/archive.py's module docstring: extracted files
+    # show up in Results as their own ordinary rows, distinguished from a
     # directly-scanned file only by this field, rather than being grouped/
     # nested under the archive's own row.
     SourceArchive: str = ""

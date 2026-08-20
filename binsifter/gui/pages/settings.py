@@ -1,5 +1,5 @@
 """Settings page - port of New-SettingsPage and its Save handler
-(BinSifter-Rowan_v1.3.0-beta.1.ps1, lines ~4498-4606 for the page, ~5087-5218
+(BinSifter-Rowan.ps1, lines ~4498-4606 for the page, ~5087-5218
 for wiring). Same 6 fields, same 3-column (label / textbox / Browse...)
 row layout, same validation-then-save flow.
 
@@ -50,9 +50,9 @@ _FIELD_DEFS = (
     ("CapaRules", "Path to capa rules", "Directory", None),
     ("ToolsDir", "Path to tools", "Directory", None),
     ("GhidraDir", "Path to Ghidra - optional", "Directory", None),
-    # 2026-08-08: optional, like GhidraDir - a folder of .cat catalog files
-    # for Authenticode catalog verification (see authenticode.py). Blank
-    # just means catalog checks are skipped, not an error.
+    # Optional, like GhidraDir - a folder of .cat catalog files for
+    # Authenticode catalog verification (see authenticode.py). Blank means
+    # catalog checks are skipped, not an error.
     ("CatalogDirectory", "Catalog (.cat) directory - optional", "Directory", None),
 )
 
@@ -120,14 +120,12 @@ class SettingsPage(QWidget):
         self.status_label = QLabel("")
         root.addWidget(self.status_label)
 
-        # 2026-08-08, added right after the Defender exclusion button below:
-        # that button only ever helps if Defender is the machine's active
-        # antivirus product, and BinSifter has no way to know that without
-        # asking. This detects whatever's actually registered (via
-        # av_detect.py, same root/SecurityCenter2 WMI class Windows'
-        # own Security app reads) and, for anything other than Defender,
-        # points the analyst at that vendor's own exclusion settings
-        # instead of silently doing nothing useful.
+        # The Defender exclusion button below only helps if Defender is the
+        # machine's active antivirus product. This detects whatever's
+        # actually registered (via av_detect.py, the same
+        # root/SecurityCenter2 WMI class Windows' own Security app reads)
+        # and, for anything other than Defender, points the analyst at that
+        # vendor's own exclusion settings instead.
         root.addSpacing(24)
         av_label = QLabel("Antivirus")
         av_label.setStyleSheet(
@@ -158,16 +156,14 @@ class SettingsPage(QWidget):
         self.av_detect_status_label.setWordWrap(True)
         root.addWidget(self.av_detect_status_label)
 
-        # 2026-08-08, added after a real scan against live
-        # Malware Bazaar samples: Windows Defender's real-time protection
-        # raced BinSifter's own worker pool, quarantining extracted
-        # samples between extraction and BinSifter opening them (OSError
-        # [Errno 22] mid-scan - see TODO.md's archive-support entries).
-        # This button adds <ReportDirectory>/extracted_archives to
-        # Defender's scan-exclusion list so that race can't happen -
+        # Windows Defender's real-time protection can race BinSifter's
+        # worker pool, quarantining extracted archive contents between
+        # extraction and BinSifter opening them (OSError [Errno 22]
+        # mid-scan). This button adds <ReportDirectory>/extracted_archives
+        # to Defender's scan-exclusion list to avoid that race -
         # deliberately a separate, explicit, confirmation-gated action, not
-        # something a scan ever does on its own (see defender.py's module
-        # docstring for the full elevation design and why this is opt-in).
+        # something a scan does on its own (see defender.py for the
+        # elevation design).
         root.addSpacing(24)
         defender_label = QLabel("Windows Defender")
         defender_label.setStyleSheet(

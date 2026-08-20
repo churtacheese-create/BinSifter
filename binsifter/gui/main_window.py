@@ -1,5 +1,5 @@
 """Main window shell - port of the PowerShell version's top-level WinForms
-layout (BinSifter-Rowan_v1.3.0-beta.1.ps1: sidebar construction ~5018-5075, top
+layout (BinSifter-Rowan.ps1: sidebar construction ~5018-5075, top
 bar ~4970-5017, status bar ~5080-5099, overall form assembly ~5100-5140).
 Sidebar width/nav order, top bar height/button widths, and status bar height
 are copied 1:1 from that source rather than re-derived, same fidelity goal
@@ -68,10 +68,8 @@ _NAV_ITEMS = (
 _SIDEBAR_WIDTH = 300
 _TOPBAR_HEIGHT = 72
 _STATUSBAR_HEIGHT = 40
-# 2026-08-06: was a single hardcoded dark-mode filename - see
-# theme.logo_horizontal_filename() for why this is now theme-dependent
-# (BinSifter now actually detects OS dark/light mode instead of always
-# looking dark regardless of the setting).
+# Logo filename is theme-dependent - see theme.logo_horizontal_filename()
+# (BinSifter detects OS dark/light mode rather than always rendering dark).
 
 _TERMINAL_STATUSES = ("Completed", "Error", "Cancelled")
 
@@ -108,21 +106,16 @@ class _ScanWorker(QObject):
     progress = Signal(int, int, str, object)  # done, total, path, FileRecord
     finished = Signal(object)  # ScanResult
     failed = Signal(str)
-    # 2026-08-07: emitted at most once per scan, from INSIDE
-    # scan_directory()'s archive-expansion pre-scan step (see engine.py) if
-    # core/archive.py's pass 1 found any password-protected archives under
-    # SrcDir - carries that list of locked archive paths. run() (below)
+    # Emitted at most once per scan, from inside scan_directory()'s
+    # archive-expansion step (engine.py) if archive.py's pre-scan pass found
+    # password-protected archives - carries the locked archive paths. run()
     # blocks on _password_event right after emitting this, until
-    # provide_passwords() is called back from the GUI thread - see
-    # MainWindow._on_password_needed(), which shows ArchivePasswordDialog
-    # and calls provide_passwords() once it closes. This is the same "block
-    # a background thread, let the GUI thread answer" pattern _scan_control
-    # already uses for pause/stop, just for a one-shot answer instead of a
-    # continuously-polled flag - safe here specifically because this is a
-    # QThread in the SAME process as the GUI, not a separate
-    # multiprocessing.Pool worker process (which is what made password
-    # prompting look like an unsolved architecture problem when TODO.md
-    # first scoped this feature - see engine.py's module docstring).
+    # provide_passwords() is called back from the GUI thread (see
+    # MainWindow._on_password_needed(), which shows ArchivePasswordDialog).
+    # Same "block a background thread, let the GUI thread answer" pattern
+    # _scan_control uses for pause/stop, but a one-shot answer instead of a
+    # polled flag - safe because this worker is a QThread in the same
+    # process as the GUI, not a separate multiprocessing.Pool worker.
     password_needed = Signal(list)
 
     def __init__(self, config, scan_control: _ScanControl) -> None:
@@ -150,16 +143,13 @@ class _ScanWorker(QObject):
         self.progress.emit(done, total, current_path, record)
 
     def _prompt_for_passwords(self, locked_archives: list[str]) -> dict[str, str]:
-        """Runs on THIS worker's background QThread, called synchronously
-        from inside engine.scan_directory()'s archive-expansion step (it's
-        handed to scan_directory() as password_prompt_callback above) -
-        blocks until MainWindow's _on_password_needed() slot (running on
-        the GUI thread) has shown ArchivePasswordDialog and called
-        provide_passwords() back on this object. A plain
-        threading.Event, not just the signal emit itself, because this
-        call needs to actually WAIT for an answer before returning -
-        Signal.emit() doesn't block for a receiver's return value on its
-        own.
+        """Runs on this worker's background QThread, called synchronously
+        from inside scan_directory()'s archive-expansion step (handed to it
+        as password_prompt_callback above). Blocks until
+        MainWindow._on_password_needed() (GUI thread) shows
+        ArchivePasswordDialog and calls provide_passwords() back on this
+        object. Uses a threading.Event rather than just the signal emit,
+        since Signal.emit() doesn't block for a receiver's return value.
         """
         self._password_event.clear()
         self.password_needed.emit(list(locked_archives))
@@ -170,12 +160,8 @@ class _ScanWorker(QObject):
         """Called from the GUI thread (MainWindow._on_password_needed(),
         right after ArchivePasswordDialog closes) - hands the answer back
         and unblocks _prompt_for_passwords() above. Safe to touch
-        _password_map/_password_event from the GUI thread here: the worker
-        thread is guaranteed to be parked in _password_event.wait() (not
-        concurrently reading _password_map) until .set() below runs, so
-        there's a real happens-before ordering, the same guarantee
-        threading.Event is designed to provide for exactly this producer/
-        consumer handoff shape.
+        _password_map/_password_event here: the worker thread is parked in
+        _password_event.wait() until .set() below runs.
         """
         self._password_map = password_map
         self._password_event.set()
@@ -184,26 +170,18 @@ class _ScanWorker(QObject):
 class MainWindow(QMainWindow):
     def __init__(self, theme: ThemePalette | None = None) -> None:
         super().__init__()
-        # 2026-08-06: was hardcoded to DARK unconditionally - Winnow always
-        # looked dark no matter the OS setting, unlike Rowan (which reads
-        # AppsUseLightTheme once at startup via Test-SystemDarkMode). `theme`
-        # is an optional constructor param (rather than always detecting
-        # internally) so __main__.py can detect once and share the same
-        # result with the app-wide QMessageBox stylesheet too - detecting
-        # separately in two places risks them disagreeing if this ever
-        # becomes more than a one-time startup check.
+        # `theme` is an optional constructor param (rather than always
+        # detecting internally) so __main__.py can detect the OS dark/light
+        # setting once and share the result with the app-wide QMessageBox
+        # stylesheet too, instead of detecting separately in two places.
         self.theme: ThemePalette = theme if theme is not None else get_theme_palette(detect_os_dark_mode())
-        self.setWindowTitle(f"BinSifter Winnow {__version__}")
-        # 2026-08-14: winnow.spec's EXE(icon=...) embeds an icon into the
-        # built exe's own PE resources, which Windows uses for the taskbar
-        # entry - but Qt does NOT automatically reuse that embedded resource
-        # for the WINDOW's own title-bar icon (a separate, Qt-level
-        # property); nothing in this codebase had ever called
-        # setWindowIcon() at all, so the title bar showed no icon
-        # regardless of the exe's own embedded one. Uses the PNG (not the
-        # .ico winnow.spec embeds) since PNG decoding is built directly
-        # into Qt on every platform, unlike .ico which needs a separate
-        # imageformats plugin that may or may not be bundled.
+        self.setWindowTitle(f"BinSifter Winnow {__version__} (Beta)")
+        # winnow.spec embeds an icon into the exe's PE resources for the
+        # taskbar entry, but Qt doesn't reuse that for the window's own
+        # title-bar icon - needs an explicit setWindowIcon() call. Uses the
+        # PNG (not the .ico winnow.spec embeds) since PNG decoding is built
+        # into Qt on every platform; .ico needs a separate imageformats
+        # plugin that may not be bundled.
         icon_path = get_bundled_asset_path("BinSifter-WindowIcon.png")
         if icon_path.is_file():
             self.setWindowIcon(QIcon(str(icon_path)))
@@ -218,18 +196,13 @@ class MainWindow(QMainWindow):
         self._scan_total_files = 0
         self._scan_done_count = 0
 
-        # Ticks every second for the entire duration of a scan, independent
-        # of progress_callback firing - added 2026-08-04 because the
-        # pre-scan setup phase (file enumeration, NSRL/blocklist/YARA/capa
-        # loading - see engine.py's scan_directory()) and long individual
-        # files (capa's own per-file analysis can legitimately take up to
-        # its 120s timeout) both produce real gaps where NO progress signal
-        # arrives at all. Without an independent heartbeat, the "Scanning..."
-        # status text - the ONLY thing on screen during those gaps before
-        # this fix - just sits there unchanged, which is indistinguishable
-        # from the app having actually frozen. This is the single most
-        # direct fix for that: the status text now visibly counts up every
-        # second no matter what stage of the scan is running underneath it.
+        # Ticks every second for the whole scan, independent of
+        # progress_callback - pre-scan setup (file enumeration, NSRL/
+        # blocklist/YARA/capa loading) and slow individual files (capa can
+        # take up to its 120s timeout) can produce long gaps with no
+        # progress signal, during which a static status text is
+        # indistinguishable from a frozen app. This keeps the elapsed-time
+        # display counting up regardless of what stage is running.
         self._scan_timer = QTimer(self)
         self._scan_timer.setInterval(1000)
         self._scan_timer.timeout.connect(self._on_scan_tick)
@@ -266,11 +239,9 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 18, 0, 0)
         layout.setSpacing(0)
 
-        # get_bundled_asset_path() (not get_binsifter_root() directly, and
-        # not a __file__-relative parent chain) - see that function's
-        # 2026-08-14 note on why: a frozen/installed exe's bundled datas
-        # (this PNG included) don't reliably sit right next to the exe
-        # depending on the PyInstaller version that built it.
+        # get_bundled_asset_path(), not a __file__-relative path - a frozen
+        # exe's bundled assets don't reliably sit next to the exe depending
+        # on the PyInstaller version that built it.
         logo_path = get_bundled_asset_path(logo_horizontal_filename(theme))
         logo_label = QLabel()
         logo_label.setContentsMargins(12, 0, 12, 0)
@@ -349,7 +320,7 @@ class MainWindow(QMainWindow):
 
         self._topbar_buttons: dict[str, QPushButton] = {}
         # Flat, borderless text-plus-glyph buttons - matches the PowerShell
-        # version's New-TopBarButton exactly (BinSifter-Rowan_v1.3.0-beta.1.ps1
+        # version's New-TopBarButton exactly (BinSifter-Rowan.ps1
         # lines ~3456-3473): FlatStyle.Flat, FlatAppearance.BorderSize = 0,
         # BackColor == the bar's own HeaderBack (so there's no visible
         # "chip" behind the label, just colored text), same three glyphs
@@ -408,7 +379,7 @@ class MainWindow(QMainWindow):
         # No folder picker here - SrcDir is a Settings-page field, already
         # on self.config once Settings has been saved. Same required-fields
         # gate as the PowerShell version's BtnStart.Add_Click
-        # (BinSifter-Rowan_v1.3.0-beta.1.ps1 lines ~5221-5239): warn and jump to
+        # (BinSifter-Rowan.ps1 lines ~5221-5239): warn and jump to
         # Settings if anything required is still blank, instead of silently
         # prompting for (and overwriting SrcDir with) a directory inline.
         required = ("SrcDir", "NsrlPath", "YaraRules", "CapaRules", "ToolsDir")
@@ -420,13 +391,11 @@ class MainWindow(QMainWindow):
 
         self.scan_queue_page.reset()
         self.scan_queue_page.set_running(True)
-        # Everything below happens the INSTANT Start is clicked, before the
-        # background thread has done anything at all - this is what closes
-        # the gap between "user clicked Start" and "user sees ANY evidence
-        # something happened", which used to be however long file
-        # enumeration + NSRL/blocklist/YARA/capa loading took (real-world
-        # observed: several minutes on a large NSRL set) with literally
-        # nothing on screen changing in that entire window.
+        # Runs immediately on click, before the background thread starts -
+        # closes the gap between "Start clicked" and visible feedback,
+        # which previously spanned however long file enumeration +
+        # NSRL/blocklist/YARA/capa loading took (several minutes observed
+        # on a large NSRL set) with nothing on screen changing.
         self._set_status("Scanning... (00:00:00)", self.theme.Warning)
         self.scan_queue_page.set_indeterminate("Starting scan - enumerating files...")
         self.scan_queue_page.set_summary("Starting scan...")
@@ -444,23 +413,18 @@ class MainWindow(QMainWindow):
         self._scan_worker.progress.connect(self._on_scan_progress)
         self._scan_worker.finished.connect(self._on_scan_finished)
         self._scan_worker.failed.connect(self._on_scan_failed)
-        # Connected to a genuine bound method of `self` (a real QWidget),
-        # not a lambda - Qt's cross-thread auto-detection only reliably
-        # resolves the receiver's thread through a bound-method slot like
-        # this, the same lesson learned (the hard way, twice) fixing
-        # results.py's Speakeasy/Sigcheck thread-safety bug earlier this
-        # session.
+        # Connected to a bound method of `self`, not a lambda - Qt's
+        # cross-thread signal delivery only reliably resolves the
+        # receiver's thread through a bound-method slot (see results.py's
+        # Speakeasy/Sigcheck thread-safety fix for the same issue).
         self._scan_worker.password_needed.connect(self._on_password_needed)
         self._scan_thread.start()
 
     def _on_scan_tick(self) -> None:
-        """Fires every second for the whole scan - see the QTimer setup in
-        __init__ for why this needs to be independent of progress_callback.
-        Deliberately does NOT touch scan_queue_page.summary_label or the
-        overall progress bar/percentage - those reflect real file-level
-        progress from _on_scan_progress() and shouldn't be overwritten with
-        stale done/total numbers on a tick where nothing new actually
-        happened. This only owns the top-bar status text's elapsed clock."""
+        """Fires every second for the whole scan (see the QTimer setup in
+        __init__). Only owns the top-bar elapsed-time text; deliberately
+        doesn't touch scan_queue_page's summary/progress bar, which reflect
+        real file-level progress from _on_scan_progress()."""
         if self._scan_start_time is None:
             return
         elapsed = _format_elapsed(time.monotonic() - self._scan_start_time)
@@ -472,10 +436,9 @@ class MainWindow(QMainWindow):
     def _on_pause_toggled(self, paused: bool) -> None:
         if self._scan_control is not None:
             self._scan_control.is_paused = paused
-        # _on_scan_tick() (fires every second regardless) already keeps the
-        # status text's Paused/Scanning wording in sync with elapsed time -
-        # this just gives instant feedback on the click itself rather than
-        # waiting up to a second for the next tick.
+        # _on_scan_tick() already keeps the Paused/Scanning text in sync
+        # every second - this gives instant feedback on the click instead
+        # of waiting for the next tick.
         self._on_scan_tick()
 
     def _on_stop_clicked(self) -> None:
@@ -484,13 +447,10 @@ class MainWindow(QMainWindow):
         self._set_status("Stopping...", self.theme.Warning)
 
     def _on_password_needed(self, locked_archives: list[str]) -> None:
-        """Slot for _ScanWorker.password_needed - runs on the GUI thread
-        (Qt safely queues the cross-thread signal here since it's connected
-        to this genuine bound method, not a lambda - see the connection
-        site in _on_start_scan_clicked()). Shows one batch dialog for every
-        password-protected archive core/archive.py's pass 1 found, then
-        hands the answer straight back to the worker thread, which has been
-        parked in _prompt_for_passwords()'s .wait() this whole time."""
+        """Slot for _ScanWorker.password_needed - runs on the GUI thread.
+        Shows one batch dialog for every password-protected archive found,
+        then hands the answer back to the worker, which is parked in
+        _prompt_for_passwords()'s .wait()."""
         self._set_status("Waiting for archive password(s)...", self.theme.Warning)
         dialog = ArchivePasswordDialog(self.theme, locked_archives, self)
         dialog.exec()
@@ -502,17 +462,12 @@ class MainWindow(QMainWindow):
         self.scan_queue_page.upsert_record(record)
 
         if record.Status not in _TERMINAL_STATUSES:
-            # Submission-phase callback: `done` counts files DISPATCHED to
-            # the worker pool so far, not completed - still real, immediate
-            # feedback (in particular, the file TOTAL becomes known and
-            # visible here for the first time, before this a user had no
-            # idea if they'd pointed BinSifter at 5 files or 50,000).
-            # Deliberately not fed into the overall progress bar's
-            # percentage - that tracks completions below, and submission
-            # happens in one fast burst (see scan_directory()'s own
-            # docstring), so showing it on the same bar would make the bar
-            # jump to ~100% and then drop back to 0% seconds later as
-            # completions start, which reads as a glitch, not progress.
+            # Submission-phase callback: `done` counts files dispatched to
+            # the worker pool, not completed - still useful since the file
+            # total becomes visible here for the first time. Not fed into
+            # the overall progress bar, since submission happens in one
+            # fast burst and would jump the bar to ~100% then drop back to
+            # 0% once completions start, which reads as a glitch.
             self.scan_queue_page.set_progress(0, total)
             self.scan_queue_page.set_summary(f"{total} file(s) queued - dispatching to worker pool...")
             return
@@ -526,14 +481,11 @@ class MainWindow(QMainWindow):
         self._update_eta(elapsed_seconds, done, total)
 
     def _update_eta(self, elapsed_seconds: float, done: int, total: int) -> None:
-        """Simple average-time-per-completed-file projection, recomputed on
-        every completion so it naturally adapts as the mix of fast (NSRL-
-        known, skip capa) and slow (full capa/vivisect analysis) files
-        changes over the course of a batch. Deliberately not fancier
-        (e.g. weighting recent files more) - this is meant to give a rough
-        or-of-magnitude sense of time remaining, not a precise countdown;
-        capa's own per-file cost varies too much file-to-file for a tight
-        estimate to be honest."""
+        """Average time-per-completed-file, recomputed on every completion
+        so it adapts as the mix of fast (NSRL-known) and slow (full
+        capa/vivisect) files changes over the batch. Deliberately simple -
+        capa's per-file cost varies too much for a tight estimate to be
+        honest."""
         if done <= 0 or total <= 0:
             self.scan_queue_page.set_eta("ETA: calculating...")
             return
@@ -623,16 +575,11 @@ class MainWindow(QMainWindow):
         self.about_page = AboutPage(theme)
         self.pages.addWidget(self.about_page)
 
-        # Cross-page sync, matching the PowerShell version's direct field
-        # pokes: browsing to a new path from YARA Rules/Capa Rules/NSRL
-        # updates Settings' matching textbox too. Saving Settings refreshes
-        # YARA Rules' content and Capa Rules' list (same as the original's
-        # Update-YaraRulesContent/Update-CapaRulesList calls after a save);
-        # NSRL only gets its label text resynced, not an automatic reload -
-        # the original doesn't auto-reload the hash count on Settings save
-        # either (BinSifter-Rowan_v1.3.0-beta.1.ps1 lines ~5212-5217), since a
-        # reload can be a real multi-second parse the analyst should ask
-        # for explicitly via Reload Now.
+        # Cross-page sync: browsing to a new path from YARA Rules/Capa
+        # Rules/NSRL updates Settings' matching textbox. Saving Settings
+        # refreshes YARA Rules' content and Capa Rules' list; NSRL only
+        # resyncs its label text, not an automatic reload - a reload can be
+        # a multi-second parse, left to the analyst via Reload Now.
         self.yara_rules_page.rules_path_changed.connect(
             lambda path: self.settings_page._fields["YaraRules"].setText(path)
         )
@@ -675,7 +622,7 @@ class MainWindow(QMainWindow):
         layout = QHBoxLayout(bar)
         layout.setContentsMargins(24, 0, 24, 0)
 
-        self.footer_label = QLabel(f"BinSifter {__version__}")
+        self.footer_label = QLabel(f"BinSifter {__version__} (Beta)")
         self.footer_label.setStyleSheet(f"color: {accent_to_css(theme.MutedFore)}; border: none; background: transparent;")
         font = self.footer_label.font()
         font.setPointSize(9)
@@ -683,19 +630,15 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.footer_label)
         layout.addStretch(1)
 
-        # Populate immediately - Start-ToolMetadataRefresh's role, but
-        # synchronous here (see core/tool_metadata.py's docstring for why no
-        # background thread is needed anymore). Covers the "cached ToolsDir/
-        # NsrlPath already filled in at startup" case the original called
-        # out explicitly, since build_default_config() already loaded the
-        # settings cache before this runs.
+        # Populate immediately - synchronous, since build_default_config()
+        # already loaded the settings cache before this runs (see
+        # core/tool_metadata.py for why no background thread is needed).
         self._refresh_footer()
-        # Re-run after every Settings save, same as the original's
-        # Start-ToolMetadataRefresh call at the end of the Save handler.
+        # Re-run after every Settings save.
         self.settings_page.settings_saved.connect(self._refresh_footer)
 
         return bar
 
     def _refresh_footer(self) -> None:
         metadata = refresh_tool_metadata(self.config.NsrlPath)
-        self.footer_label.setText(format_status_line(__version__, metadata))
+        self.footer_label.setText(format_status_line(f"{__version__} (Beta)", metadata))

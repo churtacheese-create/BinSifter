@@ -9,14 +9,12 @@ step rather than a rewrite-then-test-everything-at-the-end approach, per
 the stated priority on accuracy over speed of delivery.
 
 scan_directory() runs files through a bounded multiprocessing.Pool (see
-MAX_SCAN_WORKERS below) instead of one at a time - added 2026-08-03 after a
-real 657-file scan against the full capa-rules-9.4.0 corpus took 18+
-minutes for just 30 files under the original single-threaded loop. The
-PowerShell version's own worker-pool dispatcher (ThrottleLimit capped at
-16) was the parity target; this is the first pass at matching it, not
-"finishing the port" of that specific piece as a first-pass skeleton
-anymore. See _pool_worker_init()/_process_one_file() below for why YARA
-rules are recompiled per worker process while NSRL/blocklist/ATT&CK/
+MAX_SCAN_WORKERS below) instead of one at a time - a 657-file scan against
+the full capa-rules-9.4.0 corpus took 18+ minutes for just 30 files under
+the original single-threaded loop. The PowerShell version's own
+worker-pool dispatcher (ThrottleLimit capped at 16) is the parity target.
+See _pool_worker_init()/_process_one_file() below for why YARA rules are
+recompiled per worker process while NSRL/blocklist/ATT&CK/
 disposition-history data is loaded once in the parent and handed down.
 
 Speakeasy (core/speakeasy_scan.py) is a real, tested module too now, but
@@ -39,20 +37,19 @@ strictly more work than the original for NSRL-known files). Worth
 revisiting once there's a real performance benchmark to justify the
 added complexity either way - don't "fix" this speculatively.
 
-Archive/compressed-file support (2026-08-07, core/archive.py): archives
-found under config.SrcDir (zip/tar/gzip/7z) are expanded to real files on
-disk in a SERIAL pre-scan step, before the multiprocessing.Pool below is
-even created - see scan_directory()'s "Archive expansion" section. This
-was originally flagged in TODO.md as an open architecture question (how
-would a POOL WORKER PROCESS prompt for a password mid-scan?) that turned
-out not to apply: archive expansion runs once, in this function, in the
-parent process's own background QThread (see main_window.py's
+Archive/compressed-file support (core/archive.py): archives found under
+config.SrcDir (zip/tar/gzip/7z) are expanded to real files on disk in a
+SERIAL pre-scan step, before the multiprocessing.Pool below is even
+created - see scan_directory()'s "Archive expansion" section. This avoids
+an awkward architecture question (how would a pool WORKER PROCESS prompt
+for a password mid-scan?): archive expansion runs once, in this function,
+in the parent process's own background QThread (see main_window.py's
 _ScanWorker) - a real thread, not a separate process - so it can signal
 the GUI thread and block on a threading.Event for a password batch-prompt
 using ordinary, safe Qt cross-thread coordination. By the time paths is
 handed to the pool below, every extracted file is just an ordinary file
-with a real path; _process_one_file()/_pool_worker_init() needed zero
-changes for this feature.
+with a real path; _process_one_file()/_pool_worker_init() need no changes
+for this feature.
 """
 
 from __future__ import annotations
@@ -102,49 +99,35 @@ logger = logging.getLogger(__name__)
 # _default_worker_count().
 MAX_SCAN_WORKERS = 16
 
-# 2026-08-14: hard ceiling on how long scan_directory()'s result-draining
-# loop will wait with ZERO forward progress before giving up on the rest of
-# the batch, rather than blocking forever. capa is the only per-file stage
-# with its own hang-safety net (PersistentCapaWorker's 90s timeout, see
+# Hard ceiling on how long scan_directory()'s result-draining loop will
+# wait with ZERO forward progress before giving up on the rest of the
+# batch, rather than blocking forever. capa is the only per-file stage with
+# its own hang-safety net (PersistentCapaWorker's 90s timeout, see
 # capa_scan.py) - hashing/authenticode/imphash/ssdeep/YARA/FLOSS all run
-# directly in the pool worker process with nothing bounding them. A real
-# scan on a FLARE VM (Winnow_scanLogs_08142026.txt) got to 651/652 files and
-# then produced literally zero further log output - no "Finished:", no
-# error, nothing - for over 3 hours before it was force-closed (the elapsed
-# timer read past 5:30:00). Root-caused by diffing every "Scanning:" path
-# against every "Finished:" path in that log: exactly one file
-# (WindowsXP-KB936929-SP3-x86-RUS.exe, a large XP-era self-extracting
-# hotfix installer) was submitted and never came back. The draining loop
-# below used to be a plain, un-timed-out `result_queue.get()` - once a pool
-# worker got stuck inside ANY untimed stage for that one file, its callback
-# never fired, so the loop's `for _ in range(submitted): result_queue.get()`
-# blocked on that exact slot forever, which blocks the `with _NoDaemonPool
-# (...) as pool:` block from ever exiting, which blocks the entire scan -
-# every other file had already finished, so there was nothing left to make
-# progress on, just an unbounded wait for one worker that was never coming
-# back. 20 minutes is deliberately generous relative to the worst normal
-# per-file time actually observed in that same log (530.0s, ~8.8 minutes,
-# for AcroRd32.dll) - more than double it - so this should never trip on a
-# genuinely slow-but-progressing file, only on a real hang.
+# directly in the pool worker process with nothing bounding them.
+#
+# Root cause of the hang this guards against: a large XP-era self-
+# extracting hotfix installer got stuck inside an untimed stage in one
+# worker, so its callback never fired. The draining loop used to be a
+# plain, un-timed-out `result_queue.get()`, so `for _ in range(submitted):
+# result_queue.get()` blocked on that one slot forever - which blocks the
+# `with _NoDaemonPool(...) as pool:` block from ever exiting, which blocks
+# the entire scan, even though every other file had already finished.
+# 20 minutes is more than double the worst normal per-file time observed
+# in production (530s, ~8.8 minutes, for AcroRd32.dll), so it shouldn't
+# trip on a genuinely slow-but-progressing file, only on a real hang.
 RESULT_STALL_TIMEOUT_SECONDS = 1200
 
-# 2026-08-14: separate, much shorter grace period governing how long the
-# draining loop will wait with zero forward progress before it honors a
-# should_stop() request - deliberately NOT the same value as the stall
-# ceiling above. An early version of the Stop-button fix checked
-# should_stop() on every Empty timeout with no grace at all, which passed
-# every test using a fake, instant-callback pool but broke a real scan: a
-# freshly-submitted worker still needs real wall-clock time just to spawn
-# its process and import this module before it can even start hashing a
-# file, let alone finish - a single trivial file measured at ~2.2s
-# end-to-end in this dev sandbox, well over the old 1s poll interval. With
-# no grace period, a Stop click (or, worse, a should_stop() callback that
-# happens to already read "true" for unrelated reasons right as the loop
-# starts polling) could cancel a file that was never actually stuck, just
-# not back yet. 5s leaves comfortable margin over that measured spawn
-# overhead without meaningfully changing what the user experiences as
-# "stop happened quickly" - a low-single-digit-second wait is still a huge
-# improvement over the multi-hour hang this whole fix exists to prevent.
+# Separate, much shorter grace period governing how long the draining loop
+# will wait with zero forward progress before it honors a should_stop()
+# request - deliberately NOT the same value as the stall ceiling above. A
+# freshly-submitted worker needs real wall-clock time just to spawn its
+# process and import this module before it can start hashing a file
+# (measured ~2.2s end-to-end for a trivial file), well over a naive 1s poll
+# interval. Without a grace period, a Stop click could cancel a file that
+# was never actually stuck, just not back yet. 5s leaves comfortable margin
+# over that spawn overhead without meaningfully changing what the user
+# experiences as "stop happened quickly".
 STOP_GRACE_SECONDS = 5
 
 
@@ -160,8 +143,7 @@ def _default_worker_count() -> int:
 # exactly that for CapaEligible files: PersistentCapaWorker (see
 # capa_scan.py) spawns and owns its own further child process per worker
 # (the vivisect hang-safety net - see subprocess_timeout.py's module
-# docstring for the same rationale applied there). Confirmed as a real,
-# majority-of-files failure mode in a live scan run on 2026-08-03 - a vanilla Pool made
+# docstring for the same rationale applied there). A vanilla Pool made
 # every capa call inside a worker raise that AssertionError.
 #
 # The fix (a well-known pattern for "pool whose workers need their own
@@ -236,7 +218,7 @@ def _reap_capa_children(capa_pid_queue: "multiprocessing.Queue") -> None:
             pass  # already exited on its own, or never fully started - nothing to clean up
 
 
-# ================= Cross-process log forwarding (2026-08-04) =================
+# ================= Cross-process log forwarding =================
 _LOG_QUEUE_SENTINEL = None  # None is never a real LogRecord, safe as a stop signal
 
 
@@ -286,8 +268,8 @@ _worker_yara_rules = None
 # to change.
 _worker_nsrl_hashes: "nsrl_mod.NsrlIndex | set" = set()
 _worker_blocklist_hashes: set = set()
-# 2026-08-08: pre-parsed catalog (.cat) files for Authenticode catalog
-# verification - see authenticode.py's parse_catalogs()/check_signature().
+# Pre-parsed catalog (.cat) files for Authenticode catalog verification -
+# see authenticode.py's parse_catalogs()/check_signature().
 # Compiled once per worker from config.CatalogDirectory, same reasoning as
 # _worker_yara_rules just above (a parsed CertificateTrustList wraps
 # cryptography objects that aren't cleanly picklable across a process
@@ -300,9 +282,9 @@ _worker_disposition_history: dict = {}
 # One warm capa child process per scan-pool worker, reused across every
 # file that worker processes - see capa_scan.PersistentCapaWorker's
 # docstring for why (avoids re-spawning + re-importing capa/vivisect from
-# scratch for every single file, confirmed as a major contributor to a real
-# 34-minute, 652-file scan versus the PowerShell version's ~5 minutes for
-# the same batch, 2026-08-03). None when CapaRules isn't configured.
+# scratch for every single file, a major contributor to a 34-minute,
+# 652-file scan versus the PowerShell version's ~5 minutes for the same
+# batch). None when CapaRules isn't configured.
 _worker_persistent_capa: "capa_scan.PersistentCapaWorker | None" = None
 
 
@@ -347,16 +329,16 @@ def _pool_worker_init(
     can report its child's PID back to the parent process for cleanup -
     see _reap_capa_children() below for why that's necessary at all.
 
-    log_queue (2026-08-04): a spawned worker process has its OWN, entirely
-    separate `logging` module state - Python does not share logger/handler
+    log_queue: a spawned worker process has its OWN, entirely separate
+    `logging` module state - Python does not share logger/handler
     configuration across a process boundary the way it does across threads.
-    Confirmed as a real gap, not a hypothetical: the GUI's QtLogHandler (see
-    log_bridge.py) is only ever attached in the parent/GUI process, so every
-    logger.info()/warning() call made from INSIDE a worker (capa failures,
-    per-file warnings in yara_scan/floss_scan/authenticode/etc.) was
-    silently going nowhere the GUI could see it - at best to that worker's
-    own stderr, invisible in a windowed app with no console attached. This
-    attaches a QueueHandler to the worker's ROOT logger so every log record
+    The GUI's QtLogHandler (see log_bridge.py) is only ever attached in the
+    parent/GUI process, so every logger.info()/warning() call made from
+    INSIDE a worker (capa failures, per-file warnings in
+    yara_scan/floss_scan/authenticode/etc.) was silently going nowhere the
+    GUI could see it - at best to that worker's own stderr, invisible in a
+    windowed app with no console attached. This attaches a QueueHandler to
+    the worker's ROOT logger so every log record
     emitted anywhere in this process (any module, any level >= INFO) gets
     put on log_queue instead, for the parent's _drain_log_queue() thread (see
     scan_directory()) to re-inject into ITS OWN logging tree - which the GUI
@@ -407,12 +389,11 @@ class _WorkerFileResult:
     # Wall-clock seconds spent in each pipeline stage for THIS file, keyed by
     # stage name ("hash", "authenticode", "yara", "capa", "floss_iocs",
     # "imphash", "ssdeep") - only present for stages that actually ran.
-    # Added 2026-08-04 purely to answer "where did the time actually go" on
-    # a real scan (a 652-file batch went 36min on a fast workstation, 67min
-    # on a third-as-powerful PC - worse than either "CPU-bound, scales with
-    # cores" or "I/O-bound" alone predicts, and guessing further from source
-    # reading alone wasn't productive). Deliberately NOT added to FileRecord
-    # itself - this is scan-run diagnostic data, not a triage field, and
+    # Exists to answer "where did the time actually go": a 652-file batch
+    # went 36min on a fast workstation, 67min on a third-as-powerful PC -
+    # worse than either "CPU-bound, scales with cores" or "I/O-bound" alone
+    # predicts. Deliberately NOT added to FileRecord itself - this is
+    # scan-run diagnostic data, not a triage field, and
     # FileRecord's shape is also the CSV report schema (see report.py) which
     # this shouldn't perturb. Aggregated into a summary log line by
     # scan_directory() after the batch finishes; never written to disk.
@@ -428,8 +409,8 @@ def _process_one_file(path: str) -> _WorkerFileResult:
     process boundary.
 
     Same processing steps, in the same order, as the single-threaded loop
-    body this replaced - see git history for the pre-2026-08-03 version of
-    this function if a side-by-side comparison is ever needed.
+    body this replaced - see git history if a side-by-side comparison is
+    ever needed.
 
     Never raises: any exception during processing is caught here and turned
     into a Status="Error" record carrying the exception text, the same
@@ -447,13 +428,11 @@ def _process_one_file(path: str) -> _WorkerFileResult:
     stage_seconds: dict[str, float] = {}
     file_start = time.perf_counter()
 
-    # Added 2026-08-04 alongside the log_queue/QueueHandler wiring in
-    # _pool_worker_init(): forwarding worker logs to the GUI is only half
-    # the fix if there's nothing to forward - before this, the only per-file
-    # log lines were WARNINGs on failure (capa timeout, etc.), so a clean
-    # run of hundreds of files produced no log activity at all for the
-    # entire scan. This start/finish pair is what actually answers "what is
-    # Winnow working on right now" on the Logs page during a long scan.
+    # Paired with the log_queue/QueueHandler wiring in _pool_worker_init():
+    # without this, the only per-file log lines were WARNINGs on failure, so
+    # a clean run of hundreds of files produced no log activity at all. This
+    # start/finish pair answers "what is Winnow working on right now" on the
+    # Logs page during a long scan.
     logger.info("Scanning: %s", path)
 
     def _stage_start() -> float:
@@ -486,16 +465,13 @@ def _process_one_file(path: str) -> _WorkerFileResult:
             hash_result.md5, hash_result.sha1, hash_result.sha256, _worker_blocklist_hashes
         ) if _worker_blocklist_hashes else ("", "")
 
-        # 2026-08-05: restored the NSRL-known-good gate that was missing
-        # here - imphash, ssdeep, YARA (and, nested further in, capa/FLOSS)
-        # all skip entirely for a file NSRL already resolved as known-good,
-        # matching Rowan's actual implementation (BinSifter-Rowan_v1.3.0-
-        # beta.1.ps1:2208, "if (-not $isKnownGood) {...}") and the intended
-        # design: there's nothing left to triage once NSRL has vouched for
-        # a file. Before this fix, imphash/ssdeep/YARA ran unconditionally
-        # on every file regardless of NsrlMatch - confirmed against a real
-        # 652-file scan (2026-08-04 logs) where all 652 files, including
-        # the 103 NSRL matches, went through YARA.
+        # NSRL-known-good gate: imphash, ssdeep, YARA (and, nested further
+        # in, capa/FLOSS) all skip entirely for a file NSRL already resolved
+        # as known-good, matching Rowan's implementation
+        # (BinSifter-Rowan.ps1:2208, "if (-not $isKnownGood)
+        # {...}") - there's nothing left to triage once NSRL has vouched for
+        # a file. Previously these ran unconditionally regardless of
+        # NsrlMatch.
         if not record.NsrlMatch:
             t0 = _stage_start()
             imphash = imphash_mod.compute_imphash(path)
@@ -517,16 +493,13 @@ def _process_one_file(path: str) -> _WorkerFileResult:
                 record.YaraSeverityScore = yara_result.severity_score
                 record.YaraAttackTechniques = yara_result.attack_techniques
 
-            # 2026-08-05: restored the YARA-hit gate around CapaEligible/
-            # capa/FLOSS that was also missing - Rowan only ever computes
-            # CapaEligible INSIDE its "if ($yaraText not empty)" branch
-            # (same file, lines ~2257-2459), so capa never runs against a
-            # file YARA didn't flag. Before this fix, CapaEligible was
+            # YARA-hit gate around CapaEligible/capa/FLOSS: Rowan only ever
+            # computes CapaEligible INSIDE its "if ($yaraText not empty)"
+            # branch (same file, lines ~2257-2459), so capa never runs
+            # against a file YARA didn't flag. Previously CapaEligible was
             # computed - and capa invoked - for every format-eligible file
-            # regardless of YaraHitCount: on the same 652-file/1-YARA-hit
-            # scan referenced above, capa ran on 549 files instead of at
-            # most 1, which is what every capa-timeout-tuning pass that day
-            # (120s/90s/60s) was actually measuring the cost of.
+            # regardless of YaraHitCount, which is what made capa's per-file
+            # cost look far higher than it actually needs to be.
             if record.YaraHitCount > 0:
                 ft = file_type_mod.classify(path, hash_result.length)
                 record.CapaEligible = ft.capa_eligible
@@ -544,10 +517,9 @@ def _process_one_file(path: str) -> _WorkerFileResult:
                     # longer costs a respawn for every well-behaved file too.
                     #
                     # This call is wrapped in its OWN try/except, separate from the
-                    # outer one - confirmed 2026-08-03 against a real 652-file scan
-                    # that capa timing out (its own hang-safety-net, not a bug in
-                    # this code) is common enough on a real-world corpus that it was
-                    # wiping out the WHOLE file's results: hashing, YARA, NSRL,
+                    # outer one: capa timing out (its own hang-safety-net, not a bug
+                    # in this code) is common enough on a real-world corpus that it
+                    # was wiping out the WHOLE file's results - hashing, YARA, NSRL,
                     # signature status all already succeeded and were sitting on
                     # `record` by this point, but the outer except caught capa's
                     # TimeoutError and marked the entire file Status="Error" anyway,
@@ -676,14 +648,14 @@ def scan_directory(
 
     should_pause()/should_stop(), if given, are polled BETWEEN submissions,
     mirroring the PowerShell dispatcher's own cooperative gate
-    (BinSifter-Rowan_v1.3.0-beta.1.ps1 lines ~2895/2867: pause blocks starting new
+    (BinSifter-Rowan.ps1 lines ~2895/2867: pause blocks starting new
     files, already-dispatched ones finish; stop aborts before the next file
     is submitted, never mid-file). On stop, every file that hadn't been
     submitted to the pool yet is marked Status="Cancelled" - same as the
     PowerShell version's "force-remaining to Cancelled" (line ~2941).
 
-    password_prompt_callback (2026-08-07, see core/archive.py): called at
-    most ONCE per scan, synchronously, from THIS function - not from a pool
+    password_prompt_callback (see core/archive.py): called at most ONCE per
+    scan, synchronously, from THIS function - not from a pool
     worker - if archive expansion's pass 1 finds any password-protected
     archives under config.SrcDir. Receives the list of locked archive
     paths, must return a dict[str, str] mapping whichever of those paths
@@ -697,19 +669,16 @@ def scan_directory(
     means every locked archive found goes straight to unresolved without
     ever attempting to prompt for anything.
     """
-    # ================= Pre-scan setup - now narrated (2026-08-04) =================
-    # Every load/validation step below used to run completely silently before
-    # the worker pool started - confirmed (against a real 67-minute scan on
-    # slower hardware) to be the actual explanation for BinSifter appearing
-    # "frozen" for the first several minutes: no log line, no progress
-    # signal, and no file-queue row exists yet, all before a single byte of
-    # actual scanning has happened. NSRL hash-set loading is the prime
-    # suspect - a real-world NSRL RDS export can be tens of millions of rows,
-    # parsed here in pure Python (see nsrl.py) - but rather than guess which
-    # step is slow, every step now logs its own start/finish + elapsed time,
-    # so the Logs page shows real activity from the first second and the
-    # next slow run tells us exactly which step to optimize, not just "it
-    # was slow somewhere before the pool started."
+    # ================= Pre-scan setup - now narrated =================
+    # Every load/validation step below used to run completely silently
+    # before the worker pool started, which is why BinSifter could appear
+    # "frozen" for the first several minutes on a slow machine: no log line,
+    # no progress signal, and no file-queue row exists yet. NSRL hash-set
+    # loading is the prime suspect - a real-world NSRL RDS export can be
+    # tens of millions of rows, parsed here in pure Python (see nsrl.py).
+    # Every step now logs its own start/finish + elapsed time, so the Logs
+    # page shows real activity from the first second and a slow run points
+    # at exactly which step to optimize.
     setup_start = time.perf_counter()
 
     logger.info("Enumerating files under %s...", config.SrcDir)
@@ -717,7 +686,7 @@ def scan_directory(
     paths = enumerate_files(config.SrcDir)
     logger.info("Found %d file(s) to scan (%.1fs).", len(paths), time.perf_counter() - t0)
 
-    # ================= Archive expansion (2026-08-07) =================
+    # ================= Archive expansion =================
     # Serial, in-process, BEFORE the multiprocessing pool below is created -
     # see this module's docstring and core/archive.py's for why that's the
     # right place for this rather than something the pool's per-file
@@ -787,10 +756,10 @@ def scan_directory(
     # sorts/groups together.
     timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
 
-    # Cached, memory-mapped binary index (2026-08-04 rewrite) instead of a
-    # Python set loaded once and pickled into every worker - see nsrl.py's
-    # module docstring for the full "24.5-minute reparse + duplicated into
-    # up to 16 worker processes" story this replaces. What crosses the
+    # Cached, memory-mapped binary index instead of a Python set loaded once
+    # and pickled into every worker - see nsrl.py's module docstring for why
+    # (avoids a 24.5-minute reparse duplicated into up to 16 worker
+    # processes). What crosses the
     # process boundary now is nsrl_cache_path, a plain string - each worker
     # opens/mmaps it independently in _pool_worker_init() below.
     nsrl_cache_path: str | None = None
@@ -861,7 +830,7 @@ def scan_directory(
     # later) keeps earlier Benign/Suspicious/Escalated calls instead of
     # resetting everything to Untriaged - written by the Results page's
     # Disposition column edits, read back here once per scan (see
-    # BinSifter-Rowan_v1.3.0-beta.1.ps1 lines ~2775-2782).
+    # BinSifter-Rowan.ps1 lines ~2775-2782).
     disposition_history = disposition_mod.load_disposition_history(config.ReportDirectory)
 
     # MITRE ATT&CK mapping is optional, same as the PowerShell version - a
@@ -871,7 +840,7 @@ def scan_directory(
     # catches AttackDb.Load() failures (bad/partial JSON, wrong schema) and
     # logs "TTP mapping disabled for this scan" rather than aborting the
     # whole scan over an optional enrichment feature - see
-    # BinSifter-Rowan_v1.3.0-beta.1.ps1 lines ~2799-2811.
+    # BinSifter-Rowan.ps1 lines ~2799-2811.
     attack_db = None
     if config.AttackDataPath and Path(config.AttackDataPath).is_file():
         try:
@@ -909,8 +878,8 @@ def scan_directory(
 
     stopped_at: int | None = None
 
-    # Diagnostic-only timing (2026-08-04, see _WorkerFileResult.stage_seconds
-    # docstring for why this exists at all). total_stage_seconds sums each
+    # Diagnostic-only timing (see _WorkerFileResult.stage_seconds docstring
+    # for why this exists at all). total_stage_seconds sums each
     # stage's cost ACROSS every file, including files processed concurrently
     # in different worker processes - this is aggregate CPU-seconds spent in
     # that stage, not wall-clock time, so it tells you relative SHARE of
@@ -1007,11 +976,11 @@ def scan_directory(
             # ScanQueuePage.upsert_record()'s path-keyed updates already
             # handle correctly.
             #
-            # 2026-08-14: polls with a timeout and tracks how long it's been
-            # since the LAST result of any kind arrived, instead of a plain
-            # blocking result_queue.get() - see RESULT_STALL_TIMEOUT_SECONDS'
-            # comment above for the real scan that hung indefinitely because
-            # of this. Any single result (ok or error) resets the clock, so
+            # Polls with a timeout and tracks how long it's been since the
+            # LAST result of any kind arrived, instead of a plain blocking
+            # result_queue.get() - see RESULT_STALL_TIMEOUT_SECONDS' comment
+            # above for the hang this guards against. Any single result (ok
+            # or error) resets the clock, so
             # this only trips when NOTHING has come back for the full
             # ceiling, not just because one file happens to be slow while
             # others keep finishing around it.
@@ -1030,42 +999,29 @@ def scan_directory(
                 try:
                     status, payload = result_queue.get(timeout=poll_seconds)
                 except queue.Empty:
-                    # 2026-08-14: real-world report - clicking Stop mid-scan
-                    # showed "Stopping..." in the status bar and then just
-                    # went right back to "Scanning...", repeatedly, with no
-                    # way to actually abort short of force-closing the app.
-                    # Root cause: should_stop() used to only ever be polled
-                    # in the SUBMISSION loop above, between dispatching each
-                    # file to the pool - but pool.apply_async() doesn't
-                    # block on worker availability, so all `submitted` files
-                    # are typically queued to the pool within milliseconds
-                    # of a scan starting, long before a human could ever
-                    # click anything. Once submission finished, should_stop()
-                    # was never checked again for the rest of the scan - the
-                    # flag Stop sets was real, just permanently too late to
-                    # matter. Checked here now, so it's reachable for the
-                    # entire time the scan is waiting on results.
+                    # should_stop() used to only be polled in the SUBMISSION
+                    # loop above, between dispatching each file to the pool -
+                    # but pool.apply_async() doesn't block on worker
+                    # availability, so all `submitted` files are typically
+                    # queued within milliseconds of a scan starting, long
+                    # before a human could click Stop. Once submission
+                    # finished, should_stop() was never checked again, so
+                    # clicking Stop mid-scan had no effect. Checked here now,
+                    # so it's reachable for the entire time the scan is
+                    # waiting on results.
                     #
                     # Deliberately checked only here, in the Empty branch -
-                    # NOT unconditionally at the top of every iteration. A
-                    # first draft did check it at the top, and that silently
-                    # discarded already-finished results: if a worker's
-                    # result was already sitting in result_queue the instant
-                    # this loop started (a real possibility - fast files can
-                    # finish during submission itself, before the draining
-                    # loop even begins), checking should_stop() first would
-                    # throw that real, already-obtained result away and mark
-                    # the file "Cancelled" even though it had actually
-                    # succeeded. Checking only when the queue is genuinely
-                    # empty means a Stop click can never pre-empt a result
-                    # that already came back - it only ever stops further
-                    # WAITING for results that haven't arrived yet, which is
-                    # the actual behavior "Stop" should have.
+                    # NOT unconditionally at the top of every iteration.
+                    # Checking it unconditionally would discard an
+                    # already-finished result sitting in result_queue (fast
+                    # files can finish during submission itself) and mark
+                    # that file "Cancelled" even though it succeeded.
+                    # Checking only when the queue is genuinely empty means a
+                    # Stop click can never pre-empt a result that already
+                    # came back - it only stops further WAITING.
                     #
                     # Also gated on STOP_GRACE_SECONDS (see its own comment
-                    # above) rather than honored the instant should_stop()
-                    # reads true - a real, still-in-flight worker (already
-                    # dispatched, genuinely about to finish) needs a little
+                    # above): a real, still-in-flight worker needs a little
                     # real wall-clock time to spawn and start running before
                     # its result can show up here at all.
                     since_last_result = time.monotonic() - last_progress_monotonic
@@ -1175,17 +1131,13 @@ def scan_directory(
 
     pool_wall_seconds = time.perf_counter() - pool_wall_start
 
-    # 2026-08-07: applied HERE, not when `records` was first built above -
-    # each pool worker's returned result.record (see the `records[
-    # result.record.Path] = result.record` assignment in the completion-
-    # draining loop above) is a brand-new FileRecord built fresh inside
-    # _process_one_file(), with no knowledge of source_archive_by_path at
-    # all. Setting SourceArchive on the placeholder FileRecord built above,
-    # before the pool ran, would just get silently overwritten the moment
-    # that file's real result came back - confirmed the hard way via a real
-    # end-to-end scan against a source folder containing a zip, where every
-    # extracted file's SourceArchive came back blank despite this exact
-    # line existing earlier in the function.
+    # Applied HERE, not when `records` was first built above - each pool
+    # worker's returned result.record is a brand-new FileRecord built fresh
+    # inside _process_one_file(), with no knowledge of
+    # source_archive_by_path. Setting SourceArchive on the placeholder
+    # FileRecord built before the pool ran gets silently overwritten the
+    # moment that file's real result comes back, so it has to be applied
+    # after the fact instead.
     for extracted_path, source_path in source_archive_by_path.items():
         if extracted_path in records:
             records[extracted_path].SourceArchive = source_path
@@ -1257,7 +1209,7 @@ def scan_directory(
     # ================= Draft YARA rule generation (v1.3-proto1) =================
     # Best-effort and gracefully skipped on error - this is the same inner
     # try/except scope the PowerShell version used around just this block
-    # (BinSifter-Rowan_v1.3.0-beta.1.ps1 lines ~3233/3317-3320), separate from
+    # (BinSifter-Rowan.ps1 lines ~3233/3317-3320), separate from
     # the CSV report writing below, which is NOT similarly swallowed.
     records_by_cluster: dict[int, list[FileRecord]] = {}
     for r in record_list:
@@ -1286,7 +1238,7 @@ def scan_directory(
     # a report-write failure (disk full, permissions) was a real
     # scan-ending error in the PowerShell version too (its try/catch sat
     # one level up, around this and the rule-gen block together, but only
-    # rule-gen had its own inner catch - see BinSifter-Rowan_v1.3.0-beta.1.ps1
+    # rule-gen had its own inner catch - see BinSifter-Rowan.ps1
     # lines ~3322-3338 vs. ~3340). Skipped (not raised) only when
     # ReportDirectory itself is blank - same "optional, off by default
     # absence" treatment as every other Config path field.
@@ -1300,13 +1252,12 @@ def scan_directory(
     else:
         logger.info("No ReportDirectory configured - skipping CSV report writing.")
 
-    # ================= Grand-total summary (2026-08-04) =================
+    # ================= Grand-total summary =================
     # Everything above (setup timing, per-file stage timing, pool/clustering
     # wall time) is broken out piece by piece - this is the one line that
     # ties it back to "how long did the WHOLE thing take", plus os.cpu_count()
-    # so a machine-to-machine comparison (e.g. this PC vs. a faster
-    # workstation) doesn't depend on remembering to check Task Manager /
-    # System Info separately - it's just in the log next to everything else.
+    # so a machine-to-machine comparison doesn't require checking Task
+    # Manager / System Info separately.
     total_elapsed = time.perf_counter() - setup_start
     completed_count = sum(1 for r in record_list if r.Status == "Completed")
     error_count = sum(1 for r in record_list if r.Status == "Error")

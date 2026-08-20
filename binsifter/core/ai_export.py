@@ -4,22 +4,17 @@ AI the analyst wants to use: paste the Markdown into a cloud chat interface
 (Claude.ai, ChatGPT, etc.), or feed the JSON to a script hitting a local
 model's API.
 
-Added 2026-08-08, right after the AI-assisted-triage prototype
-(prototype_ollama_triage.py) was concluded NOT viable on real hardware -
-running local inference from inside BinSifter itself caused a full GPU/
-display lockup on the test machine (see TODO.md's "AI-assisted triage
-exploration" section for the full story). This module is the safer
-follow-up: BinSifter NEVER runs or calls out to any AI itself here, cloud
-or local - it only FORMATS data that's already been computed. There is
-zero inference risk, zero network calls, zero new attack surface, because
-this is nothing more than a specialized report writer sitting next to
-report.py.
+This module only FORMATS data that's already been computed - BinSifter
+never runs or calls out to any AI itself here, cloud or local. An earlier
+prototype (prototype_ollama_triage.py) ran local inference in-process and
+caused a GPU/display lockup on the test machine; see TODO.md for that
+history. This is just a specialized report writer sitting next to
+report.py, with zero inference risk and zero network calls.
 
-Reuses the same "only include fields that actually carry signal" design as
-prototype_ollama_triage.py's _compact_row() - empty/zero/False fields are
-dropped rather than padding the output with a wall of "None"/"" noise, and
-long fields (raw capa output in particular) are truncated so a single
-file's export stays a reasonable size to pack into a chat prompt's context.
+Empty/zero/False fields are dropped rather than padding the output with
+"None"/"" noise, and long fields (raw capa output in particular) are
+truncated so a single file's export stays a reasonable size to paste into
+a chat prompt.
 
 Deliberately excludes: Status/Progress/Added (internal scan-state
 bookkeeping, not relevant to an AI trying to reason about intent), raw
@@ -37,10 +32,9 @@ from pathlib import Path
 
 from binsifter.core.models import FileRecord
 
-_TRUNCATE_AT = 4000  # generous vs. prototype_ollama_triage.py's 800 - this
-                      # export is meant to be read by a human or pasted into
-                      # a large-context chat model, not packed alongside 5+
-                      # other files' findings in a single tight API prompt.
+_TRUNCATE_AT = 4000  # generous vs. prototype_ollama_triage.py's 800 - meant
+                      # to be read by a human or pasted into a large-context
+                      # chat model, not packed with 5+ other files' findings.
 
 _DISCLAIMER = (
     "This document contains only automated findings BinSifter already "

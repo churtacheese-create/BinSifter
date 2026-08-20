@@ -1,6 +1,6 @@
 """Import-table hash (imphash) and exact-match clustering.
 
-Port of the C# PeImportHasher class (BinSifter-Rowan_v1.3.0-beta.1.ps1, near
+Port of the C# PeImportHasher class (BinSifter-Rowan.ps1, near
 line 1078's `ComputeImphash`). Uses `pefile`'s built-in get_imphash() -
 pure Python, no external tool - instead of the hand-rolled PE-parsing
 logic the PowerShell version needed.

@@ -68,9 +68,9 @@ from binsifter.gui.widgets import accent_to_css
 # confirmation message) - same order/labels/behavior as $launchTools.
 # CffExplorerExe copies the path to the clipboard instead of passing it as
 # a launch argument because CFF Explorer's command line is reserved for its
-# own Lua scripting engine and silently ignores an arbitrary PE path
-# (confirmed against a real FRED install - see the PowerShell version's own
-# comment at $launchTools's CffExplorerExe entry). X64dbg/X32dbg get a
+# own Lua scripting engine and silently ignores an arbitrary PE path (see
+# the PowerShell version's own comment at $launchTools's CffExplorerExe
+# entry). X64dbg/X32dbg get a
 # confirmation prompt since loading a live sample into a debugger warrants
 # a beat of caution a static viewer like PE Studio doesn't.
 _QUICK_LAUNCH_TOOLS: tuple[tuple[str, str, bool, str | None], ...] = (
@@ -121,11 +121,10 @@ _COLUMNS = (
     ("ExtractedIOCs", "Extracted IOCs", 200),
     ("ReputationStatus", "Reputation", 90),
     ("Error", "Error", 160),
-    # 2026-08-07: blank for a file found directly under SrcDir; the
-    # containing archive's path for a file extracted from one - see
+    # Blank for a file found directly under SrcDir; the containing
+    # archive's path for a file extracted from one - see
     # models.py's FileRecord.SourceArchive / core/archive.py's module
-    # docstring for the "own rows + source-archive column" design that
-    # was confirmed.
+    # docstring for the "own rows + source-archive column" design.
     ("SourceArchive", "Source Archive", 260),
 )
 _DISPOSITION_COL = len(_COLUMNS)
@@ -361,13 +360,10 @@ class ResultsPage(QWidget):
         # Every column (File Path included) is user-resizable by dragging its
         # header border, same as the PowerShell DataGridView's default
         # AllowUserToResizeColumns behavior - File Path used to be locked to
-        # Stretch mode, which silently blocked manual resizing on exactly the
-        # column analysts most need to widen (a real usability regression
-        # from the original, reported directly after trying the
-        # live app). QHeaderView::section's border-right above also gives a
-        # visible seam to grab, since the borderless header style otherwise
-        # left the resize handles undiscoverable even on the columns that
-        # were already Interactive.
+        # Stretch mode, which blocked manual resizing on the column analysts
+        # most need to widen. QHeaderView::section's border-right above also
+        # gives a visible seam to grab, since the borderless header style
+        # otherwise left the resize handles hard to find.
         header = table.horizontalHeader()
         for i in range(table.columnCount()):
             header.setSectionResizeMode(i, QHeaderView.ResizeMode.Interactive)
@@ -593,17 +589,11 @@ class ResultsPage(QWidget):
                     "-overwrite", "-analysisTimeoutPerFile", "300",
                 ]
             )
-            # 2026-08-06: was truly silent on success - Rowan's original is
-            # identical (Start-Process with no follow-up on the happy path,
-            # only MessageBoxes on the error paths above), so this wasn't a
-            # regression from the port, but it was reported directly:
-            # right-clicking and choosing this looked like nothing happened
-            # at all, with no window, message, or hint of where to look.
-            # Headless analysis genuinely can run for minutes with no
-            # further UI feedback by design (it's not tracked/polled), so
-            # this is a one-time "yes, it started" acknowledgment, not a
-            # progress indicator - dismissed immediately, doesn't block
-            # anything.
+            # Headless analysis runs for minutes with no further UI feedback
+            # by design (it's not tracked/polled), so without this a
+            # right-click here looks like nothing happened. This is a
+            # one-time "yes, it started" acknowledgment, not a progress
+            # indicator - dismissed immediately, doesn't block anything.
             QMessageBox.information(
                 self, "BinSifter",
                 f"Ghidra headless analysis started for {Path(target_path).name}.\n\n"
@@ -615,12 +605,10 @@ class ResultsPage(QWidget):
 
     def _export_for_ai_analysis(self, target_path: str) -> None:
         """Writes the Markdown+JSON pair for one file's already-extracted
-        findings, for handing to whatever AI the analyst wants to use -
-        pasting the Markdown into a cloud chat interface, or feeding the
-        JSON to a script hitting a local model's API. No AI is called from
-        here, or anywhere in BinSifter - see core/ai_export.py's module
-        docstring for why that matters (the abandoned local-inference
-        prototype's GPU lockup, documented in TODO.md).
+        findings, for the analyst to hand to whatever AI tool they choose -
+        pasting the Markdown into a chat interface, or feeding the JSON to
+        a script hitting a local model's API. No AI is called from here, or
+        anywhere in BinSifter - see core/ai_export.py's module docstring.
 
         No confirmation dialog needed the way Speakeasy/X64dbg get one -
         this only reads already-in-memory scan results and writes two small
@@ -674,35 +662,19 @@ class ResultsPage(QWidget):
         result via a report popup (Show-ToolReportWindow's role) and share
         the same success/failure signal shapes.
 
-        2026-08-06, round 1: worker.finished/worker.failed connected to
-        plain lambdas with no explicit connection type - PySide6 couldn't
-        auto-detect the cross-thread receiver through a lambda (no QObject
-        to introspect thread affinity from), fell back to a
-        DirectConnection, and everything downstream (thread.wait(),
-        QDialog/QMessageBox construction) ran on the background worker
-        thread instead of the main thread. First attempted fix: add
-        `type=Qt.ConnectionType.QueuedConnection` explicitly to those same
-        lambda .connect() calls.
-
-        2026-08-06, round 2: that first fix did NOT hold - the same
-        identical crash hit again running Sigcheck (which shares this exact
-        method), plus new `QBasicTimer::stop` spam on top. Root cause of
-        the first fix's failure: an explicit connection-type override still
-        needs Qt to resolve a *receiver* to determine which thread's event
-        loop to queue onto - and a lambda still isn't a QObject, so there
-        was never a reliable receiver for PySide6 to hang a queued
-        connection off, override or not. Real fix: stop connecting to
-        lambdas entirely. worker.finished/failed now connect directly to
-        genuine bound methods of `self` (a QWidget that unambiguously lives
-        on the main thread) - this is the one connection shape PySide6's
-        auto-connection-type detection is actually documented to handle
-        correctly, no explicit override needed. Since a single pair of
-        slots now serves every concurrent tool run, `self.sender()` (Qt's
-        standard way to identify which QObject emitted the signal currently
-        being handled) recovers which worker fired, and the worker's own
-        `title` attribute (set below, before the thread ever starts, so no
-        cross-thread write) carries what used to be smuggled through the
-        lambda's closure.
+        worker.finished/failed connect to bound methods of `self`, not
+        lambdas: PySide6's cross-thread auto-connection only reliably
+        resolves the receiver's thread through a bound-method slot, since a
+        lambda isn't a QObject Qt can introspect. Connecting to a lambda
+        instead falls back to a DirectConnection, so thread.wait() and
+        QDialog/QMessageBox construction end up running on the background
+        worker thread rather than the main thread - an explicit
+        QueuedConnection type doesn't fix this either, since Qt still needs
+        a real receiver to resolve the target thread. Since one pair of
+        slots now serves every concurrent tool run, `self.sender()`
+        recovers which worker fired, and the worker's own `title` attribute
+        (set below, before the thread starts) carries what used to be
+        smuggled through the lambda's closure.
         """
         self.setCursor(Qt.CursorShape.WaitCursor)
         thread = QThread(self)

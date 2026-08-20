@@ -20,8 +20,8 @@ smoketest/samples/
 Catalogs/
 
 # Local machine fix script - not project source
-Claude_workspaceFix.ps1
-Claude_workspaceFix_*.log
+*_workspaceFix.ps1
+*_workspaceFix_*.log
 
 # OS junk
 Thumbs.db

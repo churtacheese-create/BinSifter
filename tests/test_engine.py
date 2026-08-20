@@ -204,7 +204,7 @@ def test_nsrl_match_skips_imphash_ssdeep_unknown_file_still_gets_them(tmp_path):
     """2026-08-05 gating fix: a file NSRL already resolved as known-good
     should skip imphash/ssdeep (and YARA/capa/FLOSS) entirely - see
     engine.py's 2026-08-05 comment above the `if not record.NsrlMatch:`
-    block, and BinSifter-Rowan_v1.3.0-beta.1.ps1:2208 for the reference
+    block, and BinSifter-Rowan.ps1:2208 for the reference
     behavior. ssdeep is the cleanest observable signal here: ppdeep
     produces a real fuzzy hash even for tiny non-PE content (confirmed
     directly - '3:fFQEqQqV:tnu' for this exact test corpus's file
@@ -236,7 +236,7 @@ def test_nsrl_match_skips_imphash_ssdeep_unknown_file_still_gets_them(tmp_path):
 def test_capa_not_invoked_without_a_yara_hit(tmp_path):
     """2026-08-05 gating fix: CapaEligible must only ever get computed -
     and capa only ever run - inside a real YARA hit, matching Rowan's
-    nesting (BinSifter-Rowan_v1.3.0-beta.1.ps1:2257-2459, CapaEligible is set
+    nesting (BinSifter-Rowan.ps1:2257-2459, CapaEligible is set
     INSIDE the "if ($yaraText not empty)" branch). No YaraRules are
     configured here, so YaraHitCount stays 0 for every file regardless of
     format - _make_files() writes plain '.bin' files, which file_type.classify()

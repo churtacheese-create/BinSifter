@@ -1,43 +1,22 @@
 """Reusable themed widgets - direct ports of the PowerShell version's
 New-StatTile, nav-button construction, and severity-chart Paint handler
-(BinSifter-Rowan_v1.3.0-beta.1.ps1, lines ~3532-3589 for tiles, ~3675-3749 for
+(BinSifter-Rowan.ps1, lines ~3532-3589 for tiles, ~3675-3749 for
 the chart, ~5018-5062 for nav buttons, ~1549-1562 for the heat-map color
 scale). Coordinates/sizes are copied 1:1 rather than re-derived, and each
-tile/chart is built with fixed child positions (setGeometry), matching the
-original's absolute Location/Size approach - the point of this pass is
-visual fidelity to an existing, approved design, not idiomatic Qt layout
-usage.
+tile/chart uses fixed child positions (setGeometry) to match the original's
+absolute Location/Size approach - the goal is visual fidelity to an
+existing, approved design, not idiomatic Qt layout usage.
 
-2026-08-17: the fixed pixel widths/heights below (copied 1:1 from the
-PowerShell version's own absolute Location/Size values, as noted above) are
-NOT DPI-safe on their own, unlike WinForms - a real report from a display
-scaled above 100% showed dashboard tile and sidebar nav-button text
-"skewed and does not fit." Root cause is specific to how these two
-frameworks differ, not a simple "DPI scaling is broken" bug: WinForms'
-Form.AutoScaleMode = Dpi (see Rowan's own 2026-08-17 fix, added the same
-day, in Show-MainWindow) automatically rescales every child control's
-Location/Size by the runtime/design DPI ratio, so hardcoded pixel values
-there stay proportionally correct at any scale factor with zero extra
-work. Qt has no equivalent auto-rescaling of already-fixed
-setGeometry() calls - Qt's own High-DPI scaling (on by default in Qt6)
-scales rendered fonts and physical pixels together, but a label's fixed
-LOGICAL-pixel box does not grow to match whatever width its font happens
-to need. At clean integer scale factors (100%/200%) this mostly goes
-unnoticed since font and box scale in the same direction; at the
-FRACTIONAL scale factors Windows actually recommends by default on most
-real laptop/high-res displays (125%/150%/175% - the exact range a
-scaled-up display would use), font-metric rounding and logical-pixel
-rounding can diverge just enough to clip or crowd text that fit fine at
-100%. `_ensure_label_fits()` below is the fix: after a label's real font
-and text are both set, it grows (never shrinks below the original design
-width/height, so a 100%-scale render looks identical to before) the
-label's box to whatever QFontMetrics says the CURRENT font+text actually
-needs, with a small margin - correct at any DPI/scale factor, and also
-fixes a second, DPI-unrelated latent bug the same way: StatTile's numeric
-value label was sized to fit a couple of digits ("0"-"999"), so a tile
-showing a much larger real scan count (e.g. "12,483") could already have
-clipped even at 100% scaling - set_value() now re-fits the label to its
-new text on every update, not just once at construction.
+DPI note: unlike WinForms (Form.AutoScaleMode = Dpi), Qt does not
+auto-rescale a widget's fixed setGeometry() box to match its font at
+fractional scale factors (125%/150%/175%, which Windows recommends by
+default on most high-res displays), so hardcoded pixel labels can clip or
+crowd text on scaled displays even though 100%/200% look fine.
+`_ensure_label_fits()` below fixes this by growing (never shrinking) a
+label's box to fit its actual font+text after setFont()/setText() are
+applied. It also fixes a second, DPI-unrelated bug: StatTile's value label
+was sized for a couple of digits, so large scan counts (e.g. "12,483")
+could clip even at 100% scale - set_value() now re-fits on every update.
 """
 
 from __future__ import annotations
@@ -53,14 +32,13 @@ from binsifter.gui.theme import ThemePalette
 
 
 def _ensure_label_fits(label: QLabel, h_pad: int = 6, v_pad: int = 2) -> None:
-    """Grows (never shrinks) `label`'s current geometry so its actual
-    current font+text always fits, with a small margin. Call after both
-    setFont() and setText() (or setGeometry(), for the original design
-    width/height to use as a floor) have already been applied - see this
-    module's 2026-08-17 docstring note for why this is needed at all
-    (Qt, unlike WinForms, doesn't auto-rescale fixed pixel geometries for
-    DPI, and this also covers dynamic text like StatTile's value label
-    outgrowing its original design width regardless of DPI).
+    """Grows (never shrinks) `label`'s geometry so its current font+text
+    fits, with a small margin. Call after setFont()/setText() (and
+    setGeometry(), which establishes the design-size floor). See this
+    module's docstring for why: Qt doesn't auto-rescale fixed pixel
+    geometries for DPI the way WinForms does, and dynamic text (e.g.
+    StatTile's value label) can also outgrow its original design width
+    regardless of DPI.
     """
     metrics = QFontMetrics(label.font())
     needed_width = metrics.horizontalAdvance(label.text()) + h_pad
@@ -168,10 +146,8 @@ class StatTile(QFrame):
 
     def set_value(self, value: object) -> None:
         self._value_label.setText(str(value))
-        # Re-fit on every update, not just at construction - a growing scan
-        # count (e.g. "12,483") can need more room than the original design
-        # width/height, same reasoning as the DPI case this function was
-        # added for, just triggered by content instead of scale factor.
+        # Re-fit on every update - a growing scan count (e.g. "12,483") can
+        # need more room than the original design size.
         _ensure_label_fits(self._value_label)
 
     def set_value_color(self, color: QColor) -> None:

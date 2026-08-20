@@ -1,10 +1,9 @@
-"""Antivirus product detection - added 2026-08-08 as a follow-up to
-defender.py's exclusion button, after the observation that Windows Defender
-is only one of many antivirus products an analyst's machine might be
-running. The existing exclusion button only ever helps if Defender is the
-active product; this module answers the "which AV is actually installed
-here" question first, so Settings can point the analyst at the right place
-even when it isn't Defender.
+"""Antivirus product detection - a follow-up to defender.py's exclusion
+button, since Windows Defender is only one of many antivirus products an
+analyst's machine might be running. The existing exclusion button only
+ever helps if Defender is the active product; this module answers the
+"which AV is actually installed here" question first, so Settings can
+point the analyst at the right place even when it isn't Defender.
 
 Uses the same real-world mechanism Windows' own Security app is built on:
 the `root/SecurityCenter2` WMI namespace's `AntiVirusProduct` class, which
@@ -38,7 +37,7 @@ self-exclusion by design, since letting a local process silently exempt
 itself from EDR scanning is exactly the kind of thing EDR exists to
 prevent. `guidance_for()` instead returns a short, honest pointer to where
 that vendor's own exclusion settings usually live, verified against each
-vendor's own current documentation rather than assumed from memory.
+vendor's own current documentation.
 """
 
 from __future__ import annotations

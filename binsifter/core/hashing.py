@@ -1,7 +1,7 @@
 """Hashing and Shannon entropy - the one pass every scanned file goes
 through regardless of what else is configured.
 
-Port of the C# hashing/entropy code embedded in BinSifter-Rowan_v1.3.0-beta.1.ps1
+Port of the C# hashing/entropy code embedded in BinSifter-Rowan.ps1
 (BinSifter.EntropyAnalyzer + the streaming MD5/SHA-1 read loop). Real,
 working implementation - unlike the tool-integration stubs elsewhere in
 core/, this has no external dependency and no ambiguous library API to get
@@ -33,9 +33,8 @@ def hash_and_score_file(path: str) -> HashResult:
     once the file is already being read for SHA-1/MD5").
 
     Byte-frequency counting uses Counter.update(chunk) instead of a manual
-    `for b in chunk: byte_counts[b] += 1` Python-level loop - the latter was
-    confirmed (2026-08-03, profiling a slow real-world scan) to be a
-    meaningful, entirely avoidable cost paid on EVERY file regardless of
+    `for b in chunk: byte_counts[b] += 1` Python-level loop - the latter is
+    a meaningful, entirely avoidable cost paid on EVERY file regardless of
     config, since this is the one stage every file goes through
     unconditionally. Counter.update() on a bytes object hits CPython's
     C-accelerated _count_elements path (collections/__init__.py imports it

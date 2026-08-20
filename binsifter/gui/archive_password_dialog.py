@@ -3,9 +3,9 @@ per scan, when core/archive.py's pass 1 (expand_archives(), called from
 engine.py's scan_directory()) finds one or more password-protected
 archives under SrcDir.
 
-Per the confirmed design (2026-08-06/07, via AskUserQuestion): ALL
-locked archives found are prompted for at once, in a single batch dialog,
-rather than interrupting the scan once per archive. See main_window.py's
+By design, all locked archives found are prompted for at once, in a
+single batch dialog, rather than interrupting the scan once per archive.
+See main_window.py's
 _ScanWorker.password_needed signal / MainWindow._on_password_needed() for
 how this gets shown safely from the scan's background QThread - Qt dialogs
 can only be shown on the GUI thread, so the worker thread blocks on a
@@ -52,15 +52,12 @@ class ArchivePasswordDialog(QDialog):
         intro.setStyleSheet(f"color: {accent_to_css(theme.Fore)}; border: none; background: transparent;")
         root.addWidget(intro)
 
-        # 2026-08-08, added after confirming the batch-prompt
-        # flow works end-to-end: when a batch of archives (e.g. a Malware
-        # Bazaar download) all share one password, typing it once here is
-        # faster than filling in the same value per-row below. Deliberately
-        # simple semantics, matching what was asked for rather than
-        # inventing a fussier merge rule: an archive's OWN field below wins
-        # if filled in (lets an analyst override one oddball archive out of
-        # a shared-password batch without clearing this field first);
-        # otherwise this shared value is used. See password_map().
+        # When a batch of archives (e.g. a Malware Bazaar download) all
+        # share one password, typing it once here is faster than filling in
+        # the same value per row below. An archive's own field wins if
+        # filled in (lets an analyst override one oddball archive without
+        # clearing this field); otherwise this shared value is used. See
+        # password_map().
         shared_label = QLabel("Shared password (optional) - used for any archive left blank below:")
         shared_label.setStyleSheet(f"color: {accent_to_css(theme.Fore)}; border: none; background: transparent;")
         root.addWidget(shared_label)
@@ -118,9 +115,8 @@ class ArchivePasswordDialog(QDialog):
     def password_map(self) -> dict[str, str]:
         """Whatever's currently in each field, non-blank entries only - an
         archive's own field wins if filled in; otherwise falls back to the
-        shared password field (2026-08-08), if that's filled in either.
-        An archive with neither stays unresolved, same as before this
-        field existed."""
+        shared password field, if that's filled in either. An archive with
+        neither stays unresolved."""
         shared = self._shared_field.text()
         result: dict[str, str] = {}
         for path, field in self._fields.items():

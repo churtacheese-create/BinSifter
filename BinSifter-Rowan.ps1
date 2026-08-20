@@ -61,8 +61,7 @@ function Show-MainWindow {
         [bool]$IsDarkMode,
         [string]$LogoHorizontalPath,
         [string]$WindowIconPath,
-        [int]$ThrottleLimit,
-        [string]$AppVersion
+        [int]$ThrottleLimit
     )
 
     $runspace = New-STARunspace
@@ -70,28 +69,21 @@ function Show-MainWindow {
     $runspace.SessionStateProxy.SetVariable('LogoHorizontalPath', $LogoHorizontalPath)
     $runspace.SessionStateProxy.SetVariable('WindowIconPath', $WindowIconPath)
     $runspace.SessionStateProxy.SetVariable('ThrottleLimit', $ThrottleLimit)
-    $runspace.SessionStateProxy.SetVariable('AppVersion', $AppVersion)
 
     $ps = [System.Management.Automation.PowerShell]::Create()
     $ps.Runspace = $runspace
     $null = $ps.AddScript({
         Add-Type -AssemblyName System.Windows.Forms
         Add-Type -AssemblyName System.Drawing
-        # 2026-08-17: real report from a display scaled above 100% - every
-        # tile/nav-button label in this app is positioned with a hardcoded
-        # pixel Location/Size (see the New-StatTile/nav-button construction
-        # further down, and widgets.py's matching 2026-08-17 comment on the
-        # Winnow side for the fuller explanation of why fixed pixel geometry
-        # and DPI scaling don't mix well by default). WinForms has a real,
-        # simple, built-in fix for exactly this: SetHighDpiMode(PerMonitorV2)
-        # tells WinForms the app understands per-monitor DPI, which then
-        # makes Form.AutoScaleMode = Dpi (set on $form itself, below, where
-        # it's created) automatically rescale every already-positioned child
-        # control's Location/Size by the actual runtime-vs-design DPI ratio -
-        # no per-control code changes needed anywhere else in this file.
-        # Must be called before EnableVisualStyles() or any Form/control is
-        # created - Microsoft's own documented requirement, not incidental
-        # ordering; calling it any later is a documented no-op.
+        # Every tile/nav-button label uses a hardcoded pixel Location/Size (see
+        # the New-StatTile/nav-button construction further down), which breaks
+        # on displays scaled above 100% unless WinForms knows the app is
+        # per-monitor DPI aware. SetHighDpiMode(PerMonitorV2) plus
+        # Form.AutoScaleMode = Dpi (set on $form below) then rescales every
+        # already-positioned control's Location/Size by the runtime-vs-design
+        # DPI ratio automatically, with no per-control changes needed. Must be
+        # called before EnableVisualStyles() or any Form/control is created -
+        # Microsoft's documented requirement; calling it later is a no-op.
         [void][System.Windows.Forms.Application]::SetHighDpiMode([System.Windows.Forms.HighDpiMode]::PerMonitorV2)
         [System.Windows.Forms.Application]::EnableVisualStyles()
 
@@ -103,46 +95,27 @@ function Show-MainWindow {
         # process (dispatcher, worker pool) shares the same loaded types after that.
         # Guarded so re-running this script in an already-loaded pwsh session (e.g.
         # from an IDE that reuses the terminal) doesn't fail with "type already exists".
-        # IMPORTANT: this must check a type that's unique to the CURRENT version's
-        # Add-Type block, not just any BinSifter.* type - checking a type that also
-        # existed in an older version means this guard sees it, assumes the newer
-        # types exist too, and silently skips recompiling them. (This exact bug
-        # broke YARA/CAPA in v1.2.1 when the guard checked NsrlLoader, which
-        # predated it.) When adding new types in a future version, update this
-        # check to reference one of them.
+        # IMPORTANT: the guard must check a type unique to the current Add-Type
+        # block, not just any BinSifter.* type - checking a type that also existed
+        # in an older version means the guard sees it, assumes the newer types
+        # exist too, and silently skips recompiling them (this broke YARA/CAPA in
+        # an earlier release when the guard checked NsrlLoader, which predated the
+        # newer types). When adding new types, update this check to reference one.
         #
-        # 2026-08-17: -ErrorAction Stop plus an explicit try/catch added around
-        # the whole Add-Type call, after a real FLARE VM install let a scan
-        # start, run for zero seconds, and die with "Unable to find type
-        # [BinSifter.NsrlLoader]" - a type this SAME Add-Type call defines,
-        # with no compile error ever shown anywhere. Root cause: this entire
+        # -ErrorAction Stop plus the try/catch below matter because this
         # scriptblock runs inside the dedicated STA runspace New-STARunspace()
-        # creates above, which starts from a fresh
-        # InitialSessionState.CreateDefault() - it does NOT inherit
-        # $ErrorActionPreference = 'Stop' from the outer script's scope (only
-        # variables explicitly passed via SessionStateProxy.SetVariable() cross
-        # that boundary, and this isn't one of them). Inside this runspace,
-        # $ErrorActionPreference silently defaults back to PowerShell's own
-        # 'Continue' - so if Add-Type ever hits a genuine C# compile error here
-        # (a bad reference, a language feature the older .NET Core 3.1 runtime
-        # this same FLARE VM was already found running doesn't support, or
-        # anything else), it was ALWAYS just a non-terminating warning: nothing
-        # stopped execution, the rest of this scriptblock kept running straight
-        # through to the main window and Settings page (both fully functional,
-        # matching exactly what was seen), and the actual compiler diagnostic
-        # only ever reached $ps.Streams.Error, at the very bottom of this
-        # function - which only gets read out (via a bare Write-Warning, not
-        # even a visible dialog) AFTER Application]::Run($form) RETURNS, i.e.
-        # after the user closes the whole app. The only place this failure
-        # could ever have surfaced before now was hours later, as a completely
-        # unrelated-looking "type not found" error the first time anything
-        # actually tried to USE one of the types that silently failed to
-        # compile - exactly the report this fixes. -ErrorAction Stop makes a
-        # real compile failure terminate right here regardless of the
-        # runspace's ambient preference, and the catch below shows it
-        # immediately, in a real dialog, with the actual compiler diagnostic
-        # attached - turning an untraceable downstream symptom into an
-        # instant, actionable error naming the real problem.
+        # creates above, which starts from a fresh InitialSessionState.CreateDefault()
+        # and does not inherit $ErrorActionPreference = 'Stop' from the outer
+        # script (only variables explicitly passed via SessionStateProxy.SetVariable()
+        # cross that boundary). Without -ErrorAction Stop, a genuine C# compile
+        # error here is only a non-terminating warning: the rest of the
+        # scriptblock keeps running, the app opens looking fully functional, and
+        # the actual compiler diagnostic only reaches $ps.Streams.Error - surfaced
+        # via a bare Write-Warning after Application::Run($form) returns, i.e.
+        # after the user closes the app. The only symptom before that point is an
+        # unrelated-looking "type not found" error the first time something tries
+        # to use a type that failed to compile. Stopping here surfaces the real
+        # compiler diagnostic immediately, in a dialog, at the point of failure.
         if (-not ('BinSifter.ImphashClusterer' -as [type])) {
         try {
         Add-Type -Language CSharp -ErrorAction Stop -TypeDefinition @'
@@ -331,7 +304,7 @@ namespace BinSifter
         public string CapaShellcodeFormat;
         // Worst-case (highest) severity across every YARA rule that matched this
         // file. "Unknown" means no matched rule carried a recognizable severity
-        // field - deliberately not guessed. YaraSeverityScore is the normalized
+        // field. YaraSeverityScore is the normalized
         // 0-100 value behind the bucket, or -1 when the bucket came from a plain
         // word (e.g. tc_policy_severity) rather than a number.
         public string YaraSeverity = "Unknown";
@@ -372,7 +345,7 @@ namespace BinSifter
         // family from run to run.
         public bool SsdeepPreviouslySeen;
 
-        // ===== v1.3-proto1 fields =====
+        // ===== Packer/compiler ID, imphash, signature, IOC, reputation, disposition =====
 
         // DIE (Detect It Easy) console-mode packer/compiler detection. Empty
         // string = DIE wasn't run on this file (not in the gated subset, or no
@@ -424,23 +397,21 @@ namespace BinSifter
         // re-opening a case or re-scanning the same files keeps prior calls.
         public string Disposition = "Untriaged";
 
-        // ===== Archive/compressed-file support (2026-08-07) =====
+        // ===== Archive/compressed-file support =====
 
         // "" (the default) = this file was found directly under SrcDir, not
         // extracted from an archive. Non-empty = the path of the archive this
-        // file was extracted from - the immediate CONTAINING archive if
+        // file was extracted from - the immediate containing archive if
         // archives are nested (a zip inside a zip), not necessarily the
         // top-level one under SrcDir. Set once, at record-creation time in
         // Start-ScanEngine's dispatcher, before the record is ever handed to a
-        // worker - safe to do that early here (unlike Winnow's Python port,
-        // where the equivalent field had to be re-applied AFTER the
-        // multiprocessing pool finished, see core/archive.py's module
-        // docstring): PowerShell runspaces share one process's memory, so
-        // every worker mutates this SAME FileRecord object in place
-        // ($FileRecords[$FilePath] in the worker script block) rather than
-        // building and returning a separate copy the way a spawned Python
-        // worker PROCESS has to - there's no "results come back and clobber
-        // the placeholder" step to guard against here.
+        // worker. Safe to set that early because PowerShell runspaces share
+        // one process's memory, so every worker mutates this same FileRecord
+        // object in place ($FileRecords[$FilePath]) rather than returning a
+        // separate copy the way a spawned worker process would have to
+        // (unlike Winnow's Python port, where the equivalent field has to be
+        // re-applied after the multiprocessing pool finishes - see
+        // core/archive.py's module docstring).
         public string SourceArchive = "";
     }
 
@@ -1391,12 +1362,10 @@ namespace BinSifter
 '@
         }
         catch {
-            # See the 2026-08-17 comment above this try block for the full
-            # story - this is the dialog that failure used to reach nobody
-            # until a scan tried to use one of these types hours later.
-            # $_.Exception.Message for an Add-Type compile failure already
-            # includes the underlying CompilerErrorCollection's own
-            # file/line/message detail (PowerShell formats it in, it isn't
+            # See the comment above this try block for why -ErrorAction Stop
+            # matters here. $_.Exception.Message for an Add-Type compile
+            # failure already includes the underlying CompilerErrorCollection's
+            # own file/line/message detail (PowerShell formats it in, it isn't
             # just a generic wrapper message), so no extra parsing is needed
             # to make this actionable.
             [System.Windows.Forms.MessageBox]::Show(
@@ -1670,53 +1639,29 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             return $box
         }
 
-        # v1.3.0-alpha.2: on-demand "deep analysis" launcher helpers for the
-        # Results-grid context menu (Sigcheck / Ghidra / x64dbg / x32dbg /
         # Adds $Path to Windows Defender's scan-exclusion list, prompting for
-        # UAC elevation via a separate elevated process - added 2026-08-08
-        # after a real scan against live Malware Bazaar samples showed
-        # Defender's real-time protection racing BinSifter's own extraction/
-        # scan pipeline: files got quarantined between extraction and
-        # BinSifter reading them (see TODO.md's archive-support entries;
-        # Winnow hit the equivalent OSError, this is the same underlying
-        # problem). Mirrors binsifter/core/defender.py's Winnow
-        # implementation - same design, same reasoning - just native
-        # PowerShell here since Rowan already runs inside a PowerShell
-        # process and doesn't need to shell out to get one.
+        # UAC elevation via a separate elevated process. Defender's
+        # real-time protection can race BinSifter's own extraction/scan
+        # pipeline, quarantining files between extraction and BinSifter
+        # reading them (see TODO.md's archive-support entries; Winnow hits
+        # the equivalent OSError). Mirrors binsifter/core/defender.py's
+        # Winnow implementation, just native PowerShell here since Rowan
+        # already runs inside a PowerShell process.
         #
         # Deliberately opt-in only, never called from the scan pipeline
         # itself - see the Settings page's
         # $settings.BtnAddDefenderExclusion.Add_Click handler for the
         # confirmation-dialog-gated call site. BinSifter's own process never
         # gains admin rights - Process.Start() with Verb='runas' launches a
-        # SEPARATE elevated powershell.exe, which is what Windows' UAC
+        # separate elevated powershell.exe, which is what Windows' UAC
         # prompt actually elevates.
         #
-        # 2026-08-08: moved here from top-level scope (originally defined
-        # right after Test-SystemDarkMode, before Show-MainWindow even
-        # starts) while adding the AV-detection feature below and re-
-        # checking how the Settings page's click handlers actually reach
-        # their helper functions. Top-level functions only run in the
-        # DEFAULT runspace (the one executing this script's own bootstrap
-        # code at the bottom of the file); everything the Settings page
-        # itself calls - this function included - runs inside
-        # Show-MainWindow's $ps.AddScript({...}) block, which executes on a
-        # SEPARATE runspace (see New-STARunspace above) with its own
-        # independent function table. A function defined at top-level is
-        # simply not visible from inside that separate runspace - calling
-        # it from there fails at runtime with "the term ... is not
-        # recognized," the same way it would if the function didn't exist
-        # at all. Every other helper the Settings/Results pages actually
-        # call (Invoke-CapturedTool, Show-ToolReportWindow, the AI-export
-        # functions above) was already correctly defined in here, inside
-        # this same nested scope - this one function had been the sole
-        # exception, almost certainly because it was written before the
-        # runspace split existed in its current form and never re-checked
-        # against it. Not confirmed failing on a real machine (no pwsh in
-        # this dev sandbox to prove it either way), but the scoping
-        # violation itself is unambiguous, so moved here defensively rather
-        # than left as a live risk for the next real Defender-exclusion
-        # test.
+        # Defined here, inside Show-MainWindow's nested scriptblock, rather
+        # than at top-level: that scriptblock runs in its own runspace (see
+        # New-STARunspace) with an independent function table, so a
+        # top-level function isn't visible to code the Settings/Results
+        # pages call from in here - it would fail at runtime with "the term
+        # ... is not recognized."
         function Add-DefenderExclusionPath {
             param([Parameter(Mandatory)][string]$Path)
 
@@ -1762,24 +1707,20 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             }
         }
 
-        # Antivirus product detection (2026-08-08) - the Defender exclusion
-        # button above only ever helps if Defender is the machine's active
-        # antivirus product. This reads whatever's actually registered with
-        # Windows Security via the same root/SecurityCenter2 WMI class
-        # Windows' own Security app is built on (every AV product,
-        # Defender included, publishes itself there - not a BinSifter
-        # invention), so Settings can point the analyst at the right place
-        # even when it isn't Defender. Mirrors binsifter/core/av_detect.py's
-        # Winnow implementation field-for-field (same WMI class, same
-        # vendor-guidance table, same "empty result isn't an error" and
-        # "SecurityCenter2 doesn't exist on Windows Server" caveats) - see
-        # that module's docstring for the fuller rationale, including why
-        # this deliberately does NOT try to script an exclusion for
-        # anything but Defender (most vendors have no stable local CLI for
-        # it, and centrally-managed EDR products block local self-exclusion
-        # by design).
+        # Antivirus product detection - the Defender exclusion button above
+        # only helps if Defender is the machine's active antivirus product.
+        # This reads whatever's registered with Windows Security via the
+        # same root/SecurityCenter2 WMI class the Security app itself is
+        # built on (every AV product publishes itself there), so Settings
+        # can point the analyst at the right place even when it isn't
+        # Defender. Mirrors binsifter/core/av_detect.py's Winnow
+        # implementation (same WMI class, same vendor-guidance table).
+        # Deliberately does not try to script an exclusion for anything but
+        # Defender - most vendors have no stable local CLI for it, and
+        # centrally-managed EDR products block local self-exclusion by
+        # design.
         #
-        # Reading this WMI class does NOT require Administrator rights, on
+        # Reading this WMI class does not require Administrator rights, on
         # any supported Windows version - unlike Add-DefenderExclusionPath
         # above, no elevation/UAC flow is needed here at all.
         $script:AvVendorGuidance = [ordered]@{
@@ -1830,16 +1771,15 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             return @($names | Where-Object { $_ } | Select-Object -Unique)
         }
 
-        # Ported selectively from proto2 for Sigcheck/Speakeasy). Unlike the
-        # scan-pool's own Invoke-ExternalTool (defined inside the worker/
-        # dispatcher scriptblocks and not reachable from the UI thread),
-        # this copy runs on the UI thread itself for single-file, analyst-
-        # initiated actions. Kept deliberately synchronous (same tradeoff
-        # proto2 made) rather than adding a second async/timer-poll pattern
-        # alongside the scan engine's - bounded by TimeoutSeconds and paired
-        # with a wait cursor so it reads as "busy," not "hung." Only
-        # Sigcheck and Speakeasy call this; Ghidra and x64dbg/x32dbg are
-        # fire-and-forget launches with no output to capture.
+        # Runs an external tool and captures its output, for single-file,
+        # analyst-initiated actions on the UI thread (Sigcheck, Speakeasy).
+        # Unlike the scan pool's own Invoke-ExternalTool (defined inside the
+        # worker/dispatcher scriptblocks, not reachable from the UI thread),
+        # this copy runs synchronously, bounded by TimeoutSeconds and paired
+        # with a wait cursor so it reads as "busy," not "hung," rather than
+        # adding a second async/timer-poll pattern alongside the scan
+        # engine's. Ghidra and x64dbg/x32dbg are fire-and-forget launches
+        # with no output to capture, so they don't go through this.
         function Invoke-CapturedTool {
             param(
                 [string]$Path,
@@ -1908,22 +1848,21 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             $reportForm.Text = $Title
             $reportForm.Width = 860
             $reportForm.Height = 620
-            $reportForm.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi  # doesn't do the real scaling - see the main $form's 2026-08-19 Add_Shown comment
+            $reportForm.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi  # doesn't do the real scaling - see the main $form's Add_Shown comment
             $reportForm.AutoScaleDimensions = New-Object System.Drawing.SizeF(96, 96)  # harmless, kept for DPI-aware font metrics only
             $reportForm.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterParent
             $reportForm.BackColor = $theme.WindowBack
-            # Same evidence-based manual-Scale() fix as the main $form's
-            # Add_Shown (see its 2026-08-19 comment) - this window's own
-            # 860x620 size is a hardcoded 96-DPI value too.
+            # Same manual-Scale() fix as the main $form's Add_Shown (see its
+            # comment) - this window's own 860x620 size is a hardcoded
+            # 96-DPI value too.
             $reportForm.Add_Shown({
                 $liveDpi = $reportForm.DeviceDpi
                 if ($liveDpi -ne 96) {
                     $dpiRatio = $liveDpi / 96.0
                     $reportForm.Scale((New-Object System.Drawing.SizeF($dpiRatio, $dpiRatio)))
-                    # Same Size-vs-screen clamp as the main $form's Add_Shown
-                    # (2026-08-19 round 2 comment there has the full story) -
-                    # this window has no MinimumSize set so it can't get
-                    # permanently "stuck" too large the way the main window
+                    # Same Size-vs-screen clamp as the main $form's Add_Shown.
+                    # This window has no MinimumSize set so it can't get
+                    # permanently stuck too large the way the main window
                     # did, but a scaled 860x620 (-> ~1505x1085 at 175%) can
                     # still open partly off-screen on a smaller monitor.
                     $screenArea = [System.Windows.Forms.Screen]::FromControl($reportForm).WorkingArea
@@ -1959,19 +1898,19 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             $reportForm.Dispose()
         }
 
-        # AI-ready export (2026-08-08) - formats one file's already-extracted
-        # BinSifter findings into a compact Markdown document and a matching
-        # JSON object, for handing to whatever AI the analyst wants to use:
-        # paste the Markdown into a cloud chat interface, or feed the JSON to
-        # a script hitting a local model's API. Ported from Winnow's
+        # AI-ready export - formats one file's already-extracted BinSifter
+        # findings into a compact Markdown document and a matching JSON
+        # object, for handing to whatever AI the analyst wants to use: paste
+        # the Markdown into a cloud chat interface, or feed the JSON to a
+        # script hitting a local model's API. Ported from Winnow's
         # core/ai_export.py, kept in lockstep field-for-field and
         # section-for-section so an export of the same file looks the same
-        # regardless of which variant produced it - see that module's
-        # docstring for the full rationale (this exists as the safer
-        # follow-up after the local-inference prototype's GPU/display lockup,
-        # documented in TODO.md's "AI-assisted triage exploration" section).
-        # BinSifter never runs or calls out to any AI here, cloud or local -
-        # this only formats data that's already been computed.
+        # regardless of which variant produced it (see that module's
+        # docstring; this exists as the safer follow-up after the
+        # local-inference prototype's GPU/display lockup - see TODO.md's
+        # "AI-assisted triage exploration" section). BinSifter never runs or
+        # calls out to any AI here, cloud or local - this only formats data
+        # that's already been computed.
         $AiExportTruncateAt = 4000
         $AiExportDisclaimer = 'This document contains only automated findings BinSifter already extracted for this file - no AI analysis has been run on it. Any conclusions an AI draws from the data below are a hypothesis for further investigation, not a detection.'
 
@@ -2087,19 +2026,18 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             $lines.Add("**Path:** ``$($data['Path'])``")
 
             $hashBits = [System.Collections.Generic.List[string]]::new()
-            # NOTE: no leading comma before the first @('MD5','MD5') here, unlike
-            # the multi-line "-Rows @( , @(...) , @(...) )" pattern used elsewhere
-            # in this file. Those work BECAUSE each row is its own newline-
-            # separated statement in a script block, where a leading `,` per
-            # statement is needed to stop @()'s pipeline-style collection from
-            # auto-unrolling that row's 2 elements. This is a single-line,
-            # already comma-joined list - not a multi-statement block - so
-            # there's no such auto-unroll to cancel out. Adding a leading comma
-            # here instead double-wraps only the first item (@(@('MD5','MD5'))),
-            # so $pair[1] silently returns $null on the first iteration -> the
-            # OrderedDictionary's $data.Contains($null) throws "Value cannot be
-            # null. (Parameter 'key')". Confirmed by tracing the real error
-            # message from a live AI-export run (2026-08-10).
+            # NOTE: no leading comma before the first @('MD5','MD5') here,
+            # unlike the multi-line "-Rows @( , @(...) , @(...) )" pattern
+            # used elsewhere in this file. Those need a leading `,` per row
+            # because each row is its own newline-separated statement in a
+            # script block, where @()'s pipeline-style collection would
+            # otherwise auto-unroll that row's 2 elements. This is a
+            # single-line, already comma-joined list - not a multi-statement
+            # block - so there's no such auto-unroll to cancel out. A leading
+            # comma here instead double-wraps only the first item
+            # (@(@('MD5','MD5'))), so $pair[1] silently returns $null on the
+            # first iteration and $data.Contains($null) throws "Value cannot
+            # be null. (Parameter 'key')".
             foreach ($pair in @(@('MD5', 'MD5'), @('SHA1', 'SHA1'), @('ssdeep', 'SSDEEP'))) {
                 if ($data.Contains($pair[1]) -and $data[$pair[1]]) {
                     $hashBits.Add("$($pair[0]) ``$($data[$pair[1]])``")
@@ -2207,21 +2145,10 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                 [BinSifter.FileRecord]$Record,
                 [string]$OutputDir
             )
-            # 2026-08-10: two real bugs already found and fixed in this feature
-            # this same day (a leading-comma array-construction bug in the
-            # Markdown hash-summary line, and a bare-parens if/else-as-operand
-            # bug in the draft-YARA-rule code elsewhere in this file, both
-            # never exercised until a prior bug ahead of them got fixed first -
-            # see TODO.md's "Second real Rowan installer test" section). A
-            # THIRD "You cannot call a method on a null-valued expression"
-            # error surfaced immediately after fixing the first one here, and
-            # couldn't be pinned to a specific line via read-through alone
-            # (every instance-method call in this function and its callees
-            # was checked against every FileRecord field that can legitimately
-            # be null - none were unguarded) - this dev sandbox still has no
-            # `pwsh` to reproduce and step through it directly. Stage-labeled
-            # try/catch here narrows down WHICH step throws on the next real
-            # attempt, rather than guessing a third time.
+            # Stage-labeled try/catch so a failure here (e.g. a "You cannot
+            # call a method on a null-valued expression" from an unexpected
+            # null FileRecord field) names which step threw instead of just
+            # the generic exception message.
             $stage = 'preparing output directory'
             try {
                 if (-not (Test-Path -LiteralPath $OutputDir -PathType Container)) {
@@ -2252,14 +2179,13 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             }
         }
 
-        # Batch password-prompt dialog for archive expansion (2026-08-07) - shown
-        # at most once per scan, when Expand-Archives' pass 1 (see
-        # Start-ScanEngine's "Archive expansion" section) finds one or more
-        # password-protected archives under SrcDir. Direct port of Winnow's
-        # ArchivePasswordDialog: ALL locked archives are prompted for at once, in
-        # a single dialog, rather than interrupting the scan once per archive -
-        # the confirmed design (2026-08-06/07, via AskUserQuestion). Called
-        # from $refreshTimer.Add_Tick on the UI thread (see below), not directly
+        # Batch password-prompt dialog for archive expansion - shown at most
+        # once per scan, when Expand-Archives' pass 1 (see Start-ScanEngine's
+        # "Archive expansion" section) finds one or more password-protected
+        # archives under SrcDir. Direct port of Winnow's ArchivePasswordDialog:
+        # all locked archives are prompted for at once, in a single dialog,
+        # rather than interrupting the scan once per archive. Called from
+        # $refreshTimer.Add_Tick on the UI thread (see below), not directly
         # from the dispatcher's background runspace - WinForms modal dialogs have
         # to run on the thread that owns the message pump, same reason
         # Show-ToolReportWindow above is only ever called from a UI-thread event
@@ -2279,27 +2205,25 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             $dialog.Text = 'BinSifter - Password-Protected Archives'
             $dialog.Width = 640
             $dialog.Height = 540
-            $dialog.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi  # doesn't do the real scaling - see the main $form's 2026-08-19 Add_Shown comment
+            $dialog.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi  # doesn't do the real scaling - see the main $form's Add_Shown comment
             $dialog.AutoScaleDimensions = New-Object System.Drawing.SizeF(96, 96)  # harmless, kept for DPI-aware font metrics only
             $dialog.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterParent
             $dialog.BackColor = $theme.WindowBack
             $dialog.ForeColor = $theme.Fore
             $dialog.MinimizeBox = $false
             $dialog.MaximizeBox = $false
-            # Same evidence-based manual-Scale() fix as the main $form's
-            # Add_Shown (see its 2026-08-19 comment) - every row below is
-            # positioned with hardcoded Location values at 96 DPI, so this
-            # dialog is exactly the kind of Location-based layout the
-            # truncation bug hits hardest.
+            # Same manual-Scale() fix as the main $form's Add_Shown (see its
+            # comment) - every row below is positioned with hardcoded
+            # Location values at 96 DPI, so this dialog is exactly the kind
+            # of Location-based layout the truncation bug hits hardest.
             $dialog.Add_Shown({
                 $liveDpi = $dialog.DeviceDpi
                 if ($liveDpi -ne 96) {
                     $dpiRatio = $liveDpi / 96.0
                     $dialog.Scale((New-Object System.Drawing.SizeF($dpiRatio, $dpiRatio)))
-                    # Same Size-vs-screen clamp as the main $form's Add_Shown
-                    # (2026-08-19 round 2 comment there has the full story) -
-                    # this dialog has no MinimumSize set so it can't get
-                    # permanently "stuck" too large the way the main window
+                    # Same Size-vs-screen clamp as the main $form's Add_Shown.
+                    # This dialog has no MinimumSize set so it can't get
+                    # permanently stuck too large the way the main window
                     # did, but a scaled 640x540 (-> ~1120x945 at 175%) can
                     # still open partly off-screen on a smaller monitor.
                     $screenArea = [System.Windows.Forms.Screen]::FromControl($dialog).WorkingArea
@@ -2337,12 +2261,10 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             $introLabel.ForeColor = $theme.Fore
             $dialog.Controls.Add($introLabel)
 
-            # 2026-08-08, added after confirming the batch-
-            # prompt flow works end-to-end: when a batch of archives (e.g.
-            # a Malware Bazaar download) all share one password, typing it
-            # once here beats filling in the same value per-row below.
-            # Deliberately simple semantics matching what was asked for:
-            # an archive's OWN field below wins if filled in (lets an
+            # When a batch of archives (e.g. a Malware Bazaar download) all
+            # share one password, typing it once here beats filling in the
+            # same value per-row below. Deliberately simple semantics: an
+            # archive's own field below wins if filled in (lets an
             # analyst override one oddball archive out of an otherwise-
             # shared-password batch without clearing this field first);
             # otherwise this shared value is used - see the password_map
@@ -2419,16 +2341,14 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
         }
 
         # ================= Shared state =================
-        # v1.3.0-alpha.2 settings consolidation: Settings asks for 6 things
-        # (SrcDir, NsrlPath, YaraRules, CapaRules, ToolsDir, GhidraDir).
-        # Everything else that used to be its own text field is now either
-        # found by recursively searching ToolsDir/GhidraDir for a fixed
-        # filename, or defaulted to a subfolder next to BinSifter's own
-        # script file - created on first launch if missing. Every derived/
-        # defaulted path stays exactly as blank-tolerant/graceful-skip as it
-        # was before: a missing tool or a missing Attack/Blocklist file just
-        # quietly disables that one feature, same as always - it's just no
-        # longer something the analyst has to type in every time.
+        # Settings asks for 6 things (SrcDir, NsrlPath, YaraRules, CapaRules,
+        # ToolsDir, GhidraDir). Everything else that used to be its own text
+        # field is now either found by recursively searching
+        # ToolsDir/GhidraDir for a fixed filename, or defaulted to a
+        # subfolder next to BinSifter's own script file - created on first
+        # launch if missing. Every derived/defaulted path stays blank-
+        # tolerant/graceful-skip: a missing tool or a missing Attack/
+        # Blocklist file just quietly disables that one feature.
         $BinSifterRoot = if ($PSScriptRoot) { $PSScriptRoot }
             elseif ($PSCommandPath) { Split-Path -Parent $PSCommandPath }
             elseif ($MyInvocation.MyCommand.Path) { Split-Path -Parent $MyInvocation.MyCommand.Path }
@@ -2438,22 +2358,18 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             # come back empty depending on how the script is launched - notably,
             # some VS Code "Run and Debug" configurations for the PowerShell
             # extension don't populate these the same way a plain `pwsh -File`
-            # invocation does. 2026-08-08: confirmed in the wild that this
-            # branch's OLD fallback here - (Get-Location).Path - is not safe
-            # to trust as "the script's folder" or even "where the analyst
-            # launched it from": Get-Location reflects the PowerShell
-            # session's own current directory, which for several real
-            # launch paths (a Start Menu/Desktop shortcut with no "Start
-            # in" set, some VS Code debug configs, etc.) defaults to
-            # C:\Windows\System32 - nothing to do with where BinSifter-
-            # Rowan_*.ps1 actually lives or was invoked from. Before
-            # trusting that guess, try one more, genuinely reliable source:
-            # this process's own command line, which contains the real,
-            # fully-qualified .ps1 path VERBATIM no matter which of the
-            # automatic variables above got populated (double-click, right-
-            # click "Run with PowerShell", a shortcut, VS Code's Run/Debug,
-            # `pwsh -File`, `-Command "& '...'"` all pass the script's path
-            # as a literal argument on the command line).
+            # invocation does. (Get-Location).Path is not a safe fallback for
+            # "the script's folder": it reflects the PowerShell session's own
+            # current directory, which for several launch paths (a Start
+            # Menu/Desktop shortcut with no "Start in" set, some VS Code debug
+            # configs, etc.) defaults to C:\Windows\System32 - nothing to do
+            # with where the script actually lives or was invoked from.
+            # Instead, read this process's own command line, which contains
+            # the real, fully-qualified .ps1 path verbatim no matter which of
+            # the automatic variables above got populated (double-click,
+            # right-click "Run with PowerShell", a shortcut, VS Code's
+            # Run/Debug, `pwsh -File`, `-Command "& '...'"` all pass the
+            # script's path as a literal argument on the command line).
             try {
                 $commandLine = (Get-CimInstance Win32_Process -Filter "ProcessId=$PID" -ErrorAction Stop).CommandLine
                 if ($commandLine -match "([A-Za-z]:\\[^`"]+?\.ps1)") {
@@ -2465,15 +2381,14 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             } catch { }
         }
         if ([string]::IsNullOrWhiteSpace($BinSifterRoot)) {
-            # Genuinely could not find the real script file by any means
-            # (e.g. the script's contents were piped/typed into a session
-            # rather than run from a real .ps1 file, or Get-CimInstance
-            # itself failed). Go straight to a folder we KNOW is per-user
-            # and writable, rather than falling back to a "current
-            # directory" that has already been observed landing on
-            # C:\Windows\System32 in practice (see above) - one clear
-            # dialog instead of this one plus the writability fallback
-            # below firing right after it on the exact same bad guess.
+            # Could not find the real script file by any means (e.g. the
+            # script's contents were piped/typed into a session rather than
+            # run from a real .ps1 file, or Get-CimInstance itself failed).
+            # Go straight to a folder that's known per-user and writable,
+            # rather than falling back to a "current directory" that can
+            # land on C:\Windows\System32 (see above) - one clear dialog
+            # instead of this one plus the writability fallback below firing
+            # right after it on the exact same bad guess.
             $BinSifterRoot = Join-Path $env:LOCALAPPDATA 'BinSifter'
             try { $null = New-Item -Path $BinSifterRoot -ItemType Directory -Force -ErrorAction Stop } catch { }
             $null = [System.Windows.Forms.MessageBox]::Show(
@@ -2485,25 +2400,18 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
 
         # Belt-and-suspenders on top of the fallback above: even a
         # correctly-resolved $BinSifterRoot can land somewhere the current
-        # user has no write access to - the concrete case that originally
-        # motivated this (2026-08-03): a launch path that left
-        # $BinSifterRoot pointing at C:\Windows\System32, so every default
-        # (Reports/Attack/Blocklist/the Settings cache file) tried to live
-        # under a directory a non-admin account can't write to. (2026-08-08:
-        # that specific System32 case is now caught earlier - see the
-        # fallback chain above, which no longer trusts Get-Location as a
-        # root anchor at all - but this writability check stays regardless,
-        # since a genuinely-resolved script folder on a read-only mount/
-        # locked-down machine is a real, separate scenario this still
-        # needs to handle.) The old behavior let an unwritable root slide
-        # silently past the New-Item calls below (wrapped in their own
-        # swallow-all try/catch) and only surfaced once Settings Save probed
+        # user has no write access to (e.g. a genuinely-resolved script
+        # folder on a read-only mount or locked-down machine, distinct from
+        # the System32 case the fallback chain above already avoids).
+        # Without this check, an unwritable root would slide silently past
+        # the New-Item calls below (wrapped in their own swallow-all
+        # try/catch) and only surface once Settings Save probed
         # ReportDirectory directly - a confusing place to first learn about a
         # bootstrap-time problem. Testing writability here, once, up front,
         # and falling back to a guaranteed-per-user-writable folder if it
         # fails, means Settings Save's own write-test (further down) should
-        # now only ever fire for a genuinely new problem (e.g. the folder got
-        # deleted or locked mid-session), not this one.
+        # only ever fire for a genuinely new problem (e.g. the folder got
+        # deleted or locked mid-session).
         try {
             $rootProbePath = Join-Path $BinSifterRoot ".bsifter-write-test-$([Guid]::NewGuid().ToString('N')).tmp"
             [System.IO.File]::WriteAllText($rootProbePath, 'test')
@@ -2547,16 +2455,15 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             X64dbgExe         = 'x64dbg.exe'
             X32dbgExe         = 'x32dbg.exe'
             SpeakeasyExe      = 'speakeasy.exe'
-            # 2026-08-07: archive/compressed-file support (see Start-ScanEngine's
-            # "Archive expansion" section). 7-Zip's CLI handles all 4 formats
-            # confirmed for this feature (zip/tar/gzip/7z) through one consistent
+            # Archive/compressed-file support (see Start-ScanEngine's "Archive
+            # expansion" section). 7-Zip's CLI handles all 4 formats this
+            # feature supports (zip/tar/gzip/7z) through one consistent
             # command-line interface, matching the "shell out to a real tool"
-            # convention every other entry in this table already follows - same
-            # tradeoff Winnow made differently (separate Python libraries per
-            # format) since Winnow's whole v2 rewrite point was moving AWAY from
-            # shelling out wherever a library exists; Rowan never made that move
-            # for anything, so staying consistent with itself here matters more
-            # than matching Winnow's specific implementation choice.
+            # convention every other entry in this table already follows -
+            # Winnow instead uses separate Python libraries per format as
+            # part of its broader move away from shelling out, but Rowan
+            # never made that move, so staying consistent with itself here
+            # matters more than matching Winnow's implementation choice.
             SevenZipExe       = '7z.exe'
         }
 
@@ -2641,10 +2548,10 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             DieConsoleExe = ''; PEStudioExe = ''; DieExe = ''; CffExplorerExe = ''
             ResourceHackerExe = ''; SigcheckExe = ''
             X64dbgExe = ''; X32dbgExe = ''; SpeakeasyExe = ''
-            # v1.3.0-alpha.2: no longer user-editable in Settings - defaulted
-            # to a subfolder next to BinSifter itself (created above if
-            # missing). Drop enterprise-attack.json / a blocklist CSV into the
-            # Attack / Blocklist subfolders to enable those two features.
+            # Not user-editable in Settings - defaulted to a subfolder next
+            # to BinSifter itself (created above if missing). Drop
+            # enterprise-attack.json / a blocklist CSV into the Attack /
+            # Blocklist subfolders to enable those two features.
             ReportDirectory = $reportsDefaultDir
             AttackDataPath = $attackDefaultPath
             BlocklistPath = $blocklistDefaultPath
@@ -2663,13 +2570,12 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
         $UiTotals = @{
             Completed = 0; YaraHits = 0; CapaHits = 0; CapaScans = 0; NsrlMatches = 0
             Critical = 0; High = 0; Medium = 0; Low = 0; Unknown = 0
-            # v1.3-proto1 enrichment-summary tile totals - tracked the same
-            # incremental way as everything above (see the dirty-queue diff loop
-            # in the refresh timer).
-            # 2026-08-06: Unsigned (SignatureStatus -ne 'Valid') renamed/inverted
-            # to Signed (SignatureStatus -eq 'Valid') - see the tile-definition
-            # comment below for why. Ported to Winnow first, replicated back here
-            # to keep both variants' dashboards consistent.
+            # Enrichment-summary tile totals - tracked the same incremental
+            # way as everything above (see the dirty-queue diff loop in the
+            # refresh timer). Signed reflects SignatureStatus -eq 'Valid'
+            # (see the tile-definition comment below for why, versus the
+            # inverse Unsigned framing) - ported to Winnow first, replicated
+            # back here to keep both variants' dashboards consistent.
             ImphashClustered = 0; Signed = 0; KnownBad = 0; WithIocs = 0; Escalated = 0
         }
 
@@ -2694,7 +2600,7 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             # the first scan's clustering pass finishes. The refresh timer just
             # displays this rather than recomputing cluster stats every tick.
             SsdeepMetrics    = $null
-            # ===== Archive/compressed-file support (2026-08-07) =====
+            # ===== Archive/compressed-file support =====
             # Cross-runspace handoff for the batch password-prompt dialog, same
             # polled-shared-state pattern as every other ScanControl field here
             # rather than a direct cross-runspace Invoke() - see Start-ScanEngine's
@@ -2760,22 +2666,16 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                         $null = $proc.Start()
                         $stdoutTask = $proc.StandardOutput.ReadToEndAsync()
                         $stderrTask = $proc.StandardError.ReadToEndAsync()
-                        # 2026-08-09: bumped from 3000ms after a real FLARE VM
-                        # run showed "Capa: version unavailable" in the status
-                        # bar even though `capa.exe --version` answered fine
-                        # when run directly in a terminal - so capa.exe itself
-                        # isn't broken, this probe's own timeout was too tight
-                        # for it specifically. capa's official Windows release
-                        # is a PyInstaller onefile executable, which
+                        # 10s, not the tighter timeout that used to be shared
+                        # across all three tools: capa's official Windows
+                        # release is a PyInstaller onefile executable, which
                         # self-extracts its whole bundled Python runtime into
                         # a fresh %TEMP% folder on every launch (not cached) -
-                        # a real, well-documented PyInstaller characteristic,
-                        # not a BinSifter guess. That's a fundamentally
-                        # heavier startup than yara64.exe/ssdeep.exe (small
-                        # native binaries with near-instant launch), so one
-                        # flat timeout shared across all three tools wasn't
-                        # well-suited to capa's profile - especially on a
-                        # slower-disk analysis VM. This only ever runs once at
+                        # a documented PyInstaller characteristic, not a
+                        # BinSifter guess. That's a fundamentally heavier
+                        # startup than yara64.exe/ssdeep.exe (small native
+                        # binaries with near-instant launch), especially on a
+                        # slower-disk analysis VM. This only runs once at
                         # startup or right after a Settings save, never in a
                         # hot loop, so a longer worst-case wait costs nothing
                         # real; still fails gracefully to 'version unavailable'
@@ -2872,11 +2772,11 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                     # ReadToEndAsync, not Register-ObjectEvent - the event-based approach
                     # queues its -Action onto PowerShell's own event loop rather than
                     # running synchronously, so nothing guarantees the queue has drained
-                    # by the time WaitForExit returns. Confirmed by testing: the event
-                    # version silently returned empty stdout/stderr for fast-exiting
-                    # processes. Reading both streams as real .NET Tasks avoids both that
-                    # race and the classic same-thread-ReadToEnd deadlock risk, since both
-                    # streams drain concurrently regardless of which fills up first.
+                    # by the time WaitForExit returns; the event version silently
+                    # returned empty stdout/stderr for fast-exiting processes. Reading
+                    # both streams as real .NET Tasks avoids both that race and the
+                    # classic same-thread-ReadToEnd deadlock risk, since both streams
+                    # drain concurrently regardless of which fills up first.
                     $stdoutTask = $proc.StandardOutput.ReadToEndAsync()
                     $stderrTask = $proc.StandardError.ReadToEndAsync()
 
@@ -2965,15 +2865,11 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                         [BinSifter.EntropyAnalyzer]::AddCounts($byteCounts, $buffer, $bytesRead)
                     }
 
-                    # 2026-08-13: [Convert]::ToHexString() (and the SHA1/SHA256
-                    # ::HashData() static shortcuts used elsewhere in this file)
-                    # were only added in .NET 5.0 - PowerShell 7.0 still ships on
-                    # .NET Core 3.1 and doesn't have either. A real installer test
-                    # on a FLARE VM (PowerShell 7 installed via winget, landing on
-                    # 7.0 rather than a newer 7.x) threw "does not contain a
-                    # method named 'HashData'" immediately at scan start, while
-                    # the exact same installer worked fine on a host machine with
-                    # a newer PowerShell 7 already on it. [BitConverter]::ToString()
+                    # [Convert]::ToHexString() (and the SHA1/SHA256 ::HashData()
+                    # static shortcuts used elsewhere in this file) were only
+                    # added in .NET 5.0 - PowerShell 7.0 still ships on .NET
+                    # Core 3.1 and doesn't have either (installing PowerShell 7
+                    # via winget can still land on 7.0). [BitConverter]::ToString()
                     # (hyphenated uppercase hex, same casing Convert.ToHexString
                     # produces) has existed since .NET Framework 1.1 - safe on
                     # every PowerShell 7.x release, not just the newest ones.
@@ -2990,9 +2886,9 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                 $record.MD5 = $md5
                 $record.SHA1 = $sha1
 
-                # v1.3-proto1: apply any prior triage disposition for this exact
-                # file (by SHA-1) before anything else runs, so a re-scan of the
-                # same evidence set doesn't reset every analyst call back to
+                # Apply any prior triage disposition for this exact file (by
+                # SHA-1) before anything else runs, so a re-scan of the same
+                # evidence set doesn't reset every analyst call back to
                 # Untriaged.
                 if ($DispositionHistory -and $DispositionHistory.ContainsKey($sha1)) {
                     $record.Disposition = $DispositionHistory[$sha1]
@@ -3001,7 +2897,7 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                 $record.Entropy = [BinSifter.EntropyAnalyzer]::ComputeEntropy($byteCounts, $fileLength)
                 $record.Progress = 40
 
-                # v1.3-proto1: Authenticode check, run unconditionally like entropy
+                # Authenticode check, run unconditionally like entropy
                 # (single cmdlet call against the file already on disk, no extra
                 # read pass) - unlike ssdeep/yara/capa below, this still runs even
                 # for NSRL-known files, since "signed" vs "unsigned" is meaningful
@@ -3022,7 +2918,7 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                 $record.NsrlMatch = $isKnownGood
                 Publish-UiUpdate
 
-                # v1.3-proto1: offline reputation check against an optional local
+                # Offline reputation check against an optional local
                 # known-bad hash blocklist, mirroring the NSRL known-good check
                 # just above but inverted. Matches against SHA1 or MD5, both
                 # already computed for this file above - no extra hashing added.
@@ -3038,7 +2934,7 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                 Publish-UiUpdate
 
                 if (-not $isKnownGood) {
-                    # v1.3-proto1: imphash / rich-header hash. Needs the FULL file
+                    # Imphash / rich-header hash. Needs the full file
                     # bytes - the import table can sit well past the 4KB header
                     # buffer already captured above, so this is a deliberate
                     # second read of the file. Gated to non-NSRL files and a 64MB
@@ -3189,7 +3085,7 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                                             }
                                             $record.FlossStringCount = $stringCount
 
-                                            # v1.3-proto1: mine the same FLOSS strings already
+                                            # Mine the same FLOSS strings already
                                             # extracted above for IOC-shaped values (IPs, URLs,
                                             # domains, registry paths) instead of leaving them
                                             # unread in the JSON report - turns "floss ran" into
@@ -3252,8 +3148,8 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                             }
                         }
 
-                        # v1.3-proto1: DIE (Detect It Easy) console-mode packer/
-                        # compiler detection. Gated to the same "ambiguous" files
+                        # DIE (Detect It Easy) console-mode packer/compiler
+                        # detection. Gated to the same "ambiguous" files
                         # FLOSS targets (capa-ineligible) plus generally high-
                         # entropy files, rather than run on every file - this is
                         # another child process competing for the same throttled
@@ -3473,11 +3369,11 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                     }
                 }
 
-                # ================= Archive/compressed-file support (2026-08-07) =================
+                # ================= Archive/compressed-file support =================
                 # Port of Winnow's core/archive.py - same design (see that module's
-                # docstring for the full rationale, including the 3 decisions
-                # confirmed directly: format scope, the two-pass password-prompt
-                # architecture, and "extracted files show up in Results as their own
+                # docstring for the full rationale, including the 3 key decisions:
+                # format scope, the two-pass password-prompt architecture, and
+                # "extracted files show up in Results as their own
                 # rows"), same two-pass shape (Expand-Archives finds/extracts what it
                 # can without a password and collects everything that needs one;
                 # Resolve-LockedArchives takes a supplied password map and either
@@ -3547,8 +3443,8 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                     $stem = [System.IO.Path]::GetFileNameWithoutExtension($ArchivePath)
                     # .Create()/.ComputeHash() instead of the .NET 5+-only
                     # ::HashData() static shortcut - see the main per-file hash
-                    # loop's 2026-08-13 comment for why (PowerShell 7.0, still
-                    # on .NET Core 3.1, doesn't have HashData).
+                    # loop's comment for why (PowerShell 7.0, still on .NET
+                    # Core 3.1, doesn't have HashData).
                     $destDirSha1 = [System.Security.Cryptography.SHA1]::Create()
                     try {
                         $hashBytes = $destDirSha1.ComputeHash(
@@ -3790,8 +3686,8 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                     $null = New-Item -ItemType Directory -Path $nsrlCacheDir -Force -ErrorAction SilentlyContinue
                     # .Create()/.ComputeHash() instead of the .NET 5+-only
                     # ::HashData() static shortcut - see the main per-file hash
-                    # loop's 2026-08-13 comment for why (PowerShell 7.0, still
-                    # on .NET Core 3.1, doesn't have HashData).
+                    # loop's comment for why (PowerShell 7.0, still on .NET
+                    # Core 3.1, doesn't have HashData).
                     $nsrlPathSha256 = [System.Security.Cryptography.SHA256]::Create()
                     try {
                         $nsrlPathHashBytes = $nsrlPathSha256.ComputeHash(
@@ -3849,8 +3745,8 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                     $ScanControl.NsrlHashCount = $knownGoodHashes.Count
                     Add-Log2 "NSRL loaded: $($knownGoodHashes.Count) hashes."
 
-                    # v1.3-proto1: optional local "known-bad" hash blocklist - same
-                    # idea as the NSRL known-good check above but inverted.
+                    # Optional local "known-bad" hash blocklist - same idea as
+                    # the NSRL known-good check above but inverted.
                     # Deliberately simpler than NsrlLoader (plain HashSet[string],
                     # not the packed-binary/cached loader path) since blocklists
                     # are typically thousands to low-millions of entries, not
@@ -3940,7 +3836,7 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                         Add-Log2 'No blocklist configured - reputation checks disabled for this scan.'
                     }
 
-                    # v1.3-proto1: prior triage dispositions, persisted by SHA-1 so
+                    # Prior triage dispositions, persisted by SHA-1 so
                     # re-scanning the same files (or re-opening the same case
                     # directory later) keeps earlier Benign/Suspicious/Escalated
                     # calls instead of resetting everything to Untriaged. Written
@@ -3994,7 +3890,7 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                         Add-Log2 "$($enumResult.ErrorCount) filesystem enumeration error(s) occurred."
                     }
 
-                    # ================= Archive expansion (2026-08-07) =================
+                    # ================= Archive expansion =================
                     # Serial, in the dispatcher's own runspace, BEFORE any FileRecord
                     # gets created or any per-file work is dispatched to the worker
                     # pool below - see the Expand-Archives/Resolve-LockedArchives
@@ -4086,32 +3982,24 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                     # Close/Dispose lives in this finally so an unexpected exception
                     # mid-dispatch still releases the pool instead of leaking it.
                     try {
-                    # 2026-08-09: real-scan bug, confirmed from a live log
-                    # ("Scan engine error: Cannot find an overload for "new"
-                    # and the argument count: "1"." right after "Target
-                    # queue populated" - the dispatcher never got any
-                    # further). $orderedPaths starts out as a genuinely
-                    # .NET-typed List[string] (EnumerationResult.Files), but
-                    # archive expansion above rebuilds it via
-                    # `@($orderedPaths) + @($expansion.ExtractedFiles)` -
-                    # PowerShell's array subexpression operator flattens
-                    # that into a loosely-typed System.Object[], even though
-                    # every element is still really a string. Queue[string]
-                    # has both a `Queue(int capacity)` and a
+                    # $orderedPaths starts out as a genuinely .NET-typed
+                    # List[string] (EnumerationResult.Files), but archive
+                    # expansion above rebuilds it via `@($orderedPaths) +
+                    # @($expansion.ExtractedFiles)` - PowerShell's array
+                    # subexpression operator flattens that into a
+                    # loosely-typed System.Object[], even though every
+                    # element is still really a string. Queue[string] has
+                    # both a `Queue(int capacity)` and a
                     # `Queue(IEnumerable[string] collection)` constructor,
                     # and PowerShell's ::new() overload binder can fail to
                     # disambiguate those two against an untyped Object[]
-                    # argument - "Cannot find an overload" is PowerShell's
-                    # exact wording for that binder failure, thrown before
-                    # the constructor ever actually runs. This was never
-                    # caught before because it's the only 1-argument
-                    # ::new() call on a generic collection anywhere in this
-                    # file, and archive expansion had never previously run
-                    # end-to-end against a live Rowan scan reaching this
-                    # exact line. Explicitly casting to a real [string[])
+                    # argument - "Cannot find an overload for "new" and the
+                    # argument count: "1"" is PowerShell's exact wording for
+                    # that binder failure, thrown before the constructor ever
+                    # actually runs. Explicitly casting to a real [string[]]
                     # first removes the ambiguity - a genuine String[]
-                    # unambiguously satisfies IEnumerable[string], no
-                    # binder guesswork needed.
+                    # unambiguously satisfies IEnumerable[string], no binder
+                    # guesswork needed.
                     $queue = [System.Collections.Generic.Queue[string]]::new([string[]]$orderedPaths)
                     $inFlight = [System.Collections.Generic.List[object]]::new()
                     $completedCount = 0
@@ -4230,7 +4118,7 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                     # -c-compatible, so -m is the safer choice for a first pass.)
                     Add-Log2 'Building SSDEEP signature list for cluster comparison...'
                     # Declared here (not just inside the branch below) so later code - the
-                    # v1.3-proto1 draft-YARA-rule generator - can safely check
+                    # draft-YARA-rule generator - can safely check
                     # $recordsByCluster.Count even when clustering was skipped entirely
                     # (fewer than 2 hashed files, ssdeep.exe not configured, or an error
                     # below) without tripping Set-StrictMode on an unset variable.
@@ -4440,7 +4328,7 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                         Add-Log2 "SSDEEP clustering skipped due to error: $($_.Exception.Message)"
                     }
 
-                    # ================= Imphash clustering (v1.3-proto1) =================
+                    # ================= Imphash clustering =================
                     # Exact-match grouping (not fuzzy like ssdeep above) - files sharing an
                     # imphash linked the exact same API set in the exact same order, which
                     # survives a repack/recompile that would change ssdeep's fuzzy score.
@@ -4476,7 +4364,7 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                         Add-Log2 "Imphash clustering skipped due to error: $($_.Exception.Message)"
                     }
 
-                    # ================= Draft YARA rule generation (v1.3-proto1) =================
+                    # ================= Draft YARA rule generation =================
                     # Best-effort, clearly-labeled-as-draft rules built from strings common to
                     # every member of a size>=2 SSDEEP cluster (only available for cluster
                     # members that went through the PossibleFalseNegative FLOSS fallback, or
@@ -4525,11 +4413,11 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
 
                                 # Measure-Object's -Property parameter is PSPropertyExpression[]-typed,
                                 # not [object[]] like Select-Object/Sort-Object/Group-Object - it does
-                                # NOT accept the @{Expression=...} calculated-property hashtable syntax
+                                # not accept the @{Expression=...} calculated-property hashtable syntax
                                 # those cmdlets support. A bare scriptblock is the only accepted form
-                                # for a computed value here (confirmed against PowerShell's own source/
-                                # docs - passing a hashtable throws "Cannot bind parameter 'Property'.
-                                # Cannot convert ... to type Microsoft.PowerShell.Commands.PSPropertyExpression").
+                                # for a computed value here; passing a hashtable throws "Cannot bind
+                                # parameter 'Property'. Cannot convert ... to type
+                                # Microsoft.PowerShell.Commands.PSPropertyExpression".
                                 $sizeMeasure = $members | Measure-Object -Property { (Get-Item -LiteralPath $_.Path -ErrorAction SilentlyContinue).Length } -Minimum -Maximum
                                 $minSize = $sizeMeasure.Minimum
                                 $maxSize = $sizeMeasure.Maximum
@@ -4537,7 +4425,7 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
 
                                 $ruleName = "bsifter_ssdeep_cluster_${clusterId}_$timestamp" -replace '[^a-zA-Z0-9_]', '_'
                                 $lines = [System.Collections.Generic.List[string]]::new()
-                                $lines.Add("// AUTO-GENERATED DRAFT - review before use. BinSifter v1.3-proto1.")
+                                $lines.Add("// AUTO-GENERATED DRAFT - review before use. Generated by BinSifter.")
                                 $lines.Add("// Built from SSDEEP cluster $clusterId ($($members.Count) files, threshold $ssdeepClusterThreshold).")
                                 $lines.Add("// Common-string basis: $($commonStrings.Count) string(s) shared across FLOSS-analyzed cluster members.")
                                 $lines.Add("rule $ruleName")
@@ -4643,24 +4531,21 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
         $form.BackColor = $theme.WindowBack
         $form.ForeColor = $theme.Fore
         $form.MinimumSize = New-Object System.Drawing.Size(1200, 760)
-        # 2026-08-17/08-18: two earlier attempts here (SetHighDpiMode +
-        # AutoScaleMode.Dpi, then also stamping AutoScaleDimensions to the
-        # Designer-standard 96x96 baseline) were both textbook-correct per
-        # Microsoft's documented WinForms behavior, and both had ZERO effect
-        # on real 150%/175%-scaled hardware (confirmed via screenshots: the
-        # top-bar Settings/Help/About buttons stayed truncated to
-        # "Settin"/"Hel"/"Ab", their exact 100%-scale pixel widths). A
-        # standalone diagnostic script (diagnose_dpi.ps1) run directly on the
-        # affected hardware on 2026-08-19 proved why: by the time any of our
-        # code runs, Form.AutoScaleDimensions already reads the CURRENT
-        # runtime DPI (168x168 on the 175%-scale machine), not the 96x96
-        # design baseline these two lines stamp - something in this
-        # PowerShell 7 / .NET WinForms combination silently re-stamps it
-        # first. PerformAutoScale() then computes ratio = 168/168 = 1.0 and
-        # correctly does nothing. These two lines are left in place below
-        # since they're harmless and still give DPI-aware font metrics, but
-        # they are NOT what fixes the truncation. See $form.Add_Shown further
-        # down for the real, evidence-based fix.
+        # SetHighDpiMode + AutoScaleMode.Dpi, plus stamping AutoScaleDimensions
+        # to the Designer-standard 96x96 baseline, are both textbook-correct
+        # per Microsoft's documented WinForms behavior but have zero effect on
+        # real 150%/175%-scaled hardware: by the time any of this script's
+        # code runs, Form.AutoScaleDimensions already reads the current
+        # runtime DPI (e.g. 168x168 at 175% scale), not the 96x96 design
+        # baseline these two lines stamp - something in this PowerShell 7 /
+        # .NET WinForms combination re-stamps it first. PerformAutoScale()
+        # then computes ratio = 168/168 = 1.0 and correctly does nothing,
+        # leaving every hardcoded-pixel control (e.g. the top-bar
+        # Settings/Help/About buttons) sized for 96 DPI and visibly
+        # truncated. These two lines are left in place since they're harmless
+        # and still give DPI-aware font metrics, but they are not what fixes
+        # the truncation - see $form.Add_Shown further down for the actual
+        # fix (a manual Scale() call against the live DeviceDpi).
         $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi
         $form.AutoScaleDimensions = New-Object System.Drawing.SizeF(96, 96)
         $windowIconBitmap = $null
@@ -4779,7 +4664,7 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
         $lblStatusBar.Font = New-Object System.Drawing.Font('Segoe UI', 9)
         $lblStatusBar.ForeColor = $theme.MutedFore
         $lblStatusBar.Location = New-Object System.Drawing.Point(24, 11)
-        $lblStatusBar.Text = "BinSifter Rowan $AppVersion"
+        $lblStatusBar.Text = "BinSifter Rowan"
         $statusBar.Controls.Add($lblStatusBar)
 
         $content = New-Object System.Windows.Forms.Panel
@@ -4886,9 +4771,9 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             $tileYara = New-StatTile -Caption 'YARA Hits' -AccentColor $theme.Warning -IconName 'target' -Subtitle 'Matching rules found'
             $tileCapaScans = New-StatTile -Caption 'Capa Scans' -AccentColor $theme.Accent -IconName 'layers' -Subtitle 'Files analyzed'
             $tileCapa = New-StatTile -Caption 'Capa Rule Detections' -AccentColor $theme.Accent -IconName 'check' -Subtitle 'Capabilities identified'
-            # 2026-08-06: recolored to $theme.Success (green) - a known-good
+            # $theme.Success (green), not neutral Accent-blue: a known-good
             # file is the same "trustworthy/accounted for" signal as Signed
-            # above, not neutral Accent-blue info.
+            # above.
             $tileNsrl = New-StatTile -Caption 'NSRL Matches' -AccentColor $theme.Success -IconName 'database' -Subtitle 'Known file matches'
 
             $tileRow.Controls.Add($tileFiles.Card, 0, 0)
@@ -5154,14 +5039,14 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             $topToSsdeepSpacer.Height = 28
             $topToSsdeepSpacer.BackColor = $theme.WindowBack
 
-            # ================= v1.3-proto1 enrichment summary row =================
+            # ================= Enrichment summary row =================
             # Same shape as the SSDEEP heat map row above (compact New-StatTile
             # cards in a TableLayoutPanel, click-to-filter via Add-DashboardTileClick)
-            # for the new per-file signals: imphash clustering, Authenticode status,
+            # for per-file signals: imphash clustering, Authenticode status,
             # blocklist reputation, extracted IOCs, and triage disposition. Placed
-            # after the existing sections (added last, so it renders at the bottom)
-            # rather than interleaved, to leave the dashboard's existing layout the
-            # user already reviewed and approved untouched above the fold.
+            # after the existing sections (renders at the bottom) rather than
+            # interleaved, to leave the dashboard's existing layout untouched
+            # above the fold.
             $enrichmentTitle = New-Object System.Windows.Forms.Label
             $enrichmentTitle.AutoSize = $true
             $enrichmentTitle.Font = New-Object System.Drawing.Font('Segoe UI', 11, [System.Drawing.FontStyle]::Bold)
@@ -5180,22 +5065,18 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                 $null = $enrichmentRow.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, (100.0 / 5))))
             }
 
-            # 2026-08-06: was $tileUnsigned (Caption 'Unsigned', $theme.Warning,
-            # predicate SignatureStatus -ne 'Valid') - reworked twice on the
-            # Winnow side before landing here: first split into two tiles
-            # (Not Signed / Not Verifiable) after a real scan showed the old
-            # predicate lumped genuinely-unsigned files, unparseable formats,
-            # and real verify errors into one misleading number; that split
-            # broke the 5-tile row's column alignment with the row below it
-            # and didn't look good, so reverted to a single tile reporting the
-            # positive "Signed" count instead (SignatureStatus -eq 'Valid') -
-            # simpler to read, and every non-Valid status is implicitly "not
-            # signed or not verified" without its own tile. Recolored to
-            # $theme.Success (green) to match: this is a "trustworthy/
-            # accounted for" signal, same family as the Ready/Completed status
-            # indicators elsewhere, not neutral info like Imphash Clusters.
-            # $tileIocs recolored to $theme.Warning to match $tileYara - both
-            # are "found something worth a look" signals of the same weight.
+            # Reports the positive "Signed" count (SignatureStatus -eq 'Valid')
+            # rather than "Unsigned" - splitting unsigned files into separate
+            # Not Signed / Not Verifiable tiles lumped genuinely-unsigned
+            # files, unparseable formats, and real verify errors together in
+            # a misleading way and broke the 5-tile row's column alignment. A
+            # single positive tile is simpler to read, and every non-Valid
+            # status is implicitly "not signed or not verified" without its
+            # own tile. $theme.Success (green) matches the same "trustworthy/
+            # accounted for" signal family as the Ready/Completed status
+            # indicators, not neutral info like Imphash Clusters. $tileIocs
+            # uses $theme.Warning to match $tileYara - both are "found
+            # something worth a look" signals of the same weight.
             $tileImphash    = New-StatTile -Caption 'Imphash Clusters' -AccentColor $theme.Accent -IconName 'layers' -Compact
             $tileSigned     = New-StatTile -Caption 'Signed' -AccentColor $theme.Success -IconName 'check' -Compact
             $tileKnownBad   = New-StatTile -Caption 'Known-Bad' -AccentColor $theme.Danger -IconName 'target' -Compact
@@ -5494,11 +5375,11 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                 @{ Name = 'ExtractedIOCs'; Header = 'Extracted IOCs'; Width = 240 }
                 @{ Name = 'ReputationStatus'; Header = 'Reputation'; Width = 90 }
                 @{ Name = 'Error'; Header = 'Error'; Width = 200 }
-                # 2026-08-07: blank for a file found directly under SrcDir; the
-                # containing archive's path for a file extracted from one - see
+                # Blank for a file found directly under SrcDir; the containing
+                # archive's path for a file extracted from one - see
                 # FileRecord.SourceArchive / Start-ScanEngine's "Archive
                 # expansion" section for the "own rows + source-archive column"
-                # design that was confirmed (matches Winnow's results.py column).
+                # design (matches Winnow's results.py column).
                 @{ Name = 'SourceArchive'; Header = 'Source Archive'; Width = 260 }
             )
             foreach ($colDef in $resultColumns) {
@@ -5510,7 +5391,7 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                 $null = $grid.Columns.Add($col)
             }
 
-            # Disposition (v1.3-proto1) is the one editable column - an in-grid
+            # Disposition is the one editable column - an in-grid
             # dropdown rather than a separate dialog, so tagging a row during
             # bulk triage doesn't interrupt scanning through the rest of the list.
             $dispositionCol = New-Object System.Windows.Forms.DataGridViewComboBoxColumn
@@ -5534,7 +5415,7 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                 }
             })
 
-            # v1.3-proto1 quick-launch menu (Feature 1). Each item's Enabled state
+            # Quick-launch menu. Each item's Enabled state
             # and label are refreshed on every Opening event rather than fixed at
             # construction time, since the configured tool paths can change later
             # via Settings without the app restarting.
@@ -5545,17 +5426,16 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                 # CFF Explorer's command-line argument is reserved for its own
                 # Lua ".cff" scripting engine (NTCore's docs: passing a .cff
                 # script runs it headlessly, no window at all) - passing an
-                # arbitrary PE path there is silently ignored, confirmed
-                # against this FRED's install: the app opens but the flagged
-                # file never loads, every time, for every file tried. Unlike
-                # the other quick-launch tools, it can't be made to auto-load
-                # the file, so launch it plain and copy the path to the
-                # clipboard instead - one paste into File > Open beats a
-                # zero-step promise that doesn't actually work.
+                # arbitrary PE path there is silently ignored: the app opens
+                # but the flagged file never loads. Unlike the other
+                # quick-launch tools, it can't be made to auto-load the file,
+                # so launch it plain and copy the path to the clipboard
+                # instead - one paste into File > Open beats a zero-step
+                # promise that doesn't actually work.
                 @{ ConfigKey = 'CffExplorerExe'; Label = 'Open in CFF Explorer (copies path to clipboard)'; CopyPathInsteadOfArg = $true }
                 @{ ConfigKey = 'ResourceHackerExe'; Label = 'Open in Resource Hacker' }
-                # v1.3.0-alpha.2: debuggers get the same simple launch treatment
-                # as the tools above, plus a Confirm prompt (checked in the
+                # Debuggers get the same simple launch treatment as the tools
+                # above, plus a Confirm prompt (checked in the
                 # shared click handler below) since loading a live sample into
                 # a debugger warrants a beat of caution that a static viewer
                 # like PE Studio doesn't.
@@ -5614,12 +5494,12 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                 $launchMenuItems[$tool.ConfigKey] = $item
             }
 
-            # v1.3.0-alpha.2 "deep analysis" group - selectively ported from
-            # proto2 (Ghidra headless, Sigcheck, Speakeasy). Kept as its own
-            # separated block below the simple launch-tools group rather than
-            # folded into $launchTools, since each of these needs meaningfully
-            # different logic (project-directory construction, captured
-            # output + report viewer) instead of a bare Start-Process.
+            # "Deep analysis" group (Ghidra headless, Sigcheck, Speakeasy).
+            # Kept as its own separated block below the simple launch-tools
+            # group rather than folded into $launchTools, since each of these
+            # needs meaningfully different logic (project-directory
+            # construction, captured output + report viewer) instead of a
+            # bare Start-Process.
             $null = $launchMenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
 
             $ghidraItem = New-Object System.Windows.Forms.ToolStripMenuItem
@@ -5673,14 +5553,13 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                         '-import', "`"$targetPath`"",
                         '-overwrite', '-analysisTimeoutPerFile', '300'
                     )
-                    # 2026-08-06: was silent on success - only the error paths
-                    # above ever showed a MessageBox, so a successful click
-                    # looked identical to nothing happening at all. Reported
-                    # directly, fixed identically on the Winnow side
-                    # (results.py's _launch_ghidra). Headless analysis still
-                    # runs unattended with no further feedback by design - this
-                    # is a one-time "yes, it started" acknowledgment, not a
-                    # progress indicator.
+                    # Without this, only the error paths above ever showed a
+                    # MessageBox, so a successful click looked identical to
+                    # nothing happening at all (same fix applied on the Winnow
+                    # side, results.py's _launch_ghidra). Headless analysis
+                    # still runs unattended with no further feedback by
+                    # design - this is a one-time "yes, it started"
+                    # acknowledgment, not a progress indicator.
                     [System.Windows.Forms.MessageBox]::Show(
                         $grid.FindForm(),
                         "Ghidra headless analysis started for $([IO.Path]::GetFileName($targetPath)).`r`n`r`nThis can take several minutes. Results will be saved under:`r`n$(Join-Path $ghidraProjectsDir $projectName)",
@@ -5762,8 +5641,8 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                 $grid.FindForm().Cursor = [System.Windows.Forms.Cursors]::WaitCursor
                 try {
                     # Longer timeout than Sigcheck - emulation of a nontrivial
-                    # sample routinely runs well past 30s; a 30s cap (proto2's
-                    # blanket default for every captured tool) would make this
+                    # sample routinely runs well past 30s; a flat 30s cap
+                    # shared with every other captured tool would make this
                     # look broken on anything but the smallest samples.
                     $result = Invoke-CapturedTool -Path $speakeasyExe -Arguments @('-t', $targetPath, '-o', 'json') -TimeoutSeconds 120
                     $rawBody = if ($result.TimedOut) { $result.StdErr } else { "$($result.StdOut)`r`n$($result.StdErr)".Trim() }
@@ -5877,33 +5756,26 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             $page.Dock = [System.Windows.Forms.DockStyle]::Fill
             $page.AutoScroll = $true
             $page.BackColor = $theme.WindowBack
-            # 2026-08-19 (round 5): a real diagnostic (diagnose_settings_
-            # layout3.ps1) proved Save Settings/the Antivirus section/the
-            # Windows Defender section were collapsing to ~1px wide BEFORE
-            # $form.Scale() ever ran, while this page was still invisible -
-            # this was never actually a DPI-scaling bug. $page is a bare
-            # Panel with no explicit Size, and the TableLayoutPanel built
-            # below it (AutoSize, with a Percent(100) middle column) gets
-            # its very first layout pass long before Show-Page ever makes
-            # this page visible or $content Dock=Fill-resizes it - that
-            # first pass runs against WinForms' bare default Control size
-            # (200x100), leaving almost nothing for the Percent(100) column.
-            # TableLayoutPanel then permanently shrinks every non-anchored,
-            # fixed-Size child in that column (Save Settings, the AV/
-            # Defender buttons, the explainer labels) to fit - and never
-            # grows them back later even once the page is genuinely resized
-            # to the real window (confirmed directly in the diagnostic:
-            # once properly Dock=Fill-resized, the page and an anchored
-            # textbox were correctly sized, but the buttons stayed
-            # collapsed). AutoSize labels (the bold section headers) were
-            # immune since they always recompute their own size fresh -
-            # which is why only SOME controls on this page ever looked
-            # broken. Giving $page a generous starting Size before any
-            # child control is added means that first, premature layout
-            # pass has real room to work with instead of squeezing the
-            # Percent(100) column down to nothing - confirmed directly via
-            # the diagnostic script, both immediately and after real
-            # Show-Page navigation.
+            # Save Settings/the Antivirus section/the Windows Defender
+            # section could collapse to ~1px wide before $form.Scale() ever
+            # ran, while this page was still invisible - not a DPI-scaling
+            # bug. $page is a bare Panel with no explicit Size, and the
+            # TableLayoutPanel built below it (AutoSize, with a Percent(100)
+            # middle column) gets its very first layout pass long before
+            # Show-Page ever makes this page visible or $content's
+            # Dock=Fill resizes it - that first pass runs against WinForms'
+            # bare default Control size (200x100), leaving almost nothing
+            # for the Percent(100) column. TableLayoutPanel then permanently
+            # shrinks every non-anchored, fixed-Size child in that column
+            # (Save Settings, the AV/Defender buttons, the explainer labels)
+            # to fit, and never grows them back later even once the page is
+            # genuinely resized to the real window. AutoSize labels (the
+            # bold section headers) are immune since they always recompute
+            # their own size fresh - which is why only some controls on this
+            # page ever looked broken. Giving $page a generous starting Size
+            # before any child control is added means that first, premature
+            # layout pass has real room to work with instead of squeezing
+            # the Percent(100) column down to nothing.
             $page.Size = New-Object System.Drawing.Size(1200, 900)
 
             $layout = New-Object System.Windows.Forms.TableLayoutPanel
@@ -5914,10 +5786,10 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             $null = $layout.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 100)))
             $null = $layout.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::AutoSize)))
 
-            # v1.3.0-alpha.2: consolidated down to 5 fields. Report output,
-            # MITRE ATT&CK data, the known-bad blocklist, and every individual
-            # tool exe are no longer separate fields here - see the Help page
-            # field guide for the default locations and expected filenames.
+            # Consolidated down to 5 fields. Report output, MITRE ATT&CK
+            # data, the known-bad blocklist, and every individual tool exe
+            # are not separate fields here - see the Help page field guide
+            # for the default locations and expected filenames.
             $fieldDefs = @(
                 @{ Key = 'SrcDir'; Label = 'Path to binaries to scan'; Type = 'Directory' }
                 @{ Key = 'NsrlPath'; Label = 'NSRL text file path'; Type = 'File'; Filter = 'Text files (*.txt)|*.txt|All files (*.*)|*.*' }
@@ -6005,11 +5877,10 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             $layout.Controls.Add($lblStatus, 1, $rowIndex)
             $rowIndex++
 
-            # 2026-08-08, added right after the Defender section below: that
-            # section only ever helps if Defender is the machine's active
-            # antivirus product. This detects whatever's actually
-            # registered (Get-InstalledAvProducts above) and, for anything
-            # other than Defender, points the analyst at that vendor's own
+            # Detects whatever's actually registered (Get-InstalledAvProducts
+            # above), since the Defender exclusion button below only helps
+            # if Defender is the machine's active antivirus product - for
+            # anything else, this points the analyst at that vendor's own
             # exclusion settings instead of a button that silently does
             # nothing useful.
             $lblAvHeader = New-Object System.Windows.Forms.Label
@@ -6024,18 +5895,15 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
 
             $lblAvExplainer = New-Object System.Windows.Forms.Label
             $lblAvExplainer.Text = "Detects which antivirus product(s) are registered with Windows Security on this machine. The automated exclusion button below only works for Windows Defender - for any other product, this points you at where to add the exclusion yourself."
-            # 2026-08-19 (round 6): was AutoSize=false with a hardcoded
-            # Height=50 - fine at design (96 DPI) resolution, but a fixed
-            # Height label CLIPS any text that doesn't fit, and how many
-            # lines this paragraph wraps to at a given Width isn't something
-            # that scales perfectly predictably just by multiplying the
-            # original Height by the DPI ratio (font-metric/wrap-point
-            # rounding can push an extra word onto a new line at some scale
-            # factors). AutoSize=true + MaximumSize (constrains WRAPPING
-            # width only, Height 0 = unconstrained) makes the label always
-            # grow to fit however many lines its real, current-DPI content
-            # actually needs - the same reason every AutoSize label on this
-            # page never had a clipping problem in the first place.
+            # A fixed-Height label clips any text that doesn't fit, and how
+            # many lines this paragraph wraps to at a given Width isn't
+            # something that scales perfectly predictably by DPI ratio alone
+            # (font-metric/wrap-point rounding can push an extra word onto a
+            # new line at some scale factors). AutoSize=true + MaximumSize
+            # (constrains wrapping width only, Height 0 = unconstrained)
+            # makes the label always grow to fit however many lines its
+            # real, current-DPI content actually needs - the same reason
+            # every AutoSize label on this page never had a clipping problem.
             $lblAvExplainer.AutoSize = $true
             $lblAvExplainer.MaximumSize = New-Object System.Drawing.Size(620, 0)
             $lblAvExplainer.Margin = New-Object System.Windows.Forms.Padding(3, 0, 8, 6)
@@ -6051,11 +5919,10 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             $rowIndex++
 
             $lblAvStatus = New-Object System.Windows.Forms.Label
-            # 2026-08-19 (round 6): same fixed-Height clipping risk as
-            # $lblAvExplainer/$lblDefenderExplainer above - this one is
-            # empty until "Detect installed antivirus" is clicked, so it
-            # hadn't visibly clipped yet, but a real multi-product detection
-            # result would have hit the exact same bug once populated.
+            # Same fixed-Height clipping risk as $lblAvExplainer/
+            # $lblDefenderExplainer above - this one is empty until "Detect
+            # installed antivirus" is clicked, but a multi-product detection
+            # result would hit the same bug once populated.
             $lblAvStatus.AutoSize = $true
             $lblAvStatus.MaximumSize = New-Object System.Drawing.Size(620, 0)
             $lblAvStatus.Font = New-Object System.Drawing.Font('Segoe UI', 9)
@@ -6066,13 +5933,11 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             $layout.Controls.Add($lblAvStatus, 1, $rowIndex)
             $rowIndex++
 
-            # 2026-08-08, added after a real scan against live
-            # Malware Bazaar samples: Defender's real-time protection raced
-            # BinSifter's own scan for extracted archive contents. See
-            # Add-DefenderExclusionPath's comment block and defender.py
-            # (Winnow) for the full design - deliberately a separate,
-            # explicit, confirmation-gated action, never something the scan
-            # itself does.
+            # Defender's real-time protection can race BinSifter's own scan
+            # for extracted archive contents. See Add-DefenderExclusionPath's
+            # comment block and defender.py (Winnow) for the full design -
+            # deliberately a separate, explicit, confirmation-gated action,
+            # never something the scan itself does.
             $lblDefenderHeader = New-Object System.Windows.Forms.Label
             $lblDefenderHeader.Text = 'Windows Defender'
             $lblDefenderHeader.AutoSize = $true
@@ -6085,11 +5950,9 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
 
             $lblDefenderExplainer = New-Object System.Windows.Forms.Label
             $lblDefenderExplainer.Text = "If real-time protection is quarantining extracted archive contents before BinSifter can finish scanning them, you can exclude the extraction folder from Defender's scanning. This requires administrator approval (a UAC prompt) and means Defender will NOT automatically flag anything placed in that folder - only use this on a machine where you're comfortable with that tradeoff for malware analysis."
-            # 2026-08-19 (round 6): same fixed-Height clipping bug as
-            # $lblAvExplainer above (see its comment) - this is the control
-            # that was actually reported cut off mid-sentence ("...will NOT
-            # automatically flag anything placed in that" with the rest of
-            # the paragraph missing) on a real 175%-scale screenshot.
+            # Same fixed-Height clipping bug as $lblAvExplainer above (see
+            # its comment) - this is the control that was reported cut off
+            # mid-sentence on a 175%-scale screenshot.
             $lblDefenderExplainer.AutoSize = $true
             $lblDefenderExplainer.MaximumSize = New-Object System.Drawing.Size(620, 0)
             $lblDefenderExplainer.Margin = New-Object System.Windows.Forms.Padding(3, 0, 8, 6)
@@ -6463,7 +6326,7 @@ For repeatable case work, preserve the report directory (Reports\ next to BinSif
             $lblVersion.Font = New-Object System.Drawing.Font('Segoe UI', 12, [System.Drawing.FontStyle]::Bold)
             $lblVersion.ForeColor = $theme.Fore
             $lblVersion.Location = New-Object System.Drawing.Point(6, 155)
-            $lblVersion.Text = "BinSifter Rowan $AppVersion"
+            $lblVersion.Text = "BinSifter Rowan"
 
             $lblDesc = New-Object System.Windows.Forms.Label
             $lblDesc.AutoSize = $true
@@ -6912,7 +6775,7 @@ For repeatable case work, preserve the report directory (Reports\ next to BinSif
             }
         }
 
-        # v1.3-proto1: persists one Disposition call to the per-case history file
+        # Persists one Disposition call to the per-case history file
         # (SHA1|Disposition per line), read back by Start-ScanEngine's dispatcher
         # at the start of the next scan. Rewrites the whole file rather than
         # appending - simple and safe at the scale this is meant for (thousands
@@ -7136,8 +6999,8 @@ For repeatable case work, preserve the report directory (Reports\ next to BinSif
                         $nsrlCacheDir = Join-Path $ReportDirectory '.bsifter-nsrl-cache'
                         # .Create()/.ComputeHash() instead of the .NET 5+-only
                         # ::HashData() static shortcut - see the main per-file
-                        # hash loop's 2026-08-13 comment for why (PowerShell
-                        # 7.0, still on .NET Core 3.1, doesn't have HashData).
+                        # hash loop's comment for why (PowerShell 7.0, still
+                        # on .NET Core 3.1, doesn't have HashData).
                         $previewNsrlSha256 = [System.Security.Cryptography.SHA256]::Create()
                         try {
                             $previewNsrlHashBytes = $previewNsrlSha256.ComputeHash(
@@ -7204,7 +7067,7 @@ For repeatable case work, preserve the report directory (Reports\ next to BinSif
         $refreshTimer.Interval = 750
 
         $refreshTimer.Add_Tick({
-            # Archive password prompt (2026-08-07) - checked first, ahead of
+            # Archive password prompt - checked first, ahead of
             # everything else below, so the analyst sees the dialog as promptly
             # as the 750ms tick allows once the dispatcher's background runspace
             # sets PendingPasswordRequest (see Start-ScanEngine's "Archive
@@ -7282,14 +7145,13 @@ For repeatable case work, preserve the report directory (Reports\ next to BinSif
                     CapaScans = [int][bool]$r.CapaEligible
                     NsrlMatches = [int][bool]$r.NsrlMatch
                     Critical = 0; High = 0; Medium = 0; Low = 0; Unknown = 0
-                    # v1.3-proto1 - same subtract/re-add pattern as everything above.
+                    # Same subtract/re-add pattern as everything above.
                     # ImphashClustered reflects the post-scan clustering pass (the
                     # dispatcher re-enqueues every clustered path once that pass
                     # finishes, same as any other per-file state change).
                     ImphashClustered = [int]($r.ImphashClusterId -ge 0 -and $r.ImphashClusterSize -ge 2)
-                    # 2026-08-06: was Unsigned = [int]($r.SignatureStatus -and
-                    # $r.SignatureStatus -ne 'Valid') - see the tile-definition
-                    # comment above for why this became the positive Signed count.
+                    # Positive Signed count, not Unsigned - see the
+                    # tile-definition comment above for why.
                     Signed = [int]($r.SignatureStatus -eq 'Valid')
                     KnownBad = [int]($r.ReputationStatus -eq 'KnownBad')
                     WithIocs = [int]($r.IocCount -gt 0)
@@ -7429,7 +7291,6 @@ For repeatable case work, preserve the report directory (Reports\ next to BinSif
             }
 
             $statusBits = @(
-                "Engine: $AppVersion"
                 "YARA: $($ToolMetadata.Yara)"
                 "Capa: $($ToolMetadata.Capa)"
                 "SSDEEP: $($ToolMetadata.Ssdeep)"
@@ -7497,106 +7358,75 @@ For repeatable case work, preserve the report directory (Reports\ next to BinSif
 
         $script:DpiManualScaleApplied = $false
         $form.Add_Shown({
-            # 2026-08-19: the real fix for the DPI text-truncation bug, found
-            # via diagnose_dpi.ps1 (see the AutoScaleMode/AutoScaleDimensions
-            # comment above for the full story of why the two documented,
-            # textbook-correct prior attempts both did nothing). The
-            # diagnostic proved Control.Scale(SizeF) - the lower-level,
-            # UNCONDITIONAL method PerformAutoScale() is documented to call
-            # internally - actually resizes controls when called directly,
-            # bypassing whatever is silently defeating PerformAutoScale()'s
-            # own ratio calculation on this PowerShell 7 / .NET combination.
-            # Ratio is computed straight from DeviceDpi/96.0 (96 is the DPI
-            # every hardcoded pixel value in this file was hand-picked
-            # against) rather than trusted from AutoScaleDimensions, since
-            # that property was shown to already be stale/wrong by the time
-            # this handler runs. Guarded by a flag since Shown can in
-            # principle fire more than once (e.g. after a minimize/restore
-            # cycle on some Windows builds) and Scale() is not idempotent -
-            # calling it twice would double-scale every control. Must run
-            # before Move-TopBarControls immediately below, since that
-            # function positions the top-bar buttons based on their
-            # (now-scaled) actual .Width.
+            # Control.Scale(SizeF) - the lower-level, unconditional method
+            # PerformAutoScale() is documented to call internally - actually
+            # resizes controls when called directly, bypassing whatever is
+            # silently defeating PerformAutoScale()'s own ratio calculation
+            # on this PowerShell 7 / .NET combination (see the
+            # AutoScaleMode/AutoScaleDimensions comment above). Ratio is
+            # computed straight from DeviceDpi/96.0 (96 is the DPI every
+            # hardcoded pixel value in this file was hand-picked against)
+            # rather than trusted from AutoScaleDimensions, since that
+            # property is already stale/wrong by the time this handler runs.
+            # Guarded by a flag since Shown can in principle fire more than
+            # once (e.g. after a minimize/restore cycle on some Windows
+            # builds) and Scale() is not idempotent - calling it twice would
+            # double-scale every control. Must run before Move-TopBarControls
+            # immediately below, since that function positions the top-bar
+            # buttons based on their (now-scaled) actual .Width.
             if (-not $script:DpiManualScaleApplied) {
                 $script:DpiManualScaleApplied = $true
                 $liveDpi = $form.DeviceDpi
                 if ($liveDpi -ne 96) {
                     $dpiRatio = $liveDpi / 96.0
-                    # Captured BEFORE Scale() below mutates $form.MinimumSize -
-                    # Size is a value type, so this copy (96-DPI 1200x760) is
-                    # unaffected by that later mutation. See the round-3
-                    # comment further down for why this is needed again.
+                    # Captured before Scale() below mutates $form.MinimumSize/
+                    # $form.Size - Size is a value type, so these copies
+                    # (96-DPI 1200x760 / 1400x900) are unaffected by that
+                    # later mutation.
                     $originalMinimumSize = $form.MinimumSize
-                    # Same reasoning as $originalMinimumSize just above -
-                    # captured before Scale() mutates it, see the round-7
-                    # comment further down for why the starting Size gets
-                    # the identical treatment now too.
                     $originalFormSize = $form.Size
                     $form.Scale((New-Object System.Drawing.SizeF($dpiRatio, $dpiRatio)))
 
-                    # 2026-08-19 (round 3 - rounds 1/2's clamp-to-screen
-                    # approach, confirmed via real hardware testing, was
-                    # STILL wrong): Control.Scale() on a Form scales the
-                    # FORM's own Size and MinimumSize by the same ratio as
-                    # every child control, since both were assigned as plain
-                    # 96-DPI pixel values above ($form.Size = 1400x900,
-                    # $form.MinimumSize = 1200x760). Round 2's fix clamped
-                    # the DPI-inflated MinimumSize down to "whatever fits the
-                    # screen's WorkingArea" - but on a normal 1920x1080
-                    # monitor that clamp still landed around 1880x1040,
-                    # nearly the whole screen, so the window could shrink a
-                    # LITTLE (from its scaled starting Size down to that
-                    # still-huge floor) and then get stuck again - exactly
-                    # the follow-up report ("shrinks a little then won't
-                    # shrink any further"). The actual problem was scaling
-                    # MinimumSize by the DPI ratio at all: MinimumSize is a
-                    # UX floor ("smallest usable window"), not a rendering
-                    # measurement that needs to grow with DPI the way
-                    # font/control sizes genuinely do - every scrollable page
-                    # already sets AutoScroll = $true specifically to handle
-                    # content that doesn't fit the window (see the Dashboard
-                    # page's own comment on this), so a smaller window at
-                    # high DPI just means more scrolling, not clipped or
-                    # broken content. Restoring the plain, un-scaled 1200x760
-                    # baseline gives back exactly the same resizability that
-                    # existed before any DPI fix touched this file, on every
-                    # monitor, regardless of scale factor - while everything
-                    # Scale() did to child controls (the actual text-
-                    # truncation fix, already confirmed working against real
-                    # hardware) is completely untouched by this.
+                    # Control.Scale() on a Form scales the form's own Size
+                    # and MinimumSize by the same ratio as every child
+                    # control, since both were assigned as plain 96-DPI pixel
+                    # values above ($form.Size = 1400x900, $form.MinimumSize
+                    # = 1200x760). MinimumSize is a UX floor ("smallest
+                    # usable window"), not a rendering measurement that needs
+                    # to grow with DPI the way font/control sizes genuinely
+                    # do - every scrollable page already sets AutoScroll =
+                    # $true specifically to handle content that doesn't fit
+                    # the window (see the Dashboard page's own comment on
+                    # this), so a smaller window at high DPI just means more
+                    # scrolling, not clipped or broken content. Restoring the
+                    # plain, un-scaled 1200x760 baseline gives back the same
+                    # resizability that existed before any DPI fix touched
+                    # this file, on every monitor, regardless of scale
+                    # factor - while everything Scale() did to child controls
+                    # (the actual text-truncation fix) is untouched by this.
                     $form.MinimumSize = $originalMinimumSize
 
-                    # 2026-08-19 (round 7): reported directly - "why does the
-                    # Rowan window open so large? It takes nearly the entire
-                    # screen and has to be sized down every time?" Round 2's
-                    # clamp-to-screen logic (further down) was written as a
-                    # defensive EDGE CASE, but it turned out to be firing as
-                    # the NORMAL case: 1400x900 scaled by a real 1.75x ratio
-                    # is 2450x1575, which is bigger than most actual monitors
-                    # outright (a common 1920x1080 display can't fit that
-                    # height at all) - so the clamp was silently pinning the
-                    # window to just-under-fullscreen on ordinary hardware
-                    # every single launch, not just on some rare tiny/old
-                    # monitor as originally intended. Exactly the same
-                    # reasoning as MinimumSize above applies here: the
-                    # window's STARTING Size is a UX/comfort choice, not a
-                    # rendering measurement that has to scale with DPI the
-                    # way font/control sizes do - AutoScroll on every
-                    # scrollable page already handles content that doesn't
-                    # fully fit. Restoring the plain, un-scaled 1400x900
-                    # baseline (identical physical window size to what this
-                    # app has always opened at, on any monitor, at any scale
-                    # factor) fixes this the same way it fixed MinimumSize -
-                    # while, again, everything Scale() did to child controls
-                    # (the actual DPI-scaling fix) stays completely untouched.
+                    # Same reasoning applies to the form's starting Size:
+                    # 1400x900 scaled by a real 1.75x ratio is 2450x1575,
+                    # bigger than most actual monitors outright (a common
+                    # 1920x1080 display can't fit that height), so leaving it
+                    # scaled pins the window to just-under-fullscreen on
+                    # ordinary hardware every launch. The window's starting
+                    # Size is a UX/comfort choice, not a rendering
+                    # measurement that has to scale with DPI - AutoScroll on
+                    # every scrollable page already handles content that
+                    # doesn't fully fit. Restoring the plain, un-scaled
+                    # 1400x900 baseline (identical physical window size to
+                    # what this app has always opened at, on any monitor, at
+                    # any scale factor) fixes this the same way, while
+                    # everything Scale() did to child controls stays
+                    # untouched.
                     $form.Size = $originalFormSize
 
-                    # Still worth a defensive floor-vs-screen clamp in case a
-                    # much smaller/older monitor can't even fit 1200x760 /
-                    # 1400x900 - keeps this safe on hardware nobody's tested
-                    # it against, without being the primary mechanism either
-                    # fix relies on (unlike round 2, where this WAS the
-                    # primary mechanism and that was the bug).
+                    # Defensive floor-vs-screen clamp in case a much
+                    # smaller/older monitor can't even fit 1200x760/1400x900 -
+                    # keeps this safe on untested hardware without being the
+                    # primary DPI-scaling mechanism.
                     $screenArea = [System.Windows.Forms.Screen]::FromControl($form).WorkingArea
                     $margin = 40
                     $maxWidth = [Math]::Max(800, $screenArea.Width - $margin)
@@ -7668,9 +7498,6 @@ For repeatable case work, preserve the report directory (Reports\ next to BinSif
 }
 
 # ================= Bootstrap =================
-# Bump this on every new version file - it's the only place the displayed
-# version number needs to change now (status bar + About page both read it).
-$AppVersion = 'v1.3.0-beta.1'
 $isDarkMode = Test-SystemDarkMode
 $threadLimit = [Math]::Min(16, [Math]::Max(2, [Environment]::ProcessorCount * 2))
 $logoHorizontal = if ($isDarkMode) {
@@ -7681,6 +7508,6 @@ else {
 }
 $windowIconPath = Join-Path $PSScriptRoot 'BinSifter-WindowIcon.png'
 
-Show-MainWindow -IsDarkMode $isDarkMode -LogoHorizontalPath $logoHorizontal -WindowIconPath $windowIconPath -ThrottleLimit $threadLimit -AppVersion $AppVersion
+Show-MainWindow -IsDarkMode $isDarkMode -LogoHorizontalPath $logoHorizontal -WindowIconPath $windowIconPath -ThrottleLimit $threadLimit
 
 Write-Host '[+] BinSifter closed.' -ForegroundColor Green

@@ -3,16 +3,11 @@ beta.1.ps1, lines ~4696-4740 for the page, ~5513-5609 for BtnBrowse/
 BtnReloadPreview). Path label, Browse, Reload Now, and a big known-good
 hash count.
 
-Updated 2026-08-04: core.nsrl now has the cache this module's docstring
-used to flag as missing (a real 72-million-row NSRL file made "parses
-fresh every time" cost 24.5 minutes on its own, not a theoretical gap
-anymore - see nsrl.py's module docstring for the full story). Reload Now
-uses the same get_cache_path/cache_is_fresh/build_index/read_cached_count
-functions scan_directory() does, so a repeat reload of an unchanged file is
-a fast cache-hit here too, not a second full reparse. Still runs on a
-background QThread - even a cache-hit mmap open plus header read shouldn't
-block the window, and a genuine cache MISS (first load of a new/changed
-file) still needs the real build.
+Reload Now uses the same get_cache_path/cache_is_fresh/build_index/
+read_cached_count functions scan_directory() does, so a repeat reload of an
+unchanged file is a fast cache hit rather than a full reparse (a full parse
+of a large NSRL file, e.g. 72M rows, can take tens of minutes). Still runs
+on a background QThread since a cache miss still needs the real build.
 """
 
 from __future__ import annotations

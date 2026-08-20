@@ -1,6 +1,6 @@
 """Authenticode signature verification - Python port of the PowerShell
 version's Get-AuthenticodeSignature-based SignatureStatus/SignerName fields
-(see BinSifter-Rowan_v1.3.0-beta.1.ps1, around line 2141 - "run unconditionally
+(see BinSifter-Rowan.ps1, around line 2141 - "run unconditionally
 like entropy... since 'signed' vs 'unsigned' is meaningful regardless of
 hash reputation").
 
@@ -12,10 +12,7 @@ own trust-chain validation rather than deferring to the Windows certificate
 store - see the caveats below on why SignatureStatus values won't map 1:1
 to the old .NET SignatureStatus enum.
 
-API verified 2026-07-30 directly against signify's own docs (readthedocs,
-stable = 0.9.2) rather than guessed from memory or training-data recall,
-given how easy it is to get security-relevant verification code subtly
-wrong:
+Verified against signify 0.9.2's docs (readthedocs):
   - AuthenticodeFile.from_stream(f) / .explain_verify() returns
     (AuthenticodeVerificationResult, Exception | None) - never raises.
   - A SignedData's `.certificates` (a CertificateStore) combined with
@@ -28,8 +25,8 @@ wrong:
   - Certificate.subject.dn gives an RFC2253-ish DN string (e.g.
     "CN=Some Company, O=Some Company Inc, C=US") - the closest Python
     equivalent to .NET's X509Certificate2.Subject used by the PowerShell
-    version's SignerCertificate.Subject. The exact string formatting can
-    differ in edge cases (RDN ordering/escaping come from two different DN
+    version's SignerCertificate.Subject. Exact formatting can differ in
+    edge cases (RDN ordering/escaping come from two different DN
     renderers), but the informational content is the same.
 
 SignatureStatus values are chosen to read the same as the PowerShell
@@ -40,41 +37,20 @@ guarantee of identical verdicts: signify validates against its own trust
 store rather than the OS's, so edge-case verdicts can still diverge from
 what Get-AuthenticodeSignature would have said on the same file.
 
-CORRECTION (2026-08-06): this module previously documented "BinSifter
-doesn't populate a real root CA trust store, so expect every otherwise-
-valid signature to come back as NotTrusted" as a known, deliberate gap.
-That was wrong - re-verified by reading signify 0.9.2's own source rather
-than re-assuming the earlier claim:
-  - `AuthenticodeSignature.verify()` (signify/authenticode/signed_data.py)
-    has `trusted_certificate_store: CertificateStore = TRUSTED_CERTIFICATE_STORE`
-    as its DEFAULT parameter - and TRUSTED_CERTIFICATE_STORE is a real,
-    populated CombinedCertificateStore built from the `mscerts` package,
-    which bundles Microsoft's actual official Authenticode Certificate
-    Trust List (authroot.stl) and cacert.pem.
-  - check_signature() below calls `explain_verify()` with no arguments,
-    which flows through with no override at any point in the call chain -
-    so `trusted_certificate_store` stays at that default. Nothing in
-    BinSifter needs to change to get real trust-chain validation for
-    embedded signatures.
-  - Confirmed independently via signify's own test suite (not just source
-    reading): `tests/authenticode/file_types/test_pe.py::test_valid_signature`
-    calls `pefile.verify()` with zero arguments against a list of real-
-    world, genuinely Microsoft/vendor-signed executables (SoftwareUpdate.exe,
-    SolarWinds.exe, whois.exe, sigcheck.exe, etc.) and asserts no exception
-    is raised - i.e. signify's own tests rely on this same zero-argument
-    default resolving to "Valid" against real signed binaries.
-  - Not yet independently reproduced against a real signed sample inside
-    BinSifter itself (no genuinely Authenticode-signed PE was available in
-    the sandbox this was checked from - Linux, no Windows binaries handy
-    beyond unsigned stub launchers). Worth a quick spot-check against a
-    known-signed .exe on the FRED workstation to be certain, but the
-    combination of the source default and signify's own passing test suite
-    is strong enough that the *design* is no longer in question - only
-    final on-real-hardware confirmation is outstanding.
+Trust store: `AuthenticodeSignature.verify()` defaults
+`trusted_certificate_store` to TRUSTED_CERTIFICATE_STORE, a real, populated
+CombinedCertificateStore built from the `mscerts` package (Microsoft's
+official Authenticode Certificate Trust List plus cacert.pem).
+check_signature() below calls `explain_verify()` with no override, so this
+default is what's actually used - BinSifter gets real trust-chain
+validation for embedded signatures with no extra wiring. Not yet spot-
+checked against a genuinely signed PE on real Windows hardware (only
+signify's own test suite, which asserts the same zero-argument default
+resolves to "Valid" against real Microsoft/vendor-signed executables).
 
 The separate catalog-signing gap noted at the bottom of this file (system
-binaries validated via .cat files rather than an embedded signature) is
-unaffected by this correction and is still real.
+binaries validated via .cat files rather than an embedded signature) is a
+distinct, still-real limitation.
 """
 
 from __future__ import annotations
@@ -96,54 +72,33 @@ except ImportError:  # signify not installed - degrade to UnknownError, don't cr
     _SIGNIFY_AVAILABLE = False
 
 if _SIGNIFY_AVAILABLE:
-    # 2026-08-17: patches a real, severe performance bug in signify 0.9.2
-    # itself (not BinSifter's own code) - found by reading a real scan's new
-    # per-stage timing summary (engine.py's 2026-08-14 addition) after a
-    # 652-file FLARE VM scan took over 4 hours: "authenticode" was 92.5% of
-    # ALL worker CPU time, averaging 61.8 SECONDS per file - roughly 400x
-    # slower than hashing or YARA on the exact same files. That scan had
-    # CatalogDirectory pointed at a real Windows CatRoot folder with 5730
-    # real .cat files (the catalog-verification feature added 2026-08-08,
-    # whose own TODO note in this file already flagged "only tested against
-    # synthetic data, not a genuine catalog end-to-end" - this is that
-    # end-to-end test, and it found a real problem).
+    # Performance fix for signify 0.9.2 itself, not BinSifter's own code.
+    # A 652-file scan with CatalogDirectory pointed at a real Windows
+    # CatRoot folder (5730 .cat files) showed authenticode checks eating
+    # 92.5% of worker CPU time, averaging 61.8s/file - roughly 400x slower
+    # than hashing or YARA on the same files.
     #
-    # check_signature() below calls signed_file.add_catalog(catalog,
-    # check=True) once per configured catalog, per file - up to 5730 times
-    # per file here. Each of those internally calls the catalog's own
-    # find_subject(), which looks up the file's hash in
-    # CertificateTrustList._subjects / ._subjects_by_indirect_data_hash.
-    # Read directly in signify's installed source
-    # (signify/authenticode/trust_list.py): both are plain @property, with
-    # NO caching at all - `return {subj.identifier_str: subj for subj in
-    # self.subjects}`, where .subjects itself re-decodes every ASN.1
-    # trusted_subjects entry in that catalog from scratch. A property has no
-    # memory of being read before, so this full re-parse-and-rebuild-the-
-    # whole-dict cost was being paid on EVERY SINGLE find_subject() call -
-    # i.e. once per catalog per file, even though the exact same catalog
-    # object gets reused for every file in a worker's queue (parse_catalogs()
-    # already only parses each .cat file's raw bytes once per worker - this
-    # was the second, hidden re-parse happening underneath that, one level
-    # deeper, that reuse never actually prevented).
+    # check_signature() below calls add_catalog(catalog, check=True) once
+    # per configured catalog per file (up to 5730 times here), and each
+    # call's find_subject() reads CertificateTrustList._subjects /
+    # ._subjects_by_indirect_data_hash - plain @property in signify's
+    # source, with no caching, that re-decodes every ASN.1 entry in the
+    # catalog from scratch on every access. So the same catalog's subject
+    # list was being fully re-parsed on every single find_subject() call,
+    # even though parse_catalogs() only parses each .cat file's raw bytes
+    # once per worker - the re-parse was happening one level deeper than
+    # that reuse could prevent.
     #
-    # Reproduced and confirmed the fix in isolation before applying it here:
-    # patching these two properties to functools.cached_property (which
-    # computes once per instance and reuses the result from then on,
-    # identical values, just computed once instead of on every access) took
-    # a synthetic 5-calls-recomputes-5-times case down to 5-calls-recomputes-
-    # once. Since every real CertificateTrustList instance here is already
-    # long-lived (parsed once per worker in parse_catalogs(), then handed to
-    # every check_signature() call that worker makes for the rest of the
-    # scan - see this module's own docstring), caching per-instance is
-    # exactly correct, not just an expedient shortcut: a catalog's trusted-
-    # subjects list cannot change out from under an already-parsed object.
-    #
-    # Deliberately a monkeypatch of the installed library's class, not a
-    # vendored fork or a request upstream (also worth filing, but this
-    # can't wait on that) - CertificateTrustList has no __slots__ (confirmed
-    # directly), so cached_property's normal per-instance __dict__ caching
-    # works with no other changes needed, and this runs once at import time
-    # in every worker process, before any file is scanned.
+    # Fixed by monkeypatching these two properties to
+    # functools.cached_property, which computes once per instance and
+    # reuses the result. Safe because every CertificateTrustList instance
+    # here is long-lived (parsed once per worker, reused for the rest of
+    # the scan - see parse_catalogs()), so a catalog's trusted-subjects
+    # list cannot change out from under an already-parsed object. This
+    # patches the installed library's class directly rather than vendoring
+    # a fork; CertificateTrustList has no __slots__, so cached_property's
+    # normal per-instance __dict__ caching works unmodified. Runs once at
+    # import time in every worker process, before any file is scanned.
     def _patch_signify_trust_list_caching() -> None:
         for attr in ("_subjects", "_subjects_by_indirect_data_hash"):
             current = CertificateTrustList.__dict__.get(attr)
@@ -154,36 +109,28 @@ if _SIGNIFY_AVAILABLE:
 
     _patch_signify_trust_list_caching()
 
-    # 2026-08-19: a second, distinct signify 0.9.2 performance bug, found by
-    # reading a real scan log rather than guessing - a single large PE file
+    # A second, distinct signify 0.9.2 performance bug: a single large PE
     # (WindowsXP-KB936929-SP3-x86-RUS.exe) took 2299.4s (38+ minutes) for its
-    # authenticode check alone on the host PC, and on the FLARE VM it blew
-    # straight through the scan's 1200s stall watchdog and got abandoned as
-    # an error. The 2026-08-17 fix above only cached the CATALOG side of
-    # add_catalog() (parsing a .cat file's own subject list once instead of
-    # on every lookup). This is the other half: check_signature() below
-    # calls signed_file.add_catalog(catalog, check=True) once per configured
-    # catalog - up to ~5700 times for one file, with a real Windows CatRoot
-    # directory - and each call's find_subject() (trust_list.py) does
+    # authenticode check alone, blowing through the scan's 1200s stall
+    # watchdog. The fix above only cached the catalog side of add_catalog();
+    # this is the other half. Each add_catalog() call's find_subject() does
     # subject.get_fingerprint(self.subject_algorithm), where "subject" is
-    # this same signed_file object every time. Read directly in signify's
-    # installed source: SignedPEFile.get_fingerprint() (and the MSI/flat-
-    # signature equivalents) build a brand-new Fingerprinter and re-hash the
-    # entire file from disk on every single call - unlike the neighbouring
-    # page_size property on the same class, which IS a @cached_property.
-    # So a big file was being re-hashed from scratch once per catalog:
-    # O(catalogs x filesize) instead of O(filesize + catalogs). Fixed the
-    # same way as above - a monkeypatch of the installed library, not a
-    # vendored fork - but since all three concrete AuthenticodeFile
-    # subclasses (PE/MSI/flat) implement get_fingerprint() independently
-    # (no shared base implementation to patch just once), each is wrapped
-    # with a small per-instance cache keyed on the exact call arguments, so
-    # a genuinely different digest algorithm or byte range still computes
-    # fresh - only a repeat of the same request is served from cache. Since
-    # a single AuthenticodeFile instance is created once per file in
-    # check_signature() and reused for every catalog in that file's loop,
-    # this caching is scoped exactly right: the file's own bytes can't
-    # change out from under an already-open instance.
+    # the same signed_file object every time. SignedPEFile.get_fingerprint()
+    # (and the MSI/flat-signature equivalents) build a brand-new
+    # Fingerprinter and re-hash the entire file from disk on every call -
+    # unlike the neighbouring page_size property, which IS cached. So a big
+    # file was being re-hashed from scratch once per catalog:
+    # O(catalogs x filesize) instead of O(filesize + catalogs).
+    #
+    # Fixed the same way as above (monkeypatching the installed library),
+    # but since the three concrete AuthenticodeFile subclasses (PE/MSI/flat)
+    # each implement get_fingerprint() independently, each is wrapped with a
+    # small per-instance cache keyed on the call arguments, so a genuinely
+    # different digest algorithm or byte range still computes fresh - only a
+    # repeat of the same request is served from cache. A single
+    # AuthenticodeFile instance is created once per file in check_signature()
+    # and reused for every catalog in that file's loop, so this caching is
+    # scoped correctly.
     def _patch_signify_fingerprint_caching() -> None:
         from signify.authenticode.signed_file.flat import FlatFile
         from signify.authenticode.signed_file.msi import SignedMsiFile
@@ -247,30 +194,16 @@ def parse_catalogs(catalog_directory: str) -> list["CertificateTrustList"]:
     be a large CatRoot-style directory shouldn't silently disable catalog
     checking for every other, valid one.
 
-    2026-08-18: also checks one level of subdirectories if catalog_directory
-    itself has no *.cat files directly in it - found via a real side-by-side
-    comparison between two real machines' logs, where one showed "Loaded
-    5119 catalog file(s) from ...CatRoot\\{F750E6C3-...}" and the other
-    showed "Loaded 0 catalog file(s) from ...CatRoot" for the exact same
-    feature. Root cause: Windows' real catalog store is
-    C:\\Windows\\System32\\CatRoot\\{GUID}\\*.cat - the .cat files themselves
-    live one level below CatRoot in a versioned GUID subfolder, never
-    directly inside CatRoot itself. Pointing CatalogDirectory at the bare,
-    obviously-named CatRoot folder (rather than the far less discoverable
-    GUID subfolder inside it) is the far more natural, likely first guess
-    for anyone configuring this setting - and it silently found zero
-    catalogs with no error or warning surfaced anywhere in the GUI, only a
-    log line nobody was looking for. That's not just a missed-catalogs
-    inconvenience: every catalog-signed system binary that setup would have
-    correctly resolved to "Valid" instead landed in some other status
-    unnoticed - a real, silent correctness gap, not merely a config typo.
-    Checking exactly one level of subdirectories (not a fully recursive
-    walk - CatRoot's own real layout is exactly one GUID-named level deep,
-    and an unbounded walk would be a real performance/footgun risk if
-    CatalogDirectory ever got pointed at something far larger) means both
-    the bare CatRoot folder and its GUID subfolder now work identically,
-    with no configuration change needed on any machine already set up
-    either way.
+    Also checks one level of subdirectories if catalog_directory itself has
+    no *.cat files directly in it. Windows' real catalog store is
+    C:\\Windows\\System32\\CatRoot\\{GUID}\\*.cat - the .cat files live one
+    level below CatRoot in a versioned GUID subfolder, not directly inside
+    CatRoot. Pointing CatalogDirectory at the bare CatRoot folder (the more
+    natural first guess) used to silently find zero catalogs with no
+    warning, meaning catalog-signed system binaries landed in the wrong
+    status unnoticed. Checking one subdirectory level (not a full recursive
+    walk, to avoid a footgun if CatalogDirectory is pointed at something
+    large) makes both the bare CatRoot folder and its GUID subfolder work.
     """
     if not _SIGNIFY_AVAILABLE or not catalog_directory:
         return []
@@ -302,7 +235,7 @@ def check_signature(path: str, catalogs: "list[CertificateTrustList] | None" = N
     version's own try/catch around Get-AuthenticodeSignature (see line 2153:
     `catch { $record.SignatureStatus = 'UnknownError' }`).
 
-    catalogs (2026-08-08): pre-parsed CertificateTrustList objects from
+    catalogs: pre-parsed CertificateTrustList objects from
     parse_catalogs(), already loaded once per worker process - not
     reparsed here per file. When provided, each is offered to this file via
     add_catalog(..., check=True), which hashes the file according to the
@@ -330,19 +263,14 @@ def check_signature(path: str, catalogs: "list[CertificateTrustList] | None" = N
             signer_name = _resolve_signer_name(signed_file, path)
             return AuthenticodeResult(status=status, signer_name=signer_name)
     except _SignifyParseError as exc:
-        # 2026-08-06: AuthenticodeFile.from_stream() raises this (not
-        # explain_verify()'s own PARSE_ERROR -> NotSupportedFileFormat path,
-        # which never gets reached) when the file isn't a format signify
-        # recognizes at all - confirmed against a real scan where plain
-        # scripts (.bat/.cmd/.ps1) and Office macro docs (.docm) all hit
-        # this exact path, since neither is a PE/MSI/flat-signature
-        # container signify knows how to open. Was previously falling
-        # through to the generic except below and coming back
-        # "UnknownError", which reads as "the tool failed" rather than the
-        # more accurate "this file type can't carry an Authenticode
-        # signature signify checks for" - NotSupportedFileFormat already
-        # exists in _STATUS_MAP for exactly this case, just wasn't reachable
-        # from here before.
+        # AuthenticodeFile.from_stream() raises this (explain_verify()'s own
+        # PARSE_ERROR -> NotSupportedFileFormat path is never reached) when
+        # the file isn't a format signify recognizes - e.g. plain scripts
+        # (.bat/.cmd/.ps1) or Office macro docs (.docm), which aren't a
+        # PE/MSI/flat-signature container signify can open. Map explicitly
+        # to NotSupportedFileFormat rather than falling through to the
+        # generic except below, which would read as "the tool failed"
+        # instead of "this file type can't carry an Authenticode signature".
         logger.debug("Authenticode: unrecognized file format for %s: %s", path, exc)
         return AuthenticodeResult(status="NotSupportedFileFormat", signer_name="")
     except Exception as exc:  # noqa: BLE001 - matches the PowerShell catch-all -> UnknownError
@@ -379,41 +307,21 @@ def _resolve_signer_name(signed_file, path: str) -> str:
         return ""
 
 
-# RESOLVED 2026-08-06 (see the CORRECTION in the module docstring above):
-# this TODO used to say BinSifter doesn't populate a real root CA trust
-# store, so every chain resolves as untrusted even for genuinely Microsoft-
-# signed binaries. That was based on an unverified assumption, not a check
-# of signify's actual behavior - signify's own AuthenticodeSignature.verify()
-# already defaults `trusted_certificate_store` to TRUSTED_CERTIFICATE_STORE,
-# a real Microsoft root bundle shipped via the `mscerts` package, and
-# check_signature() below never overrides that default. No FileSystemCertif-
-# icateStore/OS-cert-store wiring needed for embedded signatures - that
-# would have been solving an already-solved problem.
+# Catalog-based system binaries: a large fraction of Windows' own inbox
+# binaries (notepad.exe, calc.exe, etc.) aren't embedded-signed - they're
+# validated against a system catalog file (.cat, under
+# C:\Windows\System32\CatRoot\) instead. Get-AuthenticodeSignature checks
+# catalogs transparently via WinVerifyTrust, but this signify-based module
+# only checks each file's embedded PE certificate table unless catalogs are
+# supplied, so a validly-signed Windows binary can come back "NotSigned"
+# without CatalogDirectory configured.
 #
-# RESOLVED 2026-08-08: a large fraction of Windows' own inbox system
-# binaries (notepad.exe, calc.exe, etc.) are NOT embedded-signed at all -
-# they're validated against a system catalog file (.cat, under
-# C:\Windows\System32\CatRoot\) instead. Get-AuthenticodeSignature (Rowan)
-# already checks catalogs transparently via WinVerifyTrust with zero code
-# changes needed there, but this signify-based module was only checking
-# each file's embedded PE certificate table, so real, validly-signed
-# Windows binaries would come back "NotSigned" here instead of "Valid".
-#
-# Fixed via parse_catalogs()/check_signature()'s new `catalogs` parameter
-# above: engine.py's _pool_worker_init() parses every *.cat file under
-# config.CatalogDirectory once per worker (mirrors the YARA
-# compile-once-per-worker pattern already used there), and check_signature()
-# offers each to AuthenticodeFile.add_catalog(..., check=True) before
-# explain_verify() - iter_signatures()'s default signature_types="all"
-# already combines embedded + catalog signatures, so no other wiring was
-# needed. CatalogDirectory defaults to "" (opt-in, like GhidraDir) since
-# this sandbox has no Windows machine to source a genuine "known good" .cat
-# fixture from - GitHub's raw/API/codeload endpoints are all blocked by
-# this environment's network allowlist, and the pip-installed `signify`
-# package's own test fixtures aren't included in its PyPI sdist. To
-# exercise this for real: drop a real .cat (e.g. copied from a real
-# machine's C:\Windows\System32\CatRoot\{GUID}\) into the gitignored
-# Catalogs/ folder at the repo root and point Settings' new "Catalog
-# Directory" field at it (or anywhere else) - tests so far only cover
-# the plumbing (parse_catalogs()/add_catalog() wiring) against synthetic
-# data, not a genuine catalog end-to-end.
+# Handled via parse_catalogs()/check_signature()'s `catalogs` parameter:
+# engine.py's _pool_worker_init() parses every *.cat file under
+# config.CatalogDirectory once per worker, and check_signature() offers
+# each to AuthenticodeFile.add_catalog(..., check=True) before
+# explain_verify(). CatalogDirectory defaults to "" (opt-in, like
+# GhidraDir). Plumbing is covered by tests against synthetic data; not yet
+# exercised against a real catalog end-to-end - to do that, drop a real
+# .cat (e.g. copied from C:\Windows\System32\CatRoot\{GUID}\) into the
+# gitignored Catalogs/ folder and point Settings' "Catalog Directory" at it.
