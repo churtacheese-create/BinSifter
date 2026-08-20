@@ -139,13 +139,13 @@ jobs:
             "artifacts/BinSifter-Rowan-Portable/BinSifter-Rowan.exe" \
             --title "BinSifter ${{ github.ref_name }}" \
             --prerelease \
-            --notes "Beta release.
+            --notes "Rowan is a full release; Winnow is beta - see below for each.
 
-          **BinSifter-Winnow-Setup.exe** - Python/PySide6 variant, self-contained (no separate Python install needed).
           **BinSifter-Rowan-Setup.exe** - PowerShell 7 + WinForms variant, standard installer. Needs PowerShell 7 (pwsh.exe) already installed; it will tell you if it's missing.
           **BinSifter-Rowan.msi** - same Rowan variant, packaged as an MSI for managed/enterprise deployment instead of the standard installer.
           **BinSifter-Rowan.exe** - same Rowan variant, packaged as a single portable executable (no install/uninstall) instead of the standard installer. Still needs PowerShell 7 present on the machine.
+          **BinSifter-Winnow-Setup.exe** - Python/PySide6 variant, self-contained (no separate Python install needed). Beta - full GUI and scan engine, run against real malware samples, but expect rough edges and please report anything that looks wrong.
 
           All packages: no administrator rights required, Start Menu shortcut, optional desktop icon (off by default). See the repo README for setup/configuration (NSRL, YARA rules, capa rules, etc.) after installing.
 
-          This is a beta - please report anything that looks wrong rather than assuming it's expected."
+          This release is still marked pre-release on GitHub because it bundles Winnow's beta build alongside Rowan's release build - Rowan itself is stable."
