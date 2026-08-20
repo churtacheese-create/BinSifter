@@ -42,8 +42,13 @@
 
     <!-- Per-user install, no elevation prompt - matches Rowan.iss's
          PrivilegesRequired=lowest choice, since this is an analyst tool
-         with no reason to need admin rights just to install. -->
-    <Property Id="ALLUSERS" Value="" />
+         with no reason to need admin rights just to install.
+         MSIINSTALLPERUSER=1 (MSI 5.0+, matching InstallerVersion="500"
+         above) is what actually puts this in per-user context; ALLUSERS
+         is deliberately left undefined rather than set to an explicit
+         empty string, which the wix 5.0.1 compiler rejects outright
+         (WIX0006) - an unset ALLUSERS is the documented way to get the
+         same per-user result anyway. -->
     <Property Id="MSIINSTALLPERUSER" Value="1" />
 
     <StandardDirectory Id="LocalAppDataFolder">
@@ -55,6 +60,13 @@
     </StandardDirectory>
 
     <StandardDirectory Id="DesktopFolder" />
+
+    <!-- A Shortcut's Icon attribute references the Icon table (this
+         element), not the File table directly - a plain File Id like
+         WindowIconIcoFile below isn't a valid target on its own, even
+         though it points at the same .ico. Kept as a distinct Id from
+         the File component to keep the two tables unambiguous. -->
+    <Icon Id="RowanShortcutIcon" SourceFile="..\BinSifter-WindowIcon.ico" />
 
     <Feature Id="Main" Title="BinSifter Rowan" Level="1">
       <ComponentGroupRef Id="RowanFiles" />
@@ -109,7 +121,7 @@
                 Target="[SystemFolder]cmd.exe"
                 Arguments="/C pwsh.exe -NoLogo -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]BinSifter-Rowan.ps1&quot;"
                 WorkingDirectory="INSTALLFOLDER"
-                Icon="WindowIconIcoFile"
+                Icon="RowanShortcutIcon"
                 IconIndex="0" />
       <Shortcut Id="UninstallShortcut"
                 Name="Uninstall BinSifter Rowan"
@@ -130,7 +142,7 @@
                 Target="[SystemFolder]cmd.exe"
                 Arguments="/C pwsh.exe -NoLogo -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]BinSifter-Rowan.ps1&quot;"
                 WorkingDirectory="INSTALLFOLDER"
-                Icon="WindowIconIcoFile"
+                Icon="RowanShortcutIcon"
                 IconIndex="0" />
       <RegistryValue Root="HKCU" Key="Software\BinSifter\Rowan" Name="desktop_icon" Type="integer" Value="1" KeyPath="yes" />
     </Component>

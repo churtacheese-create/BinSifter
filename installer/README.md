@@ -89,7 +89,7 @@ spec/script, same as any other bug report.
 
 - **Winnow, and Rowan's standard installer:** [Inno Setup](https://jrsoftware.org/isdl.php) 6.x, installed so `ISCC.exe` is either on `PATH` or at its default install location.
 - **Winnow only:** Python 3.10+ (matching `pyproject.toml`'s `requires-python`), with `pip` able to reach PyPI to install BinSifter's own dependencies plus `pyinstaller`.
-- **Rowan's MSI:** the [.NET SDK](https://dotnet.microsoft.com/download) (for `dotnet tool install --global wix`) - `build_rowan_msi.ps1` installs the WiX tool itself and its UI extension automatically the first time it runs.
+- **Rowan's MSI:** the [.NET SDK](https://dotnet.microsoft.com/download) (for `dotnet tool install --global wix`) - `build_rowan_msi.ps1` installs the WiX tool itself and its UI extension automatically the first time it runs, pinned to the 5.x line specifically. WiX v6+ added an Open Source Maintenance Fee EULA that `wix build` refuses to run without accepting (error WIX7015) - pinning to 5.x sidesteps that entirely rather than scripting an unattended EULA acceptance into CI.
 - **Rowan's portable .exe:** nothing extra to install ahead of time - `build_rowan_exe.ps1` installs the `ps2exe` PowerShell module for the current user automatically if it isn't already present.
 - **Rowan needs no compile step of its own for any format** - it's the same `.ps1` file and PNG/ICO assets, just packaged differently by each build script.
 
