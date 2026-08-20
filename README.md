@@ -4,6 +4,10 @@
 
 BinSifter is a binary triage tool built for forensic examiners who need to make a quick go/no-go call on a pile of unknown files. Point it at a directory and it hashes everything, checks each file against YARA rules and CAPA capability detection, looks it up against an NSRL known-good set and an optional known-bad blocklist, and lays the results out in a filterable dashboard so you can triage a batch fast instead of opening files one at a time.
 
+## Demo
+
+<img src="BinSifter_Demo.gif" alt="BinSifter Rowan demo" width="100%">
+
 ## Variants
 
 BinSifter ships as multiple independently-developed variants, each with its own codename, sharing the same detection design and pipeline logic:
