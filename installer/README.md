@@ -23,9 +23,11 @@ either - review them before running, especially the two `AppId` GUIDs
 (fine to keep as generated, just don't regenerate them on a future
 version - Inno Setup uses that GUID to recognize "this is an upgrade of
 the same app," not a new AppId every version). The same caveat applies to
-`Rowan.wxs` (never run through `wix build`) and `build_rowan_exe.ps1`
-(never run through `Invoke-ps2exe`) - both are a real, specific first
-draft, not a verified build.
+`Rowan.wxs` and `build_rowan_exe.ps1` - real, specific drafts, refined
+against actual build/runtime failures reported back from a real Windows
+machine (see the portable .exe's PS2EXE.Core switch below, made after
+the original `ps2exe`-based build produced an exe that crashed on
+launch), but still not guaranteed clean on the very next attempt.
 
 ## What's here
 
@@ -38,7 +40,7 @@ draft, not a verified build.
 | `build_rowan.ps1` | Runs Inno Setup against `Rowan.iss`. |
 | `Rowan.wxs` | WiX Toolset v5 source - packages the same files as `Rowan.iss` into `BinSifter-Rowan.msi`, for deployment paths that specifically need an MSI. |
 | `build_rowan_msi.ps1` | Installs the WiX dotnet tool if needed, then builds `Rowan.wxs` into `BinSifter-Rowan.msi`. |
-| `build_rowan_exe.ps1` | Wraps `BinSifter-Rowan.ps1` into a single portable `BinSifter-Rowan.exe` via the PS2EXE module - no install/uninstall, still needs PowerShell 7 present on the machine that runs it. |
+| `build_rowan_exe.ps1` | Wraps `BinSifter-Rowan.ps1` into a single portable `BinSifter-Rowan.exe` via the PS2EXE.Core module - no install/uninstall, still needs PowerShell 7 present on the machine that runs it. |
 | `../.github/workflows/release-installers.yml` | GitHub Actions workflow that runs all four build scripts on GitHub's own Windows runners and publishes a GitHub Release with all four packages attached. See "Publishing a real GitHub Release" below - this is the recommended way to build these, not the individual `build_*.ps1` scripts run by hand, since none of them has a Windows machine to run on locally in this project's dev sandbox. |
 
 ## Publishing a real GitHub Release (recommended path)
@@ -90,7 +92,7 @@ spec/script, same as any other bug report.
 - **Winnow, and Rowan's standard installer:** [Inno Setup](https://jrsoftware.org/isdl.php) 6.x, installed so `ISCC.exe` is either on `PATH` or at its default install location.
 - **Winnow only:** Python 3.10+ (matching `pyproject.toml`'s `requires-python`), with `pip` able to reach PyPI to install BinSifter's own dependencies plus `pyinstaller`.
 - **Rowan's MSI:** the [.NET SDK](https://dotnet.microsoft.com/download) (for `dotnet tool install --global wix`) - `build_rowan_msi.ps1` installs the WiX tool itself and its UI extension automatically the first time it runs, pinned to the 5.x line specifically. WiX v6+ added an Open Source Maintenance Fee EULA that `wix build` refuses to run without accepting (error WIX7015) - pinning to 5.x sidesteps that entirely rather than scripting an unattended EULA acceptance into CI.
-- **Rowan's portable .exe:** nothing extra to install ahead of time - `build_rowan_exe.ps1` installs the `ps2exe` PowerShell module for the current user automatically if it isn't already present.
+- **Rowan's portable .exe:** the [.NET SDK](https://dotnet.microsoft.com/download), same as the MSI - `build_rowan_exe.ps1` uses the `PS2EXE.Core` module (not the older `ps2exe` module, which turned out to still compile against a classic .NET Framework host regardless of which pwsh.exe version ran it - confirmed by real runtime failures on the first portable build: Add-Type couldn't find `System.Text.Json`, and `[System.Windows.Forms.HighDpiMode]` didn't resolve). `PS2EXE.Core`'s `-Core` switch genuinely targets PowerShell Core/.NET, which is what this needs `dotnet` for. The script installs the module for the current user automatically if it isn't already present.
 - **Rowan needs no compile step of its own for any format** - it's the same `.ps1` file and PNG/ICO assets, just packaged differently by each build script.
 
 ## Building

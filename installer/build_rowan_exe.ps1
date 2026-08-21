@@ -1,17 +1,34 @@
 <#
   Wraps BinSifter-Rowan.ps1 into a standalone BinSifter-Rowan.exe using the
-  PS2EXE module. This is an alternative to the Inno Setup installer
+  PS2EXE.Core module. This is an alternative to the Inno Setup installer
   (build_rowan.ps1) for anyone who'd rather run one .exe directly than go
   through a full install/uninstall flow - a portable option, not a
   replacement for the installer.
 
-  Important: this does NOT bundle the PowerShell 7 engine itself. PS2EXE
-  produces a small native launcher stub that starts a PowerShell host and
-  runs the wrapped script inside it - pwsh.exe (PowerShell 7) still needs
-  to be present on the machine this runs on, same prerequisite as the
+  Uses PS2EXE.Core (FabienTschanz/PS2EXE.Core), not the older MScholtes/
+  ps2exe module this script started with. The two are not interchangeable:
+  MScholtes/ps2exe's compiled output turned out to still run the wrapped
+  script under a classic .NET Framework host regardless of which pwsh.exe
+  version built it (confirmed by two real runtime failures - Add-Type
+  couldn't find System.Text.Json, and [System.Windows.Forms.HighDpiMode]
+  didn't resolve, both hallmarks of .NET Framework rather than real
+  PowerShell 7/.NET). PS2EXE.Core's -Core switch genuinely compiles a
+  PowerShell-Core/.NET-hosted executable instead, which is what Rowan
+  actually needs (it already requires PS7/.NET 5+ elsewhere, e.g. its
+  HashData/ToHexString hashing calls - see TODO.md's cross-machine PS7.0
+  fix).
+
+  Important: this does NOT bundle the PowerShell/.NET runtime itself
+  (no -SelfContained). It's a small launcher that hosts a PowerShell
+  Core engine at runtime - pwsh.exe (PowerShell 7) still needs to be
+  present on the machine this runs on, same prerequisite as the
   installer's own Rowan.iss already documents. What this buys you is a
   double-clickable .exe with no console window and no visible script
   source, not a fully self-contained binary.
+
+  Prerequisite: the .NET SDK (PS2EXE.Core needs the .NET CLI to compile
+  a Core-targeted executable) - same prerequisite build_rowan_msi.ps1
+  already has for WiX. GitHub's windows-latest runners already have it.
 
   Run from anywhere on a real Windows machine with PowerShell 7:
 
@@ -26,7 +43,7 @@ $repoRoot = Split-Path -Parent $installerDir
 $outputDir = Join-Path $installerDir 'Output'
 
 # Machines with the default Restricted/AllSigned execution policy block
-# Import-Module from loading ps2exe's .psm1 at all (PSSecurityException),
+# Import-Module from loading PS2EXE.Core's .psm1 at all (PSSecurityException),
 # even though this script itself was allowed to run via `pwsh -File`.
 # -Scope Process only affects this one pwsh.exe instance for its
 # lifetime - it doesn't touch the machine's or user's persistent policy,
@@ -34,11 +51,24 @@ $outputDir = Join-Path $installerDir 'Output'
 # to change a system-wide setting just to build an installer.
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 
-if (-not (Get-Module -ListAvailable -Name ps2exe)) {
-    Write-Host 'ps2exe module not found - installing for the current user...' -ForegroundColor Yellow
-    Install-Module -Name ps2exe -Scope CurrentUser -Force -AllowClobber
+if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
+    throw "dotnet (.NET SDK) was not found on PATH - required by PS2EXE.Core to compile a PowerShell-Core-targeted executable. Install from https://dotnet.microsoft.com/download"
 }
-Import-Module ps2exe
+
+if (Get-Module -ListAvailable -Name ps2exe) {
+    # The old module this script used to use - if it's still on this
+    # machine, it isn't a problem (Import-Module below only loads
+    # PS2EXE.Core by exact name), just noted here since it's a possible
+    # source of confusion if someone's diagnosing which module actually
+    # built a given BinSifter-Rowan.exe.
+    Write-Host 'Note: the older ps2exe module is also installed on this machine - not used by this script, PS2EXE.Core is.' -ForegroundColor DarkGray
+}
+
+if (-not (Get-Module -ListAvailable -Name PS2EXE.Core)) {
+    Write-Host 'PS2EXE.Core module not found - installing for the current user...' -ForegroundColor Yellow
+    Install-Module -Name PS2EXE.Core -Scope CurrentUser -Force -AllowClobber
+}
+Import-Module PS2EXE.Core
 
 if (-not (Test-Path -LiteralPath $outputDir)) {
     New-Item -ItemType Directory -Path $outputDir | Out-Null
@@ -48,19 +78,16 @@ $sourceScript = Join-Path $repoRoot 'BinSifter-Rowan.ps1'
 $targetExe = Join-Path $outputDir 'BinSifter-Rowan.exe'
 $iconFile = Join-Path $repoRoot 'BinSifter-WindowIcon.ico'
 
-# No -Core flag here: that belongs to a different, newer module
-# (PS2EXE.Core by Fabien Tschanz), not the one this script installs
-# (MScholtes/ps2exe from the PowerShell Gallery), whose Invoke-ps2exe
-# has no such parameter at all. That module instead compiles against
-# whichever PowerShell host actually runs Invoke-ps2exe - since this
-# script requires pwsh.exe (PowerShell 7) per its own prerequisite
-# above, the resulting exe already targets PS7's engine, which is what
-# Rowan needs for its .NET 5+ HashData/ToHexString APIs (see TODO.md's
-# cross-machine PS7.0 fix). -STA is required for WinForms. -NoConsole
-# hides the console window a plain pwsh.exe launch would otherwise
-# show. -DPIAware/-WinFormsDPIAware match the DPI-scaling work already
-# done inside the script itself.
-Invoke-ps2exe `
+# -Core is the whole point of using this module instead of MScholtes/
+# ps2exe - see the file header comment above. No -TargetFramework/
+# -PowerShellVersion override: PS2EXE.Core auto-detects the installed
+# PowerShell Core/.NET SDK version and picks the matching target itself,
+# which is the right behavior for a CI runner or dev machine we don't
+# control the exact PS7 patch version on. -STA is required for WinForms.
+# -NoConsole hides the console window a plain pwsh.exe launch would
+# otherwise show. -DPIAware/-WinFormsDPIAware match the DPI-scaling work
+# already done inside the script itself.
+Invoke-PS2EXE `
     -InputFile $sourceScript `
     -OutputFile $targetExe `
     -IconFile $iconFile `
@@ -68,6 +95,7 @@ Invoke-ps2exe `
     -Product 'BinSifter' `
     -Company 'BinSifter Project' `
     -Version '1.0.1.0' `
+    -Core `
     -STA `
     -NoConsole `
     -DPIAware `
@@ -78,5 +106,5 @@ if (Test-Path -LiteralPath $targetExe) {
     Write-Host 'Reminder: this still needs PowerShell 7 (pwsh.exe) installed on the machine that runs it.' -ForegroundColor Yellow
 }
 else {
-    throw "PS2EXE did not produce $targetExe - check the Invoke-ps2exe output above."
+    throw "PS2EXE.Core did not produce $targetExe - check the Invoke-PS2EXE output above."
 }

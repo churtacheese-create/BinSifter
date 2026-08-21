@@ -118,6 +118,16 @@ function Show-MainWindow {
         # compiler diagnostic immediately, in a dialog, at the point of failure.
         if (-not ('BinSifter.ImphashClusterer' -as [type])) {
         try {
+        # Add-Type's C# compiler only offers assemblies already loaded into
+        # the current AppDomain as references by default. Under plain
+        # pwsh.exe, System.Text.Json is normally loaded incidentally before
+        # this point; under a compiled/hosted PowerShell process (e.g. the
+        # portable .exe build) that incidental loading may not have
+        # happened yet, so the C# block below fails to find it with a
+        # plain "namespace 'Json' does not exist" error. Forcing it to
+        # load here first - same idiom as the WinForms/Drawing Add-Type
+        # calls above - makes sure it's always available as a reference.
+        Add-Type -AssemblyName System.Text.Json
         Add-Type -Language CSharp -ErrorAction Stop -TypeDefinition @'
 using System;
 using System.Collections.Generic;
