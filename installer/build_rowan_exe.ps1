@@ -112,7 +112,7 @@ Invoke-PS2EXE `
     -Title 'BinSifter Rowan' `
     -Product 'BinSifter' `
     -Company 'BinSifter Project' `
-    -Version '1.0.2.0' `
+    -Version '1.0.3.0' `
     -Core `
     -STA `
     -NoConsole `
