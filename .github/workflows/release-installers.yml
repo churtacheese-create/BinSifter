@@ -25,7 +25,7 @@ name: Build and release installers
 #      origin v2.0.0-beta.1`) - builds both installers AND publishes a
 #      GitHub Release for that tag, marked as a pre-release, with all
 #      four packages attached as downloadable assets (Winnow's .exe
-#      installer, and Rowan's .exe installer, .msi, and portable .exe).
+#      installer, and Rowan's .exe installer, .msi, and portable .zip).
 
 on:
   push:
@@ -110,7 +110,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: BinSifter-Rowan-Portable
-          path: installer\Output\BinSifter-Rowan.exe
+          path: installer\Output\BinSifter-Rowan-Portable.zip
           if-no-files-found: error
 
   release:
@@ -136,14 +136,14 @@ jobs:
             "artifacts/BinSifter-Winnow-Setup/BinSifter-Winnow-Setup.exe" \
             "artifacts/BinSifter-Rowan-Setup/BinSifter-Rowan-Setup.exe" \
             "artifacts/BinSifter-Rowan-Msi/BinSifter-Rowan.msi" \
-            "artifacts/BinSifter-Rowan-Portable/BinSifter-Rowan.exe" \
+            "artifacts/BinSifter-Rowan-Portable/BinSifter-Rowan-Portable.zip" \
             --title "BinSifter ${{ github.ref_name }}" \
             --prerelease \
             --notes "Rowan is a full release; Winnow is beta - see below for each.
 
           **BinSifter-Rowan-Setup.exe** - PowerShell 7 + WinForms variant, standard installer. Needs PowerShell 7 (pwsh.exe) already installed; it will tell you if it's missing.
           **BinSifter-Rowan.msi** - same Rowan variant, packaged as an MSI for managed/enterprise deployment instead of the standard installer.
-          **BinSifter-Rowan.exe** - same Rowan variant, packaged as a single portable executable (no install/uninstall) instead of the standard installer. Still needs PowerShell 7 present on the machine.
+          **BinSifter-Rowan-Portable.zip** - same Rowan variant, packaged as a portable extract-and-run folder (no install/uninstall) instead of the standard installer. Extract the zip and run BinSifter-Rowan.exe from inside it - the DLLs alongside it are required, don't move the exe out on its own. Still needs PowerShell 7 present on the machine.
           **BinSifter-Winnow-Setup.exe** - Python/PySide6 variant, self-contained (no separate Python install needed). Beta - full GUI and scan engine, run against real malware samples, but expect rough edges and please report anything that looks wrong.
 
           All packages: no administrator rights required, Start Menu shortcut, optional desktop icon (off by default). See the repo README for setup/configuration (NSRL, YARA rules, capa rules, etc.) after installing.

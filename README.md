@@ -62,7 +62,7 @@ Winnow is beta, not 1.0 - expect rough edges, and please report anything that lo
 
 - **Standard installer** (`BinSifter-Rowan-Setup.exe`) - the usual install/uninstall flow, Start Menu shortcut, optional desktop icon.
 - **MSI** (`BinSifter-Rowan.msi`) - the same install, packaged for managed/enterprise deployment (Group Policy, SCCM, Intune) instead of a standard installer.
-- **Portable** (`BinSifter-Rowan.exe`) - a single file, no install/uninstall, run it directly.
+- **Portable** (`BinSifter-Rowan-Portable.zip`) - no install/uninstall, extract and run `BinSifter-Rowan.exe` from inside the extracted folder (the DLLs alongside it are required, don't move the exe out on its own).
 - Or skip packaging entirely and launch `BinSifter-Rowan.ps1` directly with `pwsh.exe -File`.
 
 All four need PowerShell 7 (`pwsh.exe`) already installed. See `installer/README.md` for how each package is built.
