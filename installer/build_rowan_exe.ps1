@@ -85,8 +85,17 @@ $iconFile = Join-Path $repoRoot 'BinSifter-WindowIcon.ico'
 # which is the right behavior for a CI runner or dev machine we don't
 # control the exact PS7 patch version on. -STA is required for WinForms.
 # -NoConsole hides the console window a plain pwsh.exe launch would
-# otherwise show. -DPIAware/-WinFormsDPIAware match the DPI-scaling work
-# already done inside the script itself.
+# otherwise show. -DPIAware gets the per-monitor-v2 DPI manifest entry
+# (matches the DPI-scaling work already done inside the script itself).
+# No -WinFormsDPIAware: that parameter only exists in this module's
+# 'WinPS' parameter set (the old .NET-Framework-app.config-based DPI
+# mechanism) - combining it with -Core is a parameter-set conflict
+# PowerShell rejects outright ("Parameter set cannot be resolved"),
+# and it wouldn't apply to a Core build anyway. -PublishSingleFile
+# keeps the "single portable .exe" promise - without it, -Core produces
+# a folder of loose files instead of one file (framework-dependent, not
+# -SelfContained, so it still doesn't bundle the .NET/PowerShell
+# runtime - just bundles this app's own files into one launcher).
 Invoke-PS2EXE `
     -InputFile $sourceScript `
     -OutputFile $targetExe `
@@ -99,12 +108,23 @@ Invoke-PS2EXE `
     -STA `
     -NoConsole `
     -DPIAware `
-    -WinFormsDPIAware
+    -PublishSingleFile
+
+# -Core always publishes into a "Release" subfolder under the output
+# directory (per PS2EXE.Core's own design - see Invoke-PS2EXE.ps1's
+# comments), not directly to $targetExe, even with -PublishSingleFile.
+# Copy the real output up to the flat path the rest of this project
+# (the GitHub Actions workflow's upload-artifact step, the main README)
+# expects a single BinSifter-Rowan.exe to live at.
+$publishedExe = Join-Path (Join-Path $outputDir 'Release') 'BinSifter-Rowan.exe'
+if (Test-Path -LiteralPath $publishedExe -PathType Leaf) {
+    Copy-Item -LiteralPath $publishedExe -Destination $targetExe -Force
+}
 
 if (Test-Path -LiteralPath $targetExe) {
     Write-Host "Done: $targetExe" -ForegroundColor Green
     Write-Host 'Reminder: this still needs PowerShell 7 (pwsh.exe) installed on the machine that runs it.' -ForegroundColor Yellow
 }
 else {
-    throw "PS2EXE.Core did not produce $targetExe - check the Invoke-PS2EXE output above."
+    throw "PS2EXE.Core did not produce $targetExe (checked $publishedExe too) - check the Invoke-PS2EXE output above."
 }
