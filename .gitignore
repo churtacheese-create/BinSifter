@@ -51,3 +51,11 @@ installer/Output/
 # ignored (not just deleted) so it doesn't get silently re-tracked if it
 # ever reappears untracked (old branch checkout, editor auto-restore, etc.)
 BinSifter_v1.2.1_Tutorial.md
+
+# Dev-log working docs (2026-08-24) - genuinely useful locally (the running
+# record of every real bug found/fixed and what's still open), but not
+# meant for a repo visitor to see first. Kept on disk, dropped from the
+# repo - git won't re-track these on their own; see the README note below
+# on the one-time `git rm --cached` step needed to actually untrack them.
+TODO.md
+TESTING_CHECKLIST.md
