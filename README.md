@@ -2,6 +2,9 @@
 
 # BinSifter
 
+[![Latest release](https://img.shields.io/github/v/release/churtacheese-create/BinSifter?label=latest%20release&color=brightgreen)](https://github.com/churtacheese-create/BinSifter/releases/latest)
+[![License](https://img.shields.io/github/license/churtacheese-create/BinSifter)](LICENSE)
+
 BinSifter is a binary triage tool built for forensic examiners who need to make a quick go/no-go call on a pile of unknown files. Point it at a directory and it hashes everything, checks each file against YARA rules and CAPA capability detection, looks it up against an NSRL known-good set and an optional known-bad blocklist, and lays the results out in a filterable dashboard so you can triage a batch fast instead of opening files one at a time.
 
 ## Demo
