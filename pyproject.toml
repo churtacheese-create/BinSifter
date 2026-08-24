@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "binsifter"
-version = "2.0.0b1"
+version = "2.0.0"
 description = "Winnow - BinSifter's Python/PySide6 variant, a forensic binary triage tool for bulk assessment"
 readme = "README.md"
 requires-python = ">=3.10"
