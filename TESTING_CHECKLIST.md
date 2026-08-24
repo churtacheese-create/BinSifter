@@ -14,14 +14,9 @@ of them have been confirmed through an actually-*packaged* build yet (MSI,
 Setup.exe, or the portable zip). Since the last confirmed installer builds
 predate those fixes, this needs a fresh round:
 
-- [ ] Build all four Rowan packages from the current `.ps1` (Setup.exe, MSI, portable zip) via the GitHub Actions workflow.
-- [ ] Install via Setup.exe on a display running at 150%/175% scaling. Confirm the top-bar buttons (Settings/Help/About) show full text, not truncated ("Settin", "Hel", "Ab").
-- [ ] On the same machine, confirm the window opens at a reasonable default size (not full-screen) and can be resized down to something well under full-screen.
-- [ ] Open the Settings page at that same scaling. Confirm Save Settings, the Antivirus section, and the Windows Defender section are all visible and properly sized (not collapsed to slivers).
-- [ ] Repeat the same three checks (button text, window size, Settings page) for the MSI install.
-- [ ] Repeat the same three checks for the portable zip (extract, run `BinSifter-Rowan.exe` from inside the extracted folder).
 - [x] **Confirmed 2026-08-21**: all four Rowan package formats (MSI, Setup.exe, portable zip - both host PC and FLARE VM) ran the same 652-file scan clean end to end, 0 errors.
-- [x] **Confirmed 2026-08-21 - DPI/scaling smoke test passed on real hardware.** Host PC at 175% scaling, 3840x3160 - all windows scaled cleanly, no misaligned or skewed text. FLARE VM at 100% (1920x1080, unscaled) - also clean, as expected. Covers all four package formats since the same fixed `.ps1` ships in every one of them. This whole section can be considered closed.
+- [x] **Confirmed 2026-08-21 - DPI/scaling smoke test passed on real hardware.** Host PC at 175% scaling, 3840x3160 - all windows scaled cleanly, no misaligned or skewed text. FLARE VM at 100% (1920x1080, unscaled) - also clean, as expected. Covers all four package formats since the same fixed `.ps1` ships in every one of them.
+- [x] **Confirmed 2026-08-24, portable zip specifically, live-resize test.** Started on a host-PC monitor at 175% scaling, dragged the window's corners to resize both larger and smaller - no skewing, images resized cleanly. Dragged the whole window over to a second monitor at 150% scaling and repeated the same resize test - same clean result. Repeated once more on the FLARE VM at 100% scaling - also clean. This is a stronger test than the 2026-08-21 static confirmation (live cross-monitor drag + resize, not just launch-and-look) and covers the one format (portable) that hadn't been resize-tested yet. **This whole section can be considered closed.**
 
 ## Rowan - Add-Type failure visibility fix
 
@@ -56,8 +51,8 @@ Fixed by normalizing the path at import time.
 TODO.md line 73, 2026-08-15. Fixed and covered by unit tests, but never
 confirmed against an actual packaged installer + real scan.
 
-- [x] **Run 2026-08-23 - this is what surfaced two more real bugs, both fixed the same day (TODO.md's "Winnow Pause/Stop buttons" section).** Stop actually did work (log: `Scan stopped by request while 6 file(s) were still in flight`), but the status label reverting to "Scanning..." made it look broken - that was a separate, purely cosmetic tick-handler bug, now fixed. Pause turned out to be a genuine no-op on any real multi-file scan - now fixed via a dispatch-throttling semaphore. Neither fix has been retested against a real packaged installer yet - that's the next thing to confirm.
-- [ ] **Retest needed**: from an installed build, click Stop mid-scan and confirm the status label now stays on "Stopping..." (not flipping back to "Scanning...") until the scan actually finishes. Separately, click Pause mid-scan and confirm the progress bar and logs actually stop advancing (aside from whatever files were already in flight finishing out), not just the status label changing.
+- [x] **Run 2026-08-23 - this is what surfaced two more real bugs, both fixed the same day (TODO.md's "Winnow Pause/Stop buttons" section).** Stop actually did work (log: `Scan stopped by request while 6 file(s) were still in flight`), but the status label reverting to "Scanning..." made it look broken - that was a separate, purely cosmetic tick-handler bug, now fixed. Pause turned out to be a genuine no-op on any real multi-file scan - now fixed via a dispatch-throttling semaphore.
+- [x] **CONFIRMED 2026-08-24, against a real installed Setup.exe build, two scans on the host PC.** Scan 1 (stop only): stopped cleanly at 648/652 completed, the remaining 4 in-flight files correctly marked Cancelled instead of waited on. Scan 2 (pause, then resume, then stop): the raw scan log shows a clean 37-second window (14:57:52-14:58:29) with zero new `Scanning:` (dispatch) lines - the files already in flight when Pause was clicked finished out normally during that window (e.g. one still completed at 14:57:52, 110.1s after its own dispatch), but nothing NEW was picked up - then at 14:58:29 a burst of new `Scanning:` lines fires all at once, exactly matching a Resume click waking the throttled submission loop back up. Scan then ran another ~21s before Stop was clicked and honored cleanly (293 completed, 359 cancelled, totals check out at 652). This is real, measurable evidence the dispatch-throttling fix works as designed, not just "the label changed." **This whole section can be considered closed.**
 
 ## Winnow - tool-version footer retest
 
@@ -86,11 +81,11 @@ write-access probe that falls back to `%LOCALAPPDATA%`.
 
 ## Rowan - portable zip missing assets + orphaned-process fixes (new, 2026-08-21)
 
-Found during this same test round, not yet retested:
+Found during this same test round, retested 2026-08-24:
 
-- [ ] Build a fresh portable zip, extract it, and confirm the sidebar logo, About-page logo, and window title-bar icon all render (previously blank on both machines - the build script never bundled the image assets, and the script-root resolution silently failed under the compiled `.exe` hosting model).
-- [ ] Confirm Reports/Attack/Blocklist now land under `...\BinSifter Rowan\` next to the exe rather than the generic `%LOCALAPPDATA%\BinSifter` fallback.
-- [ ] Run a normal scan to completion, close the window normally, then check Task Manager - confirm no `BinSifter-Rowan.exe` process remains running (previously required a manual kill on both the host PC and the FLARE VM).
+- [x] **Confirmed 2026-08-24, both host PC and FLARE VM.** Portable zip rendered all logos and icons correctly (sidebar, About page, title bar) on both machines.
+- [x] **Confirmed 2026-08-24, both machines - logs corroborate this directly.** `BinSIfter-Rowan-Portable_HOSTPC_08242026.txt` and the FLARE VM equivalent both show Reports/generated_rules/CSVs saved under the extracted portable folder itself (`...\BinSifter-Rowan-Portable\BinSifter-Rowan-Portable\Reports\...` on the host PC, `Z:\FLARE\BinSifter-Rowan-Portable\Reports\...` on the FLARE VM) - next to the exe, not the `%LOCALAPPDATA%\BinSifter` fallback. Both scans also completed clean (652/652, 0 errors visible in either log).
+- [x] **Confirmed 2026-08-24, both machines.** No orphaned `BinSifter-Rowan.exe` process after closing the window normally on either the host PC or the FLARE VM. **This whole section can be considered closed.**
 
 ## Not a test - ongoing item
 
