@@ -30,7 +30,7 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="BinSifter Rowan"
            Manufacturer="BinSifter Project"
-           Version="1.0.3"
+           Version="1.0.4"
            UpgradeCode="9B1C2E4A-7F3D-4A6B-8E1C-3D5F7A9B1C2E"
            InstallerVersion="500"
            Compressed="yes">

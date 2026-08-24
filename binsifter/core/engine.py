@@ -907,11 +907,35 @@ def scan_directory(
         log_drain_thread = threading.Thread(target=_drain_log_queue, args=(log_queue,), daemon=True)
         log_drain_thread.start()
 
+        # Bounds how many files can be in flight (submitted to the pool but
+        # not yet back with a result) at once, to worker_count. Real-world
+        # bug found 2026-08-23: an analyst clicked Pause mid-scan, the
+        # status label switched to "Paused", but the progress bar and logs
+        # kept moving - Pause was a complete no-op. Root cause: without this
+        # bound, pool.apply_async() never blocks on worker availability, so
+        # the submission loop below used to race through every path in
+        # `paths` (all 652 of them, in one real report) within milliseconds
+        # of the scan starting - long before a human could physically click
+        # anything. should_pause() WAS being polled once per file in that
+        # loop, same as should_stop() below, but by the time Pause got
+        # clicked the loop had already finished; there was nothing left to
+        # pause. Throttling in-flight files to worker_count means the
+        # submission loop now only advances to the next file as fast as the
+        # pool actually completes them - roughly once per real file finish
+        # - which gives should_pause() a real, recurring window to catch a
+        # click instead of one that closes in the first few milliseconds of
+        # the scan. Already-dispatched files still run to completion when
+        # Pause is clicked (there's no way to freeze a worker mid-file, nor
+        # would you want to - it's already committed the CPU time) - only
+        # new dispatches stop, which is the correct "pause" semantic.
+        dispatch_semaphore = threading.Semaphore(worker_count)
+
         def _on_result(result: _WorkerFileResult) -> None:
             # Runs in a Pool-internal result-handler thread inside THIS
             # (parent) process, not in the worker - safe to touch
             # result_queue directly since queue.Queue is thread-safe.
             result_queue.put(("ok", result))
+            dispatch_semaphore.release()
 
         def _on_error(exc: BaseException) -> None:
             # Only fires for a bug in _process_one_file itself - that
@@ -919,6 +943,7 @@ def scan_directory(
             # Status="Error" record instead of raising, so this is a
             # last-resort net, not the expected per-file-error path.
             result_queue.put(("error", exc))
+            dispatch_semaphore.release()
 
         # _NoDaemonPool, not a plain multiprocessing.Pool - see that
         # class's docstring above: capa's own per-file hang-safety
@@ -954,6 +979,34 @@ def scan_directory(
                 if stopped_while_paused:
                     stopped_at = i
                     break
+
+                # Fast path: try a non-blocking acquire first, so the
+                # overwhelmingly common case (a slot is already free)
+                # costs nothing extra and calls should_stop()/should_pause()
+                # exactly as many times as before this fix. Only when every
+                # worker is genuinely busy does this fall into the polling
+                # wait below - which is also the only place a real scan's
+                # submission loop now spends any measurable wall-clock
+                # time, which is exactly what gives Stop/Pause a fair
+                # chance to be observed.
+                if not dispatch_semaphore.acquire(blocking=False):
+                    stopped_while_waiting = False
+                    got_slot = False
+                    while not got_slot:
+                        if should_stop and should_stop():
+                            stopped_while_waiting = True
+                            break
+                        while should_pause and should_pause():
+                            time.sleep(0.15)
+                            if should_stop and should_stop():
+                                stopped_while_waiting = True
+                                break
+                        if stopped_while_waiting:
+                            break
+                        got_slot = dispatch_semaphore.acquire(timeout=0.2)
+                    if stopped_while_waiting:
+                        stopped_at = i
+                        break
 
                 record = records[path]
                 record.Status = "Scanning"

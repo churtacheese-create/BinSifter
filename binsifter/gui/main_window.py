@@ -424,11 +424,27 @@ class MainWindow(QMainWindow):
         """Fires every second for the whole scan (see the QTimer setup in
         __init__). Only owns the top-bar elapsed-time text; deliberately
         doesn't touch scan_queue_page's summary/progress bar, which reflect
-        real file-level progress from _on_scan_progress()."""
+        real file-level progress from _on_scan_progress().
+
+        Real-world bug found 2026-08-23: clicking Stop showed "Stopping..."
+        for an instant, then the label flipped right back to "Scanning...",
+        repeatedly, making Stop look completely broken. This tick handler
+        is why - it unconditionally overwrote the status label with
+        "Scanning..." (or "Paused...") every second, with no idea a stop
+        had been requested, so it clobbered _on_stop_clicked()'s
+        "Stopping..." text within a second of the click. Purely cosmetic -
+        the underlying stop_requested flag was set correctly the whole
+        time and the scan did eventually stop - but there was no way to
+        tell from the screen. stop_requested is now checked first, ahead
+        of is_paused, since a stop click should always win over a stale
+        paused state.
+        """
         if self._scan_start_time is None:
             return
         elapsed = _format_elapsed(time.monotonic() - self._scan_start_time)
-        if self._scan_control is not None and self._scan_control.is_paused:
+        if self._scan_control is not None and self._scan_control.stop_requested:
+            self._set_status(f"Stopping... ({elapsed})", self.theme.Warning)
+        elif self._scan_control is not None and self._scan_control.is_paused:
             self._set_status(f"Paused ({elapsed})", self.theme.Warning)
         else:
             self._set_status(f"Scanning... ({elapsed})", self.theme.Warning)

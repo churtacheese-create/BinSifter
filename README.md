@@ -20,7 +20,7 @@ BinSifter ships as multiple independently-developed variants, each with its own 
 
 ## Status
 
-**Rowan has a release.** `BinSifter-Rowan.ps1` is a PowerShell 7 + WinForms desktop app, proven against real casework on a FRED forensic workstation, and now packaged as a real release - see "Getting started" below for the four ways to install or run it.
+**Rowan has a release.** `BinSifter-Rowan.ps1` is a PowerShell 7 + WinForms desktop app, proven against real casework, and now packaged as a real release - see "Getting started" below for the four ways to install or run it.
 
 **Winnow is now in BETA.** It's a full rewrite in Python and PySide6 (see the `binsifter/` package), built to get BinSifter off Windows-only WinForms and onto something that can eventually run on Linux too. Both the scan engine and the GUI are real and working, not a placeholder: a full desktop app (Dashboard, Results grid, Scan Queue, Settings, Logs, YARA/capa rule management, Help, About) backed by the same detection pipeline as Rowan - hashing/entropy, NSRL, blocklist, YARA with MITRE ATT&CK enrichment, CAPA, FLOSS, Speakeasy emulation, Authenticode (embedded + catalog-based) verification, archive/compressed-file expansion (zip/tar/gzip/7z, including password-protected and AES-encrypted zips), IOC extraction, SSDEEP/imphash clustering, draft YARA rule generation, and CSV reporting. It's been run end-to-end against real malware samples, not just synthetic test fixtures. `pip install -e .` then `python -m binsifter.gui` launches the desktop app, and `binsifter-scan --src-dir ... --yara-rules ... --nsrl-path ...` runs a full headless scan. See `BinSifter_CHANGELOG.md` for Rowan's history.
 

@@ -112,7 +112,7 @@ Invoke-PS2EXE `
     -Title 'BinSifter Rowan' `
     -Product 'BinSifter' `
     -Company 'BinSifter Project' `
-    -Version '1.0.3.0' `
+    -Version '1.0.4.0' `
     -Core `
     -STA `
     -NoConsole `
@@ -120,9 +120,45 @@ Invoke-PS2EXE `
 
 # -Core always publishes into a "Release" subfolder under the output
 # directory (per PS2EXE.Core's own design - see Invoke-PS2EXE.ps1's
-# comments) as a folder of files, not a single exe. Zip that folder up
-# into the one downloadable asset the GitHub Actions workflow and the
-# READMEs expect.
+# comments) as a folder of files, not a single exe.
+
+# REAL BUG FOUND 2026-08-21: a real portable build launched fine but every
+# bundled logo/window icon rendered blank on both a host PC and a FLARE VM,
+# and Reports/Attack/Blocklist landed under the generic %LOCALAPPDATA%\
+# BinSifter fallback instead of a Rowan-specific folder - both point at the
+# same root cause. This script only ever compiled the .ps1 itself; it never
+# copied the PNG/ICO image assets (or anything else BinSifter-Rowan.ps1
+# looks up relative to its own folder) into $releaseDir before zipping, so
+# the portable package never actually contained them - Invoke-PS2EXE has no
+# concept of "bundle this other file alongside the exe," it only compiles
+# the script. The MSI and Setup.exe installers never had this problem since
+# Rowan.wxs/Rowan.iss both list every image file explicitly in their own
+# file tables - this script needs the same explicit list, not something
+# PS2EXE.Core does for it automatically. Fixed by copying the same asset
+# set Rowan.wxs installs into $releaseDir before zipping.
+$portableAssets = @(
+    'BinSifter-Logo-Horizontal-Dark.png'
+    'BinSifter-Logo-Horizontal.png'
+    'BinSifter-Logo-Full.png'
+    'BinSifter-WindowIcon.png'
+    'BinSifter-WindowIcon.ico'
+    'BinSifter-Desktop.ico'
+)
+if (Test-Path -LiteralPath $releaseDir -PathType Container) {
+    foreach ($assetName in $portableAssets) {
+        $assetSource = Join-Path $repoRoot $assetName
+        if (Test-Path -LiteralPath $assetSource -PathType Leaf) {
+            Copy-Item -LiteralPath $assetSource -Destination $releaseDir -Force
+        }
+        else {
+            Write-Host "Note: $assetName not found at repo root, skipping - the portable build will launch without it." -ForegroundColor DarkGray
+        }
+    }
+}
+
+# Zip the Release folder (now including the image assets above) up into
+# the one downloadable asset the GitHub Actions workflow and the READMEs
+# expect.
 if (Test-Path -LiteralPath $targetZip) {
     Remove-Item -LiteralPath $targetZip -Force
 }

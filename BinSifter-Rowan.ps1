@@ -2362,7 +2362,27 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
         $BinSifterRoot = if ($PSScriptRoot) { $PSScriptRoot }
             elseif ($PSCommandPath) { Split-Path -Parent $PSCommandPath }
             elseif ($MyInvocation.MyCommand.Path) { Split-Path -Parent $MyInvocation.MyCommand.Path }
-            else { $null }
+            else {
+                # PS2EXE.Core's -Core compiled output (the portable build) hosts
+                # this script as an embedded resource inside a real .exe rather
+                # than running it from a literal .ps1 file on disk - every one
+                # of the three checks above only ever populates for a real .ps1
+                # invocation, so they all come back empty here every time, not
+                # just occasionally. The CIM-based .ps1-path fallback just below
+                # this block can't help either, for the same reason - there is
+                # no .ps1 path on this process's command line to find. But the
+                # compiled .exe itself IS a real file on disk, so read its path
+                # straight back out of this process's own command-line
+                # arguments instead - PS2EXE.Core's own README documents this
+                # exact gap and recommends exactly this workaround. Guarded by
+                # Test-Path so this only kicks in when it actually resolves to
+                # a real file - a bare "pwsh"/"powershell" argv[0] from some
+                # other launch style is never trusted as a script folder.
+                $exeCandidate = try { [Environment]::GetCommandLineArgs()[0] } catch { $null }
+                if ($exeCandidate -and (Test-Path -LiteralPath $exeCandidate -PathType Leaf)) {
+                    Split-Path -Parent $exeCandidate
+                } else { $null }
+            }
         if ([string]::IsNullOrWhiteSpace($BinSifterRoot)) {
             # $PSScriptRoot/$PSCommandPath/$MyInvocation.MyCommand.Path can all
             # come back empty depending on how the script is launched - notably,
@@ -7310,6 +7330,24 @@ For repeatable case work, preserve the report directory (Reports\ next to BinSif
         })
 
         $form.Add_FormClosing({
+            # REAL BUG FOUND 2026-08-21: these two timers used to be stopped
+            # AFTER the shutdown wait loop below, not before it - but that
+            # wait loop calls Application.DoEvents(), which pumps the full
+            # Windows message queue, including this still-running timer's own
+            # WM_TIMER tick. Closing the window while a scan was still
+            # finishing up (there's a real window between "Scan complete"
+            # being logged and SSDEEP clustering/report-writing actually
+            # finishing where IsRunning can still be true) could let the
+            # dashboard/grid refresh tick fire concurrently with tool
+            # processes and dispatcher resources being torn down around it -
+            # a plausible real explanation for a pair of repeating
+            # FillRectangle/op_Addition dialogs reported during exactly this
+            # kind of close-while-still-finishing sequence on a real machine.
+            # Stopping both timers FIRST, before anything else in this
+            # handler runs, removes the whole race rather than narrowing it.
+            $refreshTimer.Stop()
+            $filterDebounceTimer.Stop()
+
             if ($ScanControl.IsRunning) {
                 $ScanControl.StopRequested = $true
 
@@ -7329,8 +7367,37 @@ For repeatable case work, preserve the report directory (Reports\ next to BinSif
                     Start-Sleep -Milliseconds 100
                 }
             }
-            $refreshTimer.Stop()
-            $filterDebounceTimer.Stop()
+
+            # REAL BUG FOUND 2026-08-21: unlike NsrlPreviewHandle and
+            # MetadataState.Handle just below (both explicitly disposed here),
+            # $EngineState.Handle - the scan dispatcher's own PowerShell/
+            # Runspace pair - was NEVER disposed by this handler at all. Its
+            # only cleanup path was the refresh timer's own Tick handler,
+            # gated on $ScanControl.Completed - which means closing the
+            # window while a scan was still running (or hadn't yet had a
+            # tick notice Completed=true) left that Runspace/PowerShell
+            # instance, and whatever background threads its async
+            # BeginInvoke() operation was using, alive with nothing left to
+            # ever call EndInvoke()/Dispose()/Close() on it - a real,
+            # confirmed explanation (a still-running BinSifter process with
+            # no visible window on both a host PC and a FLARE VM, requiring
+            # a manual Task Manager kill) for the same close-while-scanning
+            # report the timer-ordering fix above addresses the symptom of.
+            # Stopping the refresh timer first (above) actually made this
+            # WORSE on its own - it now guarantees the timer never gets a
+            # tick to do this cleanup either - so this needs its own
+            # explicit disposal here, same pattern as the other two handles.
+            $engineHandle = $EngineState.Handle
+            if ($engineHandle -and -not $engineHandle.Disposed) {
+                if (-not $engineHandle.Handle.IsCompleted) {
+                    try { $engineHandle.PS.Stop() } catch { }
+                }
+                try { $null = $engineHandle.PS.EndInvoke($engineHandle.Handle) } catch { }
+                $engineHandle.PS.Dispose()
+                $engineHandle.Runspace.Close()
+                $engineHandle.Runspace.Dispose()
+                $engineHandle.Disposed = $true
+            }
 
             $previewHandle = $ScanControl.NsrlPreviewHandle
             if ($previewHandle -and -not $previewHandle.Disposed) {
@@ -7512,18 +7579,28 @@ $isDarkMode = Test-SystemDarkMode
 $threadLimit = [Math]::Min(16, [Math]::Max(2, [Environment]::ProcessorCount * 2))
 
 # $PSScriptRoot comes back as an empty string (not $null) when running
-# from the PS2EXE-compiled portable .exe, since the script is run from an
-# embedded resource rather than a real .ps1 file on disk - Join-Path
-# rejects that empty string outright ("Cannot bind argument to parameter
-# 'Path' because it is an empty string"), which is what crashed the
-# portable build on launch. $PSCommandPath is tried as a fallback for the
-# same reason it's used in Show-MainWindow's own root resolution above.
-# If neither resolves, logo/icon just stay unset - both Import-ThemedLogo
+# from the PS2EXE.Core-compiled portable .exe, since the script is hosted
+# as an embedded resource rather than run from a real .ps1 file on disk -
+# Join-Path rejects that empty string outright ("Cannot bind argument to
+# parameter 'Path' because it is an empty string"), which is what crashed
+# the portable build on launch. $PSCommandPath comes back empty for the
+# exact same reason (there is no real .ps1 file backing this process
+# either) - confirmed by a real portable-build run where every bundled
+# logo/icon rendered blank and $BinSifterRoot's own equivalent chain
+# above (see Show-MainWindow) fell all the way through to its emergency
+# %LOCALAPPDATA%\BinSifter fallback, not just this bootstrap step. Same
+# fix as that chain: the compiled .exe is a real file on disk even though
+# the script inside it isn't, so read its own path back out of this
+# process's command-line arguments as a last resort before giving up.
+# If nothing resolves, logo/icon just stay unset - both Import-ThemedLogo
 # and Show-MainWindow's icon loader already handle a blank/missing path
-# by skipping the image rather than crashing, so the portable .exe (which
-# doesn't bundle these PNGs alongside itself anyway) still launches, just
-# without a logo/window icon.
-$bootstrapScriptRoot = if ($PSScriptRoot) { $PSScriptRoot } elseif ($PSCommandPath) { Split-Path -Parent $PSCommandPath } else { $null }
+# by skipping the image rather than crashing, so the portable .exe still
+# launches either way, just without a logo/window icon.
+$bootstrapExeCandidate = try { [Environment]::GetCommandLineArgs()[0] } catch { $null }
+$bootstrapScriptRoot = if ($PSScriptRoot) { $PSScriptRoot }
+    elseif ($PSCommandPath) { Split-Path -Parent $PSCommandPath }
+    elseif ($bootstrapExeCandidate -and (Test-Path -LiteralPath $bootstrapExeCandidate -PathType Leaf)) { Split-Path -Parent $bootstrapExeCandidate }
+    else { $null }
 $logoHorizontal = if ($bootstrapScriptRoot) {
     if ($isDarkMode) {
         Join-Path $bootstrapScriptRoot 'BinSifter-Logo-Horizontal-Dark.png'
@@ -7538,3 +7615,24 @@ $windowIconPath = if ($bootstrapScriptRoot) { Join-Path $bootstrapScriptRoot 'Bi
 Show-MainWindow -IsDarkMode $isDarkMode -LogoHorizontalPath $logoHorizontal -WindowIconPath $windowIconPath -ThrottleLimit $threadLimit
 
 Write-Host '[+] BinSifter closed.' -ForegroundColor Green
+
+# REAL BUG FOUND 2026-08-21: a real portable-build run left BinSifter-Rowan.exe
+# still listed in Task Manager, with no visible window, on both a host PC and
+# a FLARE VM - confirmed the scan had already fully completed before the
+# window was closed, ruling out the still-running-scan explanation the two
+# fixes inside Add_FormClosing above were reasoned from. Hosting the
+# PowerShell engine (System.Management.Automation) inside a custom compiled
+# .NET host, as PS2EXE.Core's -Core build does, is a documented case where
+# the engine's own process-wide background maintenance threads (module
+# analysis/autoloading caching among them) aren't guaranteed to unwind just
+# because this script's own runspaces were closed and disposed above -
+# Show-MainWindow's own try/finally block already does that correctly, but a
+# background thread the PowerShell SDK itself started, not this script,
+# can still be enough to keep dotnet's normal "exit once every foreground
+# thread returns" behavior from ever triggering. The standard, documented
+# fix for exactly this class of embedded-PowerShell-host problem is to force
+# the exit explicitly rather than let it fall through naturally - so this
+# script now does exactly that as its very last statement, guaranteeing the
+# process actually ends here regardless of what else might still be alive
+# underneath it.
+[Environment]::Exit(0)
