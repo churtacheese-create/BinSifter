@@ -1,8 +1,17 @@
 """Regression tests for binsifter.core.av_detect. subprocess.run is mocked
-throughout (this dev sandbox is Linux-only, has no real PowerShell/WMI to
-query against) - these test the JSON-parsing/dedup/guidance-lookup logic
-around the subprocess call, not the real Windows query itself, same
-verification-caveat pattern as defender.py's own module docstring.
+throughout for the Windows path (this dev sandbox is Linux, has no real
+PowerShell/WMI to query against) - those tests exercise the JSON-parsing/
+dedup/guidance-lookup logic around the subprocess call, not the real
+Windows query itself, same verification-caveat pattern as defender.py's
+own module docstring.
+
+The Linux path's three signals (_systemd_unit_installed,
+_linux_process_names, Path.exists) are mocked individually below instead -
+this sandbox genuinely IS Linux, but it has none of the real AV/EDR
+products in _LINUX_AV_SIGNATURES installed, so "does the real detection
+logic correctly wire up a hit from each of the three signal types" still
+needs mocking to exercise deliberately, not because the platform itself
+needs faking.
 """
 
 from __future__ import annotations
@@ -86,10 +95,99 @@ def test_detect_av_products_raises_on_timeout():
             av_detect.detect_av_products()
 
 
-def test_detect_av_products_raises_on_non_windows():
-    with patch("platform.system", return_value="Linux"):
+def test_detect_av_products_raises_on_unsupported_platform():
+    # Only Windows and Linux have a detection mechanism implemented -
+    # anything else (macOS here) still raises, same as "non-Windows" used
+    # to before Linux support existed.
+    with patch("platform.system", return_value="Darwin"):
         with pytest.raises(av_detect.AvDetectionError):
             av_detect.detect_av_products()
+
+
+# --- Linux detection path -------------------------------------------------
+# Real Linux platform (this sandbox), but the three underlying signals are
+# mocked individually so each test exercises exactly one hit/no-hit path
+# through _detect_linux() without depending on what's actually installed
+# on the machine running the test suite.
+
+def test_detect_linux_finds_hit_via_systemd_unit():
+    with patch("platform.system", return_value="Linux"), \
+         patch("binsifter.core.av_detect._systemd_unit_installed", side_effect=lambda unit: unit == "clamav-daemon.service"), \
+         patch("binsifter.core.av_detect._linux_process_names", return_value=set()), \
+         patch("pathlib.Path.exists", return_value=False):
+        products = av_detect.detect_av_products()
+    assert [p.name for p in products] == ["ClamAV"]
+
+
+def test_detect_linux_finds_hit_via_running_process():
+    with patch("platform.system", return_value="Linux"), \
+         patch("binsifter.core.av_detect._systemd_unit_installed", return_value=False), \
+         patch("binsifter.core.av_detect._linux_process_names", return_value={"falcon-sensor"}), \
+         patch("pathlib.Path.exists", return_value=False):
+        products = av_detect.detect_av_products()
+    assert [p.name for p in products] == ["CrowdStrike Falcon"]
+
+
+def test_detect_linux_finds_hit_via_install_path():
+    # Uses new= (a plain function) rather than side_effect= on a MagicMock -
+    # Path.exists is an instance method, and only a real function object
+    # gets bound with `self` via the descriptor protocol when patched onto
+    # the class; a MagicMock's side_effect would be called with zero args.
+    with patch("platform.system", return_value="Linux"), \
+         patch("binsifter.core.av_detect._systemd_unit_installed", return_value=False), \
+         patch("binsifter.core.av_detect._linux_process_names", return_value=set()), \
+         patch("pathlib.Path.exists", new=lambda self: str(self) == "/opt/sophos-spl"):
+        products = av_detect.detect_av_products()
+    assert [p.name for p in products] == ["Sophos"]
+
+
+def test_detect_linux_returns_empty_list_when_nothing_matches_not_an_error():
+    with patch("platform.system", return_value="Linux"), \
+         patch("binsifter.core.av_detect._systemd_unit_installed", return_value=False), \
+         patch("binsifter.core.av_detect._linux_process_names", return_value=set()), \
+         patch("pathlib.Path.exists", return_value=False):
+        products = av_detect.detect_av_products()
+    assert products == []
+
+
+def test_systemd_unit_installed_returns_false_when_systemctl_missing():
+    with patch("subprocess.run", side_effect=FileNotFoundError()):
+        assert av_detect._systemd_unit_installed("clamav-daemon.service") is False
+
+
+def test_systemd_unit_installed_returns_true_on_nonblank_output():
+    with patch("subprocess.run", return_value=_fake_run("clamav-daemon.service disabled\n")):
+        assert av_detect._systemd_unit_installed("clamav-daemon.service") is True
+
+
+def test_systemd_unit_installed_returns_false_on_blank_output():
+    with patch("subprocess.run", return_value=_fake_run("")):
+        assert av_detect._systemd_unit_installed("nonexistent.service") is False
+
+
+def test_linux_process_names_reads_comm_files_from_proc_root(tmp_path):
+    pid_dir = tmp_path / "1234"
+    pid_dir.mkdir()
+    (pid_dir / "comm").write_text("Clamd\n", encoding="utf-8")
+    non_pid_dir = tmp_path / "self"
+    non_pid_dir.mkdir()
+    names = av_detect._linux_process_names(proc_root=tmp_path)
+    assert names == {"clamd"}
+
+
+def test_linux_process_names_returns_empty_set_for_missing_proc_root(tmp_path):
+    assert av_detect._linux_process_names(proc_root=tmp_path / "does-not-exist") == set()
+
+
+def test_guidance_for_linux_defender_for_endpoint_does_not_point_at_windows_button():
+    hint = av_detect.guidance_for("Microsoft Defender for Endpoint")
+    assert "mdatp" in hint.lower()
+    assert "only automates windows defender" in hint.lower()
+
+
+def test_guidance_for_clamav_returns_linux_specific_hint():
+    hint = av_detect.guidance_for("ClamAV")
+    assert "clamd.conf" in hint
 
 
 def test_looks_like_defender_matches_common_names():

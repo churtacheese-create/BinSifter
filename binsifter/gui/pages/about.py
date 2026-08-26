@@ -40,7 +40,7 @@ class AboutPage(QWidget):
 
         root.addSpacing(16)
 
-        version_label = QLabel(f"BinSifter Winnow {__version__} (Beta)")
+        version_label = QLabel(f"BinSifter Winnow {__version__}")
         font = version_label.font()
         font.setFamily("Segoe UI")
         font.setPointSize(12)

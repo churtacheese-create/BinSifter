@@ -175,7 +175,7 @@ class MainWindow(QMainWindow):
         # setting once and share the result with the app-wide QMessageBox
         # stylesheet too, instead of detecting separately in two places.
         self.theme: ThemePalette = theme if theme is not None else get_theme_palette(detect_os_dark_mode())
-        self.setWindowTitle(f"BinSifter Winnow {__version__} (Beta)")
+        self.setWindowTitle(f"BinSifter Winnow {__version__}")
         # winnow.spec embeds an icon into the exe's PE resources for the
         # taskbar entry, but Qt doesn't reuse that for the window's own
         # title-bar icon - needs an explicit setWindowIcon() call. Uses the
@@ -638,7 +638,7 @@ class MainWindow(QMainWindow):
         layout = QHBoxLayout(bar)
         layout.setContentsMargins(24, 0, 24, 0)
 
-        self.footer_label = QLabel(f"BinSifter {__version__} (Beta)")
+        self.footer_label = QLabel(f"BinSifter {__version__}")
         self.footer_label.setStyleSheet(f"color: {accent_to_css(theme.MutedFore)}; border: none; background: transparent;")
         font = self.footer_label.font()
         font.setPointSize(9)
@@ -657,4 +657,4 @@ class MainWindow(QMainWindow):
 
     def _refresh_footer(self) -> None:
         metadata = refresh_tool_metadata(self.config.NsrlPath)
-        self.footer_label.setText(format_status_line(f"{__version__} (Beta)", metadata))
+        self.footer_label.setText(format_status_line(f"{__version__}", metadata))

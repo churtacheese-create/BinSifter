@@ -122,9 +122,10 @@ class SettingsPage(QWidget):
 
         # The Defender exclusion button below only helps if Defender is the
         # machine's active antivirus product. This detects whatever's
-        # actually registered (via av_detect.py, the same
-        # root/SecurityCenter2 WMI class Windows' own Security app reads)
-        # and, for anything other than Defender, points the analyst at that
+        # actually installed (via av_detect.py - the root/SecurityCenter2
+        # WMI class Windows' own Security app reads, or a curated table of
+        # known systemd units/processes/install paths on Linux) and, for
+        # anything other than Windows Defender, points the analyst at that
         # vendor's own exclusion settings instead.
         root.addSpacing(24)
         av_label = QLabel("Antivirus")
@@ -134,9 +135,10 @@ class SettingsPage(QWidget):
         root.addWidget(av_label)
 
         av_explainer = QLabel(
-            "Detects which antivirus product(s) are registered with Windows Security on this "
-            "machine. The automated exclusion button below only works for Windows Defender - for "
-            "any other product, this points you at where to add the exclusion yourself."
+            "Detects known antivirus/EDR product(s) installed on this machine - via Windows "
+            "Security Center on Windows, or known services/processes on Linux. The automated "
+            "exclusion button below only works for Windows Defender - for any other product, this "
+            "points you at where to add the exclusion yourself."
         )
         av_explainer.setWordWrap(True)
         av_explainer.setStyleSheet(f"color: {accent_to_css(theme.MutedFore)}; border: none; background: transparent;")
@@ -253,9 +255,10 @@ class SettingsPage(QWidget):
         if not products:
             self.av_detect_status_label.setStyleSheet(f"color: {accent_to_css(theme.MutedFore)}; border: none; background: transparent;")
             self.av_detect_status_label.setText(
-                "No antivirus product found via Windows Security Center - this is expected on "
-                "Windows Server (Security Center isn't available there), or genuinely means nothing "
-                "is registered on this machine."
+                "No known antivirus/EDR product found. On Windows this can mean Security Center "
+                "isn't available (e.g. Windows Server) or genuinely nothing is registered; on Linux "
+                "it means nothing on BinSifter's known-product list was detected - a product not on "
+                "that list, or one running under an unrecognized service/process name, won't show up."
             )
             self.av_detect_button.setEnabled(True)
             return
