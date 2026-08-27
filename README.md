@@ -13,23 +13,17 @@ BinSifter is a binary triage tool built for forensic examiners who need to make 
 
 ## Variants
 
-BinSifter ships as multiple independently-developed variants, each with its own codename, sharing the same detection design and pipeline logic:
+BinSifter ships as multiple independently-developed variants, each with its own codename and its own platform focus, sharing the same detection design and pipeline logic. Each has its own page with full requirements, install steps, and quick-launch tool details:
 
 | Codename | Platform | Status |
 | --- | --- | --- |
-| **Rowan** | PowerShell 7 + WinForms (Windows-only) | **Released.** Proven original, run against real casework, installers available (standard, MSI, portable) |
-| **Winnow** | Python + PySide6 (cross-platform goal) | **Released.** Full GUI and scan engine, run against real malware samples end-to-end, installer available |
-| **Ingot** | Rust | Planned, not yet started |
+| **[Rowan](docs/rowan.md)** | PowerShell 7 + WinForms (Windows-only) | **Released.** Proven original, run against real casework, installers available (standard, MSI, portable) |
+| **[Winnow](docs/winnow.md)** | Python + PySide6 (Linux-only) | **Released.** Full GUI and scan engine, run against real malware samples end-to-end, packages available for Debian/Ubuntu, Fedora/RHEL, and Arch |
+| **[Ingot](docs/ingot.md)** | Rust (planned as a backend service + web UI - the actual cross-platform variant) | Planned, not yet started |
 
-## Status
+If you're on Windows, use Rowan. If you're on Linux, use Winnow. Ingot, once built, will be the one variant meant to run anywhere via a browser instead of a desktop GUI toolkit.
 
-**Rowan has a release.** `BinSifter-Rowan.ps1` is a PowerShell 7 + WinForms desktop app, proven against real casework, and now packaged as a real release - see "Getting started" below for the four ways to install or run it.
-
-**Winnow has a release.** It's a full rewrite in Python and PySide6 (see the `binsifter/` package), built to get BinSifter off Windows-only WinForms and onto something that can eventually run on Linux too. Both the scan engine and the GUI are real and working, not a placeholder: a full desktop app (Dashboard, Results grid, Scan Queue, Settings, Logs, YARA/capa rule management, Help, About) backed by the same detection pipeline as Rowan - hashing/entropy, NSRL, blocklist, YARA with MITRE ATT&CK enrichment, CAPA, FLOSS, Speakeasy emulation, Authenticode (embedded + catalog-based) verification, archive/compressed-file expansion (zip/tar/gzip/7z, including password-protected and AES-encrypted zips), IOC extraction, SSDEEP/imphash clustering, draft YARA rule generation, and CSV reporting. It's been run end-to-end against real malware samples across multiple machines, not just synthetic test fixtures, with every known bug from that testing found and fixed. `pip install -e .` then `python -m binsifter.gui` launches the desktop app, and `binsifter-scan --src-dir ... --yara-rules ... --nsrl-path ...` runs a full headless scan. See `BinSifter_CHANGELOG.md` for Rowan's history.
-
-Winnow is newer than Rowan and hasn't seen as much real-casework mileage yet - please report anything that looks wrong rather than assuming it's expected.
-
-**NSRL caching:** the first scan against a given NSRL hash set builds a cached, memory-mapped index from it - a one-time cost that scales with the NSRL file's size, not the number of files being scanned (around 30 minutes for a full ~430-million-hash NSRL RDS set, measured directly). Every scan after that against the same NSRL file and Report Directory loads the cache directly (well under a second) instead of re-parsing it, so don't be alarmed if the very first scan against a new NSRL set takes noticeably longer than every scan after it. The cache lives under `<ReportDirectory>/.bsifter-nsrl-cache/` and rebuilds automatically if the source NSRL file's size or modified date changes, so switching Report Directory or NSRL file costs one more full rebuild, not a lasting slowdown.
+**NSRL caching (applies to both released variants):** the first scan against a given NSRL hash set builds a cached, memory-mapped index from it - a one-time cost that scales with the NSRL file's size, not the number of files being scanned (around 30 minutes for a full ~430-million-hash NSRL RDS set, measured directly). Every scan after that against the same NSRL file and Report Directory loads the cache directly (well under a second) instead of re-parsing it, so don't be alarmed if the very first scan against a new NSRL set takes noticeably longer than every scan after it. The cache lives under `<ReportDirectory>/.bsifter-nsrl-cache/` and rebuilds automatically if the source NSRL file's size or modified date changes, so switching Report Directory or NSRL file costs one more full rebuild, not a lasting slowdown.
 
 <img src="BinSifter_Dash.png" alt="BinSifter dashboard" width="100%">
 
@@ -42,35 +36,21 @@ Winnow is newer than Rowan and hasn't seen as much real-casework mileage yet - p
 - Authenticode signature verification and an optional offline known-bad hash blocklist check
 - Draft YARA rule auto-generation per SSDEEP cluster
 - Per-file triage disposition tracking, persisted across scans
-- Results-grid quick-launch into PE Studio, DIE, CFF Explorer, Resource Hacker, Ghidra (headless), Sigcheck, x64dbg/x32dbg, and Speakeasy
+- Results-grid quick-launch into external analysis tools (a different set per variant - see each variant's page for its exact list) plus Ghidra headless analysis and isolated Speakeasy emulation
 
 ## How it works
 
 <img src="BinSifter_Flow_Diagram.svg" alt="BinSifter application and scan pipeline flow" width="100%">
 
-## Requirements
+## Requirements and getting started
 
-**Rowan:** Windows, PowerShell 7+ (`pwsh.exe`).
+See each variant's own page for full requirements and install steps:
 
-**Winnow:** Python 3.10+, any OS the GUI's requirements support (developed and tested on Windows so far). Install with `pip install -e .` from the repo root. On Windows, also install the [Microsoft Visual C++ Redistributable (x64)](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist) if it isn't already on the machine - the Speakeasy emulation feature's underlying engine (Unicorn) needs it to load. If it's missing, every other BinSifter feature still works normally; only Speakeasy emulation reports a clear error instead of running.
+- **[Rowan](docs/rowan.md)** - Windows, PowerShell 7+. Four install formats (standard installer, MSI, portable zip, or run the script directly).
+- **[Winnow](docs/winnow.md)** - Linux (Debian/Ubuntu, Fedora/RHEL, Arch, and derivatives). Packaged as `.deb`/`.rpm`/`.pkg.tar.zst`, or run from source on any OS.
+- **[Ingot](docs/ingot.md)** - not started yet.
 
-**Both variants:**
-
-- An NSRL known-good hash set (not included - see Settings). NSRL ships as RDSv3 hashes; BinSifter's NSRL loader expects the older RDSv2 text-file format, so you'll need to convert first - see NIST's own [RDSv3 to RDSv2 text files conversion guide](https://s3.amazonaws.com/rds.nsrl.nist.gov/RDS/RDSv3_Docs/RDSv3_to_RDSv2_text_files.pdf) (PDF).
-- Whichever of the optional external tools above you want quick-launch access to (not included - point BinSifter at a single tools directory in Settings and it searches it recursively). Winnow's archive/compressed-file support additionally needs `7z.exe` under that same tools directory.
-
-## Getting started
-
-**Rowan** - four ways to get it running, pick whichever fits:
-
-- **Standard installer** (`BinSifter-Rowan-Setup.exe`) - the usual install/uninstall flow, Start Menu shortcut, optional desktop icon.
-- **MSI** (`BinSifter-Rowan.msi`) - the same install, packaged for managed/enterprise deployment (Group Policy, SCCM, Intune) instead of a standard installer.
-- **Portable** (`BinSifter-Rowan-Portable.zip`) - no install/uninstall, extract and run `BinSifter-Rowan.exe` from inside the extracted folder (the DLLs alongside it are required, don't move the exe out on its own).
-- Or skip packaging entirely and launch `BinSifter-Rowan.ps1` directly with `pwsh.exe -File`.
-
-All four need PowerShell 7 (`pwsh.exe`) already installed. See `installer/README.md` for how each package is built.
-
-**Winnow:** `pip install -e .` from the repo root, then `python -m binsifter.gui` to launch the desktop app (or `binsifter-scan --src-dir ... --yara-rules ... --nsrl-path ...` for a headless scan). A packaged installer (`BinSifter-Winnow-Setup.exe`) is also available - see `installer/README.md`.
+Both released variants also need an NSRL known-good hash set (not included - see Settings). NSRL ships as RDSv3 hashes; BinSifter's NSRL loader expects the older RDSv2 text-file format, so you'll need to convert first - see NIST's own [RDSv3 to RDSv2 text files conversion guide](https://s3.amazonaws.com/rds.nsrl.nist.gov/RDS/RDSv3_Docs/RDSv3_to_RDSv2_text_files.pdf) (PDF).
 
 Full configuration details for either variant are in the in-app Help page.
 

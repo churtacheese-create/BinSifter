@@ -9,10 +9,23 @@ path end to end.
 """
 
 import zipfile
+from pathlib import Path
 
 from binsifter.core.config import BinSifterConfig
 from binsifter.core.disposition import save_disposition_entry
 from binsifter.core.engine import scan_directory
+
+# A real, valid capa rules directory - needed anywhere a test sets CapaRules
+# at all, even when the test has no intention of actually exercising capa
+# analysis itself (e.g. test_capa_not_invoked_without_a_yara_hit below).
+# engine.py's scan_directory() eagerly calls capa_scan.load_rules()
+# up front as fail-fast validation whenever config.CapaRules is truthy -
+# newer flare-capa (9.4.0+) raises capa.rules.InvalidRuleSet("no rules
+# selected") for a directory with zero valid .yml rule files, where an
+# older flare-capa apparently tolerated it, so a scratch tmp_path (which
+# has no real rules in it) no longer works as a "just needs to be some
+# truthy CapaRules value" placeholder.
+_REAL_CAPA_RULES_DIR = str(Path(__file__).resolve().parent.parent / "smoketest" / "capa_rules")
 
 
 def _make_files(tmp_path, count: int) -> str:
@@ -46,17 +59,30 @@ def test_progress_callback_fires_scanning_then_completed():
 
 
 def test_progress_callback_reports_error_status_not_completed(tmp_path, monkeypatch):
-    src_dir = _make_files(tmp_path, 1)
-    config = _config(src_dir)
+    """Forces the hashing stage to blow up so the Error path (not Completed)
+    is what progress_callback's second call sees for this file.
 
-    # Force the hashing stage to blow up so the Error path (not Completed) is
-    # what progress_callback's second call sees for this file.
+    Per-file work runs in a real spawned worker process (see engine.py's
+    _NoDaemonPool, which deliberately forces the "spawn" multiprocessing
+    context) - a monkeypatch applied in this test process (e.g.
+    `monkeypatch.setattr(engine_mod.hashing, "hash_and_score_file", boom)`,
+    this test's original approach) never reaches that separately-spawned
+    interpreter, which re-imports binsifter.core.hashing fresh and calls
+    the real, unpatched function. Forcing a genuine I/O failure instead -
+    monkeypatching engine.py's own enumerate_files() (which always runs in
+    THIS process, before the pool is even created) to hand back a path that
+    was never actually created - sidesteps the cross-process problem
+    entirely and tests a real, legitimate failure mode (a file disappearing,
+    or never existing, between enumeration and the worker actually reading
+    it) rather than an artificial one.
+    """
+    src_dir = _make_files(tmp_path, 0)
+    config = _config(src_dir)
+    missing_path = str(Path(src_dir) / "never_created.bin")
+
     import binsifter.core.engine as engine_mod
 
-    def boom(path):
-        raise RuntimeError("simulated failure")
-
-    monkeypatch.setattr(engine_mod.hashing, "hash_and_score_file", boom)
+    monkeypatch.setattr(engine_mod, "enumerate_files", lambda _src_dir: [missing_path])
 
     statuses_seen: list[str] = []
 
@@ -67,7 +93,7 @@ def test_progress_callback_reports_error_status_not_completed(tmp_path, monkeypa
 
     assert statuses_seen == ["Scanning", "Error"]
     assert result.records[0].Status == "Error"
-    assert result.records[0].Error == "simulated failure"
+    assert result.records[0].Error  # exact OSError text varies by platform - just confirm it's populated
 
 
 def test_stop_before_first_file_cancels_everything(tmp_path):
@@ -246,7 +272,9 @@ def test_capa_not_invoked_without_a_yara_hit(tmp_path):
     "non-PE files were never eligible anyway".
     """
     src_dir = _make_files(tmp_path, 1)
-    config = BinSifterConfig(SrcDir=src_dir, CapaRules=str(tmp_path))  # CapaRules configured; no YaraRules
+    # CapaRules configured (to a real rules dir - see _REAL_CAPA_RULES_DIR's
+    # comment above); no YaraRules
+    config = BinSifterConfig(SrcDir=src_dir, CapaRules=_REAL_CAPA_RULES_DIR)
     result = scan_directory(config)
 
     record = result.records[0]

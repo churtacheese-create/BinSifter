@@ -147,29 +147,38 @@ def get_bundled_asset_path(filename: str) -> Path:
     return candidates[-1]  # not found anywhere - same fallback callers already .is_file()-guard against
 
 
-# Maps each tool's Config field to the fixed filename BinSifter looks for
+# Maps each tool's Config field to the filename(s) BinSifter looks for
 # under ToolsDir - single source of truth, same role as $ToolFileNames in
-# the PowerShell version. NOTE: YaraExe/CapaExe/SsdeepExe/FlossExe/
-# SpeakeasyExe are deliberately NOT here anymore - those five are imported
-# as in-process Python libraries now (see pyproject.toml), not discovered
-# as external executables. Only tools with no Python-library equivalent
-# still need to be found on disk.
-TOOL_FILE_NAMES: dict[str, str] = {
-    "DieExe": "die.exe",
-    "DieConsoleExe": "diec.exe",
-    "PEStudioExe": "pestudio.exe",
-    "CffExplorerExe": "CFF Explorer.exe",
-    "ResourceHackerExe": "ResourceHacker.exe",
-    "SigcheckExe": "sigcheck.exe",
-    "X64dbgExe": "x64dbg.exe",
-    "X32dbgExe": "x32dbg.exe",
+# the PowerShell (Rowan) version, but rebuilt for Winnow's Linux-only quick-
+# launch set (2026-08-26 - see results.py's module docstring for the full
+# rationale). Each entry is a tuple of candidate filenames tried in order,
+# not one fixed name, because none of these five projects ship one single
+# canonical Linux binary name across every distro/packaging format the way
+# a Windows .exe usually does - PE-bear's AppImage/build output, Anya's own
+# binary name, and DIE's console vs. GUI builds all vary. First candidate
+# that's actually found under ToolsDir wins; if your install uses a
+# different filename than what's listed here, rename/symlink it to match
+# (or widen the tuple) rather than fighting the lookup.
+#
+# NOTE: YaraExe/CapaExe/SsdeepExe/FlossExe/SpeakeasyExe are deliberately NOT
+# here - those five are imported as in-process Python libraries (see
+# pyproject.toml), not discovered as external executables. Only tools with
+# no Python-library equivalent still need to be found on disk.
+TOOL_FILE_NAMES: dict[str, tuple[str, ...]] = {
+    "PeBearExe": ("PE-bear", "pe-bear", "PEBear"),
+    "AnyaExe": ("anya", "Anya"),
+    "DieExe": ("diec", "die"),
+    "RizinExe": ("rizin",),
+    "AngrExe": ("angr",),
 }
 
 
-def find_tool_path(directory: str | Path | None, filename: str) -> str:
-    """Recursively search `directory` for `filename`; first match (sorted by
-    full path) wins - same tiebreak rule as the PowerShell Find-ToolPath.
-    Returns "" if not found or directory is falsy/missing, mirroring the
+def find_tool_path(directory: str | Path | None, filenames: str | tuple[str, ...]) -> str:
+    """Recursively search `directory` for the first of `filenames` (a single
+    name or an ordered tuple of candidates) that turns up anywhere in the
+    tree; within one candidate, first match sorted by full path wins - same
+    tiebreak rule as the PowerShell Find-ToolPath. Returns "" if none of the
+    candidates are found or directory is falsy/missing, mirroring the
     PowerShell version's blank-tolerant/graceful-skip behavior.
     """
     if not directory:
@@ -177,15 +186,18 @@ def find_tool_path(directory: str | Path | None, filename: str) -> str:
     root = Path(directory)
     if not root.is_dir():
         return ""
-    matches = sorted(root.rglob(filename), key=lambda p: str(p))
-    if not matches:
-        return ""
-    if len(matches) > 1:
-        logger.info(
-            "Found %d copies of %s under %s - using %s",
-            len(matches), filename, root, matches[0],
-        )
-    return str(matches[0])
+    candidates = (filenames,) if isinstance(filenames, str) else filenames
+    for filename in candidates:
+        matches = sorted(root.rglob(filename), key=lambda p: str(p))
+        if not matches:
+            continue
+        if len(matches) > 1:
+            logger.info(
+                "Found %d copies of %s under %s - using %s",
+                len(matches), filename, root, matches[0],
+            )
+        return str(matches[0])
+    return ""
 
 
 def set_tool_paths_from_directory(config: "BinSifterConfig", directory: str | Path | None) -> None:
@@ -194,8 +206,8 @@ def set_tool_paths_from_directory(config: "BinSifterConfig", directory: str | Pa
     PowerShell Set-ToolPathsFromDirectory, called on Settings Save and once
     at startup for a cached ToolsDir.
     """
-    for field_name, filename in TOOL_FILE_NAMES.items():
-        setattr(config, field_name, find_tool_path(directory, filename))
+    for field_name, filenames in TOOL_FILE_NAMES.items():
+        setattr(config, field_name, find_tool_path(directory, filenames))
 
 
 @dataclass
@@ -224,14 +236,11 @@ class BinSifterConfig:
 
     # Derived by searching ToolsDir/GhidraDir - never user-entered directly
     GhidraHeadlessExe: str = ""
+    PeBearExe: str = ""
+    AnyaExe: str = ""
     DieExe: str = ""
-    DieConsoleExe: str = ""
-    PEStudioExe: str = ""
-    CffExplorerExe: str = ""
-    ResourceHackerExe: str = ""
-    SigcheckExe: str = ""
-    X64dbgExe: str = ""
-    X32dbgExe: str = ""
+    RizinExe: str = ""
+    AngrExe: str = ""
 
     # Fixed default locations next to the BinSifter install - not Settings
     # fields at all, same as the PowerShell version.

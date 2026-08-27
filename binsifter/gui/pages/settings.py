@@ -226,7 +226,12 @@ class SettingsPage(QWidget):
             self._fields[key].setText(value)
 
         set_tool_paths_from_directory(self._config, self._config.ToolsDir)
-        self._config.GhidraHeadlessExe = find_tool_path(self._config.GhidraDir, "analyzeHeadless.bat")
+        # "analyzeHeadless" with no extension - Ghidra's Linux/macOS headless
+        # launcher is a shell script, not the "analyzeHeadless.bat" batch
+        # file Rowan (Windows) looks for. Winnow is Linux-only now, so this
+        # only ever needs the one name, unlike the multi-candidate tuples in
+        # TOOL_FILE_NAMES above for tools with no single canonical filename.
+        self._config.GhidraHeadlessExe = find_tool_path(self._config.GhidraDir, "analyzeHeadless")
 
         try:
             save_settings_cache(self._config)

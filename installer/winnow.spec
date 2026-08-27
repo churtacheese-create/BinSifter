@@ -152,7 +152,10 @@ a = Analysis(
         # explicitly listing this submodule is cheap insurance against a
         # "frozen support" edge case biting only under --onedir + Windows'
         # spawn-only multiprocessing start method (Windows has no fork()).
-        "multiprocessing.popen_spawn_win32",
+        # Windows-only module name (doesn't exist in Linux's stdlib at
+        # all) - 2026-08-26, guarded once this spec started building
+        # Winnow's Linux packages too, not just the Windows installer.
+        *(["multiprocessing.popen_spawn_win32"] if sys.platform == "win32" else []),
     ],
     hookspath=[],
     hooksconfig={},
@@ -187,7 +190,14 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=str(repo_root / "BinSifter-WindowIcon.ico"),
+    # PyInstaller's icon= embedding only applies on Windows (.ico) and
+    # macOS (.icns) - passing it on Linux is a harmless no-op per
+    # PyInstaller's own docs, but None is more honest about what's
+    # actually happening than pointing at a file whose format Linux binary
+    # resources don't use at all. Linux desktop icon display instead comes
+    # from the .desktop file's Icon= key (see installer/linux/, added
+    # 2026-08-26 alongside Winnow's .deb/.rpm/.pkg.tar packaging).
+    icon=str(repo_root / "BinSifter-WindowIcon.ico") if sys.platform == "win32" else None,
 )
 
 # --onedir, not --onefile, deliberately - see get_binsifter_root()'s

@@ -11,14 +11,21 @@ guide would be actively misleading if it just copied the old wording:
   Python libraries in this port (see gui/settings_validation.py), not
   shelled out to executables. "Path to tools" now only matters for the
   smaller set of external GUI/console tools that have no Python-library
-  equivalent (see core/config.py's TOOL_FILE_NAMES): DIE, PE Studio,
-  CFF Explorer, Resource Hacker, Sigcheck, x64dbg, x32dbg.
+  equivalent (see core/config.py's TOOL_FILE_NAMES): PE-bear, Anya, DIE,
+  Rizin, Angr.
 - FLOSS and Speakeasy are also in-process Python libraries now, not
   floss.exe/speakeasy.exe on disk - so they're no longer in the "Path to
   tools" file list either. The Results-grid quick-launch menu's Speakeasy
   entry calls core/speakeasy_scan.py's emulate_file() directly instead of
   shelling out to a speakeasy.exe, and is never disabled for "not
   configured" the way the exe-backed entries are.
+- 2026-08-26: the quick-launch tool set itself was rebuilt for Winnow's
+  Linux-focused direction - PE Studio/CFF Explorer/Resource Hacker/x64dbg/
+  x32dbg/Sigcheck were all Windows-only with no real Linux build, so they
+  were replaced with PE-bear, Anya, Rizin, and Angr (Sigcheck was dropped
+  outright - no Linux substitute was identified for it). Ghidra's headless
+  script is also found under its Linux name (analyzeHeadless, no .bat
+  extension) now, not the Windows batch-file name.
 """
 
 from __future__ import annotations
@@ -40,7 +47,7 @@ Open Settings and fill in the required paths:
 - Path to YARA rules - the rule file YARA will apply.
 - Path to capa rules - the capa rules directory.
 - Path to tools - one folder containing the external GUI/console tools listed below. Only needed for those tools; YARA, capa, ssdeep, FLOSS, and Speakeasy all run as built-in libraries and need nothing configured here.
-- Path to Ghidra - optional, your Ghidra install root. BinSifter finds analyzeHeadless.bat inside it automatically.
+- Path to Ghidra - optional, your Ghidra install root. BinSifter finds analyzeHeadless inside it automatically.
 
 Everything beyond these fields - where reports are written, MITRE ATT&CK data, the known-bad hash blocklist - is a fixed default location next to the BinSifter install itself. You don't type these in; you just place the right file in the right folder. See DEFAULT LOCATIONS below.
 
@@ -52,16 +59,17 @@ Point "Path to tools" at one folder containing any of the following, by exact fi
 
 Every entry here is optional - a missing file just means that tool's path stays blank:
 
-- die.exe / diec.exe - Detect It Easy, GUI and console.
-- pestudio.exe - PE Studio.
-- CFF Explorer.exe - CFF Explorer.
-- ResourceHacker.exe - Resource Hacker.
-- sigcheck.exe - Sysinternals Sigcheck.
-- x64dbg.exe and x32dbg.exe - two separate entries, one per target bitness.
+- PE-bear / pe-bear - static PE viewer.
+- anya - PE resource editor.
+- die / diec - Detect It Easy, GUI and console.
+- rizin - reverse-engineering framework/debugger.
+- angr - binary analysis/symbolic execution framework.
+
+BinSifter tries a couple of common filename spellings for each of these (see core/config.py's TOOL_FILE_NAMES) since none of them ship one single canonical Linux binary name the way a Windows .exe usually has - if your install uses a different filename, rename or symlink it to match, or check the Logs page to see what BinSifter actually searched for.
 
 YARA, capa, ssdeep, FLOSS, and Speakeasy are NOT on this list - they're built into BinSifter as Python libraries and always available once installed, regardless of what's in "Path to tools".
 
-Ghidra isn't in this folder's search either - it has its own "Path to Ghidra" field instead. Point it at your Ghidra install root (e.g. D:\\ghidra_11.x) and BinSifter locates analyzeHeadless.bat inside it the same recursive way.
+Ghidra isn't in this folder's search either - it has its own "Path to Ghidra" field instead. Point it at your Ghidra install root (e.g. ~/ghidra_11.x) and BinSifter locates the analyzeHeadless script inside it the same recursive way.
 
 DEFAULT LOCATIONS
 
@@ -110,9 +118,9 @@ Results shows the detailed record for each scanned file, including an editable D
 
 Right-click any row for on-demand actions, all driven by "Path to tools"/"Path to Ghidra" above:
 
-- Quick-launch (no confirmation): PE Studio, DIE, CFF Explorer (copies the path to your clipboard instead of opening the file directly - see PATH TO TOOLS above), Resource Hacker, and Ghidra headless analysis. These are read-only inspection tools or, for Ghidra, a purely static analysis run - nothing here executes the selected file.
-- Confirmation required: x64dbg, x32dbg, and an isolated Speakeasy code emulation. These are execution-adjacent, so BinSifter asks you to confirm you're working in an isolated analysis environment before launching.
-- Sigcheck (signature and provenance check) also needs no confirmation - it only reads the file - and shows its output in a popup report window, as does Speakeasy.
+- Quick-launch (no confirmation): PE-bear, Anya, DIE, Rizin, Angr, and Ghidra headless analysis. These are static/analysis tools - nothing here executes the selected file the way a live debugger would.
+- Isolated Speakeasy code emulation asks for confirmation first, since emulating a live sample's code is execution-adjacent in a way the quick-launch tools above aren't - BinSifter asks you to confirm you're working in an isolated analysis environment before running it. Its output shows in a popup report window.
+- Export for AI analysis writes a Markdown+JSON pair of the file's already-extracted findings for you to hand to whatever AI tool you choose - no AI is called from BinSifter itself.
 
 Any entry showing "(not configured)" just means that tool's path wasn't found under "Path to tools" (or "Path to Ghidra" for the Ghidra entry) - place the file there and it will appear on your next right-click.
 

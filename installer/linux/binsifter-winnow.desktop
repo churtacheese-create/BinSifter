@@ -1,0 +1,19 @@
+# Freedesktop .desktop entry - added 2026-08-26 alongside Winnow's .deb/
+# .rpm/.pkg.tar packaging, so an installed package actually shows up in a
+# normal Linux desktop's application menu/launcher instead of only being
+# runnable from a terminal. Packaged into
+# /usr/share/applications/binsifter-winnow.desktop by the release
+# workflow's staging step - Exec= matches wherever fpm's --prefix puts the
+# PyInstaller onedir build (/opt/binsifter-winnow), and Icon= is a bare
+# name (not a path) per the icon theme spec, resolved against whatever
+# icon the same staging step installs under
+# /usr/share/icons/hicolor/256x256/apps/.
+[Desktop Entry]
+Type=Application
+Name=BinSifter Winnow
+Comment=Forensic binary triage tool for bulk assessment
+Exec=/opt/binsifter-winnow/BinSifter-Winnow
+Icon=binsifter-winnow
+Categories=Security;Utility;
+Terminal=false
+StartupWMClass=BinSifter-Winnow

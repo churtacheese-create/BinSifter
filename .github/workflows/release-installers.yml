@@ -22,16 +22,19 @@ name: Build and release installers
 #      succeeds - see installer/README.md's honest caveat that neither
 #      installer has been compiled even once yet.
 #   2. Pushing a tag matching v* (e.g. `git tag v2.0.0 && git push origin
-#      v2.0.0`) - builds both installers AND publishes a real (not
+#      v2.0.0`) - builds every package AND publishes a real (not
 #      pre-release, as of the 2026-08-24 promotion below) GitHub Release
-#      for that tag, with all four packages attached as downloadable
-#      assets (Winnow's .exe installer, and Rowan's .exe installer, .msi,
+#      for that tag, with all six packages attached as downloadable assets
+#      (Winnow's .deb/.rpm/.pkg.tar.zst, and Rowan's .exe installer, .msi,
 #      and portable .zip). Was published as --prerelease through v2.0.0's
 #      own tag push, back when Winnow was still beta and that flag's own
 #      justification text said so directly - dropped once Winnow's beta
 #      label came off for real (see TODO.md's "Winnow promoted out of
 #      Beta" section), since keeping the flag with no honest reason left
 #      to give for it would be more misleading than removing it.
+#      Winnow's Windows installer (BinSifter-Winnow-Setup.exe) was removed
+#      from this workflow entirely on 2026-08-26 - Winnow is Linux-only
+#      now, see build-winnow-linux's own comment below.
 
 on:
   push:
@@ -43,42 +46,131 @@ permissions:
   contents: write  # needed only by the release job, to create the GitHub Release + upload assets
 
 jobs:
-  build-winnow:
-    runs-on: windows-latest
+  build-winnow-linux:
+    # Added 2026-08-26 - Winnow's platform focus moved to Linux (Rowan
+    # already covers Windows; Ingot is planned to be the actual
+    # cross-platform variant via a web UI later). Produces all three
+    # requested package formats (.deb, .rpm, Arch .pkg.tar.zst) from ONE
+    # PyInstaller build via fpm, rather than maintaining three separate
+    # packaging toolchains (dpkg-deb+debhelper, rpmbuild+.spec,
+    # makepkg+PKGBUILD) for what's otherwise identical staged content.
+    #
+    # This is now Winnow's ONLY release target - the Windows PyInstaller+
+    # Inno Setup build (BinSifter-Winnow-Setup.exe) that used to run
+    # alongside this was removed the same day, per a direct decision that
+    # Winnow is Linux-only going forward, not "Linux-focused with a
+    # secondary Windows build." Rowan already covers Windows users; keeping
+    # a Windows Winnow installer around only re-introduced the platform-
+    # ambiguity problem the Rowan/Winnow/Ingot split was meant to remove.
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"  # any 3.10+ satisfies pyproject.toml's requires-python; 3.11 is a stable, well-supported pick
+          python-version: "3.11"
+
+      - name: Install Linux build toolchain
+        # yara-python and flare-floss's binary2strings both compile native
+        # extensions from source on Linux (neither publishes a prebuilt
+        # Linux wheel) - confirmed the hard way during real Ubuntu-VM
+        # testing, 2026-08-26: a bare `pip install -e .` fails outright
+        # without a C/C++ compiler present, and yara-python's own bundled
+        # libyara additionally needs the autotools chain (automake/
+        # libtool) to configure and build itself, not just gcc.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential python3-dev automake libtool pkg-config libssl-dev
 
       - name: Install BinSifter + PyInstaller
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e .
-          # floor-pinned - see build_winnow.ps1's matching 2026-08-14 comment:
-          # an unconstrained install here is what silently picked up
-          # PyInstaller 6.0's onedir _internal\ layout change and broke every
-          # bundled logo PNG on a real installer test, undetected across
-          # multiple builds.
           python -m pip install "pyinstaller>=6.0"
 
-      - name: Install Inno Setup
-        run: choco install innosetup -y --no-progress
-
       - name: PyInstaller freeze (--onedir - see installer/winnow.spec's comments)
-        run: pyinstaller installer\winnow.spec --distpath installer\dist --workpath installer\build --noconfirm
+        run: pyinstaller installer/winnow.spec --distpath installer/dist --workpath installer/build --noconfirm
 
-      - name: Compile Winnow installer
+      - name: Install fpm and its per-format build dependencies
         run: |
-          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          if (-not (Test-Path -LiteralPath $iscc)) { throw "ISCC.exe not found after choco install - Inno Setup's install location may have changed." }
-          & $iscc installer\Winnow.iss
+          sudo gem install --no-document fpm
+          sudo apt-get install -y rpm   # fpm's rpm target shells out to rpmbuild
+          sudo apt-get install -y zstd  # fpm's pacman target compresses with zstd
+
+      - name: Read BinSifter's version
+        id: version
+        # Reads from the same __version__ the other two files
+        # (pyproject.toml, Winnow.iss) are hand-kept in sync with, rather
+        # than introducing a FOURTH place version has to be bumped by hand.
+        run: echo "version=$(python -c 'from binsifter import __version__; print(__version__)')" >> "$GITHUB_OUTPUT"
+
+      - name: Stage the installed filesystem layout
+        # fpm's `-s dir` input packages a directory tree AS-IS, preserving
+        # paths - so the staging tree here IS the final on-disk layout: the
+        # PyInstaller onedir build under /opt (matches Winnow.iss's own
+        # "own install directory, not scattered across the filesystem"
+        # convention), a /usr/bin symlink so `binsifter-winnow` works from
+        # any terminal, and the .desktop/icon pair so it shows up in a
+        # normal desktop's application menu instead of terminal-only.
+        run: |
+          set -e
+          STAGE=installer/linux/stage
+          rm -rf "$STAGE"
+          mkdir -p "$STAGE/opt/binsifter-winnow" "$STAGE/usr/bin" "$STAGE/usr/share/applications" "$STAGE/usr/share/icons/hicolor/256x256/apps"
+          cp -r installer/dist/BinSifter-Winnow/. "$STAGE/opt/binsifter-winnow/"
+          ln -s /opt/binsifter-winnow/BinSifter-Winnow "$STAGE/usr/bin/binsifter-winnow"
+          cp installer/linux/binsifter-winnow.desktop "$STAGE/usr/share/applications/binsifter-winnow.desktop"
+          cp BinSifter-WindowIcon.png "$STAGE/usr/share/icons/hicolor/256x256/apps/binsifter-winnow.png"
+
+      - name: Build .deb
+        run: |
+          fpm -s dir -t deb -C installer/linux/stage \
+            -n binsifter-winnow -v "${{ steps.version.outputs.version }}" \
+            --description "Forensic binary triage tool for bulk assessment" \
+            --url "https://github.com/churtacheese-create/BinSifter" \
+            --license "PolyForm Strict License 1.0.0" \
+            --architecture amd64 \
+            --package installer/dist/binsifter-winnow.deb \
+            .
+
+      - name: Build .rpm
+        run: |
+          fpm -s dir -t rpm -C installer/linux/stage \
+            -n binsifter-winnow -v "${{ steps.version.outputs.version }}" \
+            --description "Forensic binary triage tool for bulk assessment" \
+            --url "https://github.com/churtacheese-create/BinSifter" \
+            --license "PolyForm Strict License 1.0.0" \
+            --architecture x86_64 \
+            --package installer/dist/binsifter-winnow.rpm \
+            .
+
+      - name: Build Arch .pkg.tar.zst
+        run: |
+          fpm -s dir -t pacman -C installer/linux/stage \
+            -n binsifter-winnow -v "${{ steps.version.outputs.version }}" \
+            --description "Forensic binary triage tool for bulk assessment" \
+            --url "https://github.com/churtacheese-create/BinSifter" \
+            --license "PolyForm Strict License 1.0.0" \
+            --architecture x86_64 \
+            --package installer/dist/binsifter-winnow.pkg.tar.zst \
+            .
 
       - uses: actions/upload-artifact@v4
         with:
-          name: BinSifter-Winnow-Setup
-          path: installer\Output\BinSifter-Winnow-Setup.exe
+          name: BinSifter-Winnow-Deb
+          path: installer/dist/binsifter-winnow.deb
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BinSifter-Winnow-Rpm
+          path: installer/dist/binsifter-winnow.rpm
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BinSifter-Winnow-Pacman
+          path: installer/dist/binsifter-winnow.pkg.tar.zst
           if-no-files-found: error
 
   build-rowan:
@@ -125,7 +217,7 @@ jobs:
     # build jobs (and their uploaded artifacts are downloadable from the
     # Actions run page), it just doesn't publish anything.
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [build-winnow, build-rowan]
+    needs: [build-winnow-linux, build-rowan]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -139,16 +231,20 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           gh release create "${{ github.ref_name }}" \
-            "artifacts/BinSifter-Winnow-Setup/BinSifter-Winnow-Setup.exe" \
+            "artifacts/BinSifter-Winnow-Deb/binsifter-winnow.deb" \
+            "artifacts/BinSifter-Winnow-Rpm/binsifter-winnow.rpm" \
+            "artifacts/BinSifter-Winnow-Pacman/binsifter-winnow.pkg.tar.zst" \
             "artifacts/BinSifter-Rowan-Setup/BinSifter-Rowan-Setup.exe" \
             "artifacts/BinSifter-Rowan-Msi/BinSifter-Rowan.msi" \
             "artifacts/BinSifter-Rowan-Portable/BinSifter-Rowan-Portable.zip" \
             --title "BinSifter ${{ github.ref_name }}" \
-            --notes "Both Rowan and Winnow are full releases as of 2.0.0 - see below for each.
+            --notes "Rowan (Windows) and Winnow (Linux) are both full releases as of 2.0.0 - see below for each. Ingot (a planned cross-platform variant, a backend service with a web UI) hasn't started yet.
 
           **BinSifter-Rowan-Setup.exe** - PowerShell 7 + WinForms variant, standard installer. Needs PowerShell 7 (pwsh.exe) already installed; it will tell you if it's missing.
           **BinSifter-Rowan.msi** - same Rowan variant, packaged as an MSI for managed/enterprise deployment instead of the standard installer.
           **BinSifter-Rowan-Portable.zip** - same Rowan variant, packaged as a portable extract-and-run folder (no install/uninstall) instead of the standard installer. Extract the zip and run BinSifter-Rowan.exe from inside it - the DLLs alongside it are required, don't move the exe out on its own. Still needs PowerShell 7 present on the machine.
-          **BinSifter-Winnow-Setup.exe** - Python/PySide6 variant, self-contained (no separate Python install needed). Full GUI and scan engine, run against real malware samples end-to-end across multiple machines - newer than Rowan and with less real-casework mileage yet, so please report anything that looks wrong rather than assuming it's expected.
+          **binsifter-winnow.deb** - Winnow (Python/PySide6 variant), for Debian/Ubuntu and derivatives. Install with \`sudo apt install ./binsifter-winnow.deb\`, launch from your application menu or run \`binsifter-winnow\` in a terminal.
+          **binsifter-winnow.rpm** - same Winnow variant, for Fedora/RHEL/openSUSE and derivatives. Install with \`sudo dnf install ./binsifter-winnow.rpm\` (or \`sudo zypper install\`/\`sudo rpm -i\` depending on your distro).
+          **binsifter-winnow.pkg.tar.zst** - same Winnow variant, for Arch Linux and derivatives. Install with \`sudo pacman -U binsifter-winnow.pkg.tar.zst\`.
 
-          All packages: no administrator rights required, Start Menu shortcut, optional desktop icon (off by default). See the repo README for setup/configuration (NSRL, YARA rules, capa rules, etc.) after installing."
+          Winnow is Linux-only - if you're on Windows, use Rowan instead. All three Winnow packages are self-contained (no separate Python/PySide6 install needed) and were built with the same PyInstaller bundle. See the repo README for setup/configuration (NSRL, YARA rules, capa rules, etc.) after installing."

@@ -5,6 +5,8 @@ of both Rowan and Winnow. Read this before running either build script.
 
 ## Honest caveat, stated plainly
 
+**Update, 2026-08-26: Winnow's Windows installer (`Winnow.iss`/`build_winnow.ps1`, producing `BinSifter-Winnow-Setup.exe`) is no longer built or offered.** Winnow's platform focus moved to Linux-only the same day (see the repo root's `TODO.md`, "BinSifter variant platform focus" section) - Windows users should use Rowan instead. `Winnow.iss` and `build_winnow.ps1` are left in the repo for reference, unused by the release workflow. Everything below that still mentions them describes history, not something you need to run.
+
 **Update, 2026-08-24: the caveat below described the state of this folder on 2026-08-08, before either build script had ever been run for real.** Since then, both installers have been built repeatedly via the GitHub Actions workflow and tested end-to-end on real Windows hardware (host PC and a FLARE VM) across many rounds - see the repo root's `TODO.md` for the full history of real bugs found and fixed along the way (missing bundled assets, PyInstaller layout changes, frozen-exe path resolution, multiprocessing under freeze, and more). Both builds are stable and have run real malware-sample scans to completion cleanly. Left the original wording below intact as a record of where this started, not because it still describes today's reality.
 
 Everything in this folder was written and reasoned through in a Linux-only
@@ -35,15 +37,16 @@ launch), but still not guaranteed clean on the very next attempt.
 
 | File | Purpose |
 | --- | --- |
-| `winnow.spec` | PyInstaller spec - freezes Winnow (`binsifter/gui/__main__.py`) into a self-contained `--onedir` build. See its comments for why `--onedir` and not `--onefile`. |
-| `build_winnow.ps1` | Runs `pip install`, PyInstaller, then Inno Setup, in order. |
-| `Winnow.iss` | Inno Setup script - packages PyInstaller's output into `BinSifter-Winnow-Setup.exe`. |
+| `winnow.spec` | PyInstaller spec - freezes Winnow (`binsifter/gui/__main__.py`) into a self-contained `--onedir` build, used by the `build-winnow-linux` job. Its Windows-only `.ico` embedding and `multiprocessing.popen_spawn_win32` hidden import are still guarded behind `sys.platform == "win32"` (harmless dead code now that nothing builds this on Windows, kept in case someone runs PyInstaller from source on Windows for local testing). See its comments for why `--onedir` and not `--onefile`. |
+| `build_winnow.ps1` | **Deprecated 2026-08-26** - built the old Windows installer (PyInstaller + Inno Setup). No longer run by anything; see the caveat at the top of this file. |
+| `Winnow.iss` | **Deprecated 2026-08-26** - Inno Setup script that packaged PyInstaller's output into `BinSifter-Winnow-Setup.exe`. No longer run by anything; see the caveat at the top of this file. |
+| `linux/binsifter-winnow.desktop` | Freedesktop `.desktop` entry, so the installed Linux packages show up in a normal application menu instead of being terminal-only. Copied into each package's staging tree by the release workflow's Linux job. |
 | `Rowan.iss` | Inno Setup script - packages `BinSifter-Rowan.ps1` + its image assets directly (no freeze step needed) into `BinSifter-Rowan-Setup.exe`. |
 | `build_rowan.ps1` | Runs Inno Setup against `Rowan.iss`. |
 | `Rowan.wxs` | WiX Toolset v5 source - packages the same files as `Rowan.iss` into `BinSifter-Rowan.msi`, for deployment paths that specifically need an MSI. |
 | `build_rowan_msi.ps1` | Installs the WiX dotnet tool if needed, then builds `Rowan.wxs` into `BinSifter-Rowan.msi`. |
 | `build_rowan_exe.ps1` | Wraps `BinSifter-Rowan.ps1` into a portable `BinSifter-Rowan-Portable.zip` (extract-and-run folder, not a single file - see its own comments for why) via the PS2EXE.Core module - no install/uninstall, still needs PowerShell 7 present on the machine that runs it. |
-| `../.github/workflows/release-installers.yml` | GitHub Actions workflow that runs all four build scripts on GitHub's own Windows runners and publishes a GitHub Release with all four packages attached. See "Publishing a real GitHub Release" below - this is the recommended way to build these, not the individual `build_*.ps1` scripts run by hand, since none of them has a Windows machine to run on locally in this project's dev sandbox. |
+| `../.github/workflows/release-installers.yml` | GitHub Actions workflow that runs Rowan's Windows build scripts on a Windows runner, builds Winnow's three Linux packages on an Ubuntu runner, and publishes a GitHub Release with everything attached. See "Publishing a real GitHub Release" below - this is the recommended way to build these, not running scripts by hand, since neither a Windows machine nor a real Linux desktop is available in this project's dev sandbox. |
 
 ## Publishing a real GitHub Release (recommended path)
 
@@ -66,28 +69,31 @@ git push
 
 **To test the build without cutting a release:** go to the repo's Actions
 tab on GitHub -> "Build and release installers" -> "Run workflow". This
-builds both installers on a real Windows runner and attaches them as
-downloadable Actions artifacts, without creating a Release. Both installers
-have since been built and tested for real, repeatedly, across several
-rounds of real-hardware bug fixes (see the repo root's `TODO.md`) - the
-"expect at least one round of fixes" caveat above described the very first
-attempt, not the current state of either build script.
+builds Rowan's installers on a real Windows runner AND Winnow's three
+Linux packages on an Ubuntu runner, attaching all of them as downloadable
+Actions artifacts, without creating a Release. Rowan's Windows builds have
+since been tested for real, repeatedly, across several rounds of
+real-hardware bug fixes (see the repo root's `TODO.md`) - the "expect at
+least one round of fixes" caveat above described the very first attempt,
+not the current state. **The Linux packaging job (added 2026-08-26) has
+NOT been run for real yet** - run it via workflow_dispatch first and check
+the Actions log before ever pushing a tag, same as every other build
+script here got its first real test.
 
 **To cut a real release:** push a version tag from your machine, matching
-whatever `pyproject.toml`/`binsifter/__init__.py`/`installer/Winnow.iss`'s
-`MyAppVersion` currently say (they're kept in sync by hand, not derived
-from the git tag):
+whatever `pyproject.toml`/`binsifter/__init__.py`currently say (kept in
+sync by hand, not derived from the git tag):
 
 ```
 git tag v2.0.0
 git push origin v2.0.0
 ```
 
-That triggers the same build, then publishes a GitHub Release titled
-"BinSifter v2.0.0", marked pre-release (Inno Setup/PyInstaller output
-hasn't been battle-tested across enough real installs yet to drop that
-flag unilaterally - uncheck it manually on the Release page once you're
-comfortable calling it stable), with `BinSifter-Winnow-Setup.exe`,
+That triggers the same build, then publishes a real GitHub Release titled
+"BinSifter v2.0.0" (not marked pre-release - that flag was dropped once
+Winnow's own beta label came off for real, see `TODO.md`'s "Winnow
+promoted out of Beta" section) with `binsifter-winnow.deb`,
+`binsifter-winnow.rpm`, `binsifter-winnow.pkg.tar.zst`,
 `BinSifter-Rowan-Setup.exe`, `BinSifter-Rowan.msi`, and
 `BinSifter-Rowan-Portable.zip` attached as downloadable assets. No further
 action needed on your end once it's green - the release notes are
@@ -99,8 +105,10 @@ spec/script, same as any other bug report.
 
 ## Prerequisites (on the Windows machine doing the actual build)
 
-- **Winnow, and Rowan's standard installer:** [Inno Setup](https://jrsoftware.org/isdl.php) 6.x, installed so `ISCC.exe` is either on `PATH` or at its default install location.
-- **Winnow only:** Python 3.10+ (matching `pyproject.toml`'s `requires-python`), with `pip` able to reach PyPI to install BinSifter's own dependencies plus `pyinstaller`.
+These are all for Rowan now - Winnow's build runs on Linux; see "Winnow's
+Linux packages" below for its own prerequisites.
+
+- **Rowan's standard installer:** [Inno Setup](https://jrsoftware.org/isdl.php) 6.x, installed so `ISCC.exe` is either on `PATH` or at its default install location.
 - **Rowan's MSI:** the [.NET SDK](https://dotnet.microsoft.com/download) (for `dotnet tool install --global wix`) - `build_rowan_msi.ps1` installs the WiX tool itself and its UI extension automatically the first time it runs, pinned to the 5.x line specifically. WiX v6+ added an Open Source Maintenance Fee EULA that `wix build` refuses to run without accepting (error WIX7015) - pinning to 5.x sidesteps that entirely rather than scripting an unattended EULA acceptance into CI.
 - **Rowan's portable zip:** the [.NET SDK](https://dotnet.microsoft.com/download), same as the MSI - `build_rowan_exe.ps1` uses the `PS2EXE.Core` module (not the older `ps2exe` module, which turned out to still compile against a classic .NET Framework host regardless of which pwsh.exe version ran it - confirmed by real runtime failures on the first portable build: Add-Type couldn't find `System.Text.Json`, and `[System.Windows.Forms.HighDpiMode]` didn't resolve). `PS2EXE.Core`'s `-Core` switch genuinely targets PowerShell Core/.NET, which is what this needs `dotnet` for. The script installs the module for the current user automatically if it isn't already present. Not built with `-PublishSingleFile` - that hits an open upstream PowerShell SDK bug under single-file hosting (confirmed by a second real runtime failure: `Add-Type` itself failed to initialize) - so the output is a folder zipped up into one asset, not a literal single `.exe`.
 - **Rowan needs no compile step of its own for any format** - it's the same `.ps1` file and PNG/ICO assets, just packaged differently by each build script.
@@ -108,8 +116,7 @@ spec/script, same as any other bug report.
 ## Building
 
 ```powershell
-# From the repo root:
-pwsh -File installer\build_winnow.ps1
+# From the repo root (Rowan only - Winnow builds via the Linux CI job, see below):
 pwsh -File installer\build_rowan.ps1
 pwsh -File installer\build_rowan_msi.ps1
 pwsh -File installer\build_rowan_exe.ps1
@@ -118,7 +125,7 @@ pwsh -File installer\build_rowan_exe.ps1
 Each produces its output under `installer\Output\`. None of the scripts
 touch each other's output - build any subset independently.
 
-## What the installers do (Winnow's, and Rowan's standard .exe/.msi)
+## What the installers do (Rowan's standard .exe/.msi)
 
 - License page (`LICENSE` - BinSifter is source-available, not open
   source, so this is a real accept-to-continue page like any commercial
@@ -146,6 +153,49 @@ inside the extracted folder - the DLLs sitting alongside it are required,
 don't move the exe out on its own. Meant for anyone who'd rather not go
 through an install flow. It still needs PowerShell 7 present on the
 machine, same as every other Rowan package.
+
+## Winnow's Linux packages (.deb/.rpm/.pkg.tar.zst)
+
+Added 2026-08-26, once Winnow's platform focus moved to Linux (see the
+main README's Variants table). All three formats come from the exact same
+PyInstaller `--onedir` build the Windows installer uses - `winnow.spec` is
+one shared, cross-platform spec, not a separate Linux-only copy - packaged
+via [`fpm`](https://github.com/jordansissel/fpm), which builds `.deb`,
+`.rpm`, and Arch's `.pkg.tar.zst` from one staged directory tree instead of
+needing three separate packaging toolchains (`dpkg-deb`+`debhelper`,
+`rpmbuild`+a `.spec` file, `makepkg`+a `PKGBUILD`) for identical content.
+
+The release workflow's `build-winnow-linux` job stages the on-disk layout
+itself before handing it to `fpm`:
+
+```
+/opt/binsifter-winnow/                                    <- PyInstaller's onedir output, as-is
+/usr/bin/binsifter-winnow                                 <- symlink to the exe above, so it's on PATH
+/usr/share/applications/binsifter-winnow.desktop           <- app-menu entry (see linux/binsifter-winnow.desktop)
+/usr/share/icons/hicolor/256x256/apps/binsifter-winnow.png <- app-menu icon
+```
+
+`fpm -s dir -C <staged tree> -t <deb|rpm|pacman> .` packages that layout
+as-is - `-t pacman` is what actually produces the `.pkg.tar.zst` Arch
+wants, `fpm` just names the target after the package manager, not the file
+extension. Version comes from `binsifter/__init__.py`'s `__version__` at
+build time (same source `pyproject.toml`/`Winnow.iss` are hand-kept in
+sync with), not a fourth place to bump by hand.
+
+**This job needs a Linux build toolchain that isn't obvious from
+Winnow's own `pyproject.toml`** - confirmed the hard way via real Ubuntu-
+VM testing, 2026-08-26: `yara-python` and `flare-floss`'s `binary2strings`
+dependency both compile native extensions from source on Linux (neither
+publishes a prebuilt Linux wheel), so a bare `pip install -e .` fails
+outright without `build-essential`/`python3-dev` present, and
+`yara-python`'s own bundled `libyara` additionally needs the autotools
+chain (`automake`/`libtool`) to configure itself, not just a C compiler.
+The GitHub Actions job installs all of this itself on the Ubuntu runner -
+nothing extra needed on your end to trigger a build, this is just
+documenting why that step exists rather than a plain `pip install`.
+
+**Not yet run for real** - test via `workflow_dispatch` (see "Publishing a
+real GitHub Release" above) before ever cutting a tag with these included.
 
 ## What's different between the variants
 

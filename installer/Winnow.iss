@@ -1,3 +1,10 @@
+; DEPRECATED as of 2026-08-26 - Winnow's platform focus moved to Linux-only
+; (see TODO.md's "BinSifter variant platform focus" section), and its
+; Windows installer (BinSifter-Winnow-Setup.exe) was dropped from the
+; release-installers.yml workflow the same day - nothing builds this file
+; anymore. Left in the repo for reference rather than deleted outright;
+; safe to delete for real once that's confirmed to be wanted.
+;
 ; Inno Setup script for Winnow (BinSifter's Python/PySide6 variant).
 ; Added 2026-08-08 - see installer/README.md for the full build sequence
 ; and honest caveats (not compiled/tested from this dev sandbox - no

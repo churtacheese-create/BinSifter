@@ -1,4 +1,11 @@
 <#
+  DEPRECATED as of 2026-08-26 - Winnow's platform focus moved to Linux-only,
+  and its Windows installer (BinSifter-Winnow-Setup.exe) was dropped from
+  release-installers.yml the same day. Left in the repo for reference
+  rather than deleted outright; safe to delete for real once that's
+  confirmed to be wanted. Winnow's actual Linux packages are now built by
+  that workflow's build-winnow-linux job (fpm, not this script).
+
   Builds the Winnow installer end to end: PyInstaller freeze (--onedir,
   see winnow.spec's comments on why) followed by Inno Setup packaging.
   Added 2026-08-08 - see installer/README.md for prerequisites and the

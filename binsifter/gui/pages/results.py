@@ -14,19 +14,35 @@ functionally identical (paths are always current, disabled items are
 unclickable either way), just simpler in Qt where a one-shot QMenu.exec()
 is the idiomatic pattern.
 
+Quick-launch tool set rebuilt 2026-08-26 for Winnow's Linux-focused
+direction - the original PE Studio/CFF Explorer/Resource Hacker/x64dbg/
+x32dbg/Sigcheck line-up was Windows-only (Sysinternals tools and Windows
+PE editors/debuggers with no real Linux build), which no longer fits once
+Winnow itself is Linux-only. Replaced with Linux-native substitutes named
+directly by the project owner: PE-bear and Anya cover PE Studio/CFF
+Explorer/Resource Hacker's static-inspection role, Rizin and Angr cover
+x64dbg/x32dbg's debugging/analysis role, and DIE/Ghidra/Speakeasy/the AI
+export carry over unchanged since they were already cross-platform or
+already in-process libraries. Sigcheck itself is dropped outright - it's a
+Sysinternals tool with no Linux build and no Linux substitute was named for
+it, unlike the other four. See core/config.py's TOOL_FILE_NAMES comment for
+why each new tool's config field searches a tuple of candidate filenames
+instead of one fixed name.
+
 Two menu actions needed real adaptation, not just a language port, because
 this Python rewrite made YARA/capa/ssdeep/FLOSS/Speakeasy in-process
 libraries instead of external .exe tools (see core/config.py's
 TOOL_FILE_NAMES docstring):
-- Sigcheck still shells out to a real sigcheck.exe (no Python-library
-  equivalent exists), same as the original, but runs on a background
-  QThread instead of blocking the UI thread for up to 30s - an
-  improvement consistent with this port's own established async pattern
-  (NSRL reload, scans), not a behavior change to Sigcheck's own output.
 - Speakeasy has no "speakeasy.exe" to find anymore (core/speakeasy_scan.py's
   emulate_file() already ported it as a library call) - the menu action
   calls that directly on a background QThread instead of shelling out to
   a "-t <file> -o json" CLI invocation the way the original assumed.
+- The shared captured-tool-report plumbing (_start_captured_tool/
+  _show_tool_report) originally served both Sigcheck and Speakeasy; now
+  that Sigcheck is gone, Speakeasy is its only user, but the plumbing is
+  left general rather than inlined in case a future quick-launch tool
+  needs the same "run on a background thread, show output in a popup"
+  pattern.
 """
 
 from __future__ import annotations
@@ -65,27 +81,19 @@ from binsifter.gui.theme import ThemePalette, qcolor_to_css
 from binsifter.gui.widgets import accent_to_css
 
 # (config key, menu label, copy-path-to-clipboard-instead-of-arg,
-# confirmation message) - same order/labels/behavior as $launchTools.
-# CffExplorerExe copies the path to the clipboard instead of passing it as
-# a launch argument because CFF Explorer's command line is reserved for its
-# own Lua scripting engine and silently ignores an arbitrary PE path (see
-# the PowerShell version's own comment at $launchTools's CffExplorerExe
-# entry). X64dbg/X32dbg get a
-# confirmation prompt since loading a live sample into a debugger warrants
-# a beat of caution a static viewer like PE Studio doesn't.
+# confirmation message) - Linux tool set, see module docstring above for
+# what replaced what and why. None of the five need the clipboard-copy
+# trick CFF Explorer used to (that was specific to CFF Explorer's command
+# line being reserved for its own Lua console) or a confirmation prompt
+# (none of these five directly execute the sample the way a live debugger
+# does - Rizin/Angr are static/symbolic analysis tools, not live
+# executors, unlike x64dbg/x32dbg were).
 _QUICK_LAUNCH_TOOLS: tuple[tuple[str, str, bool, str | None], ...] = (
-    ("PEStudioExe", "Open in PE Studio", False, None),
+    ("PeBearExe", "Open in PE-bear", False, None),
+    ("AnyaExe", "Open in Anya", False, None),
     ("DieExe", "Open in DIE", False, None),
-    ("CffExplorerExe", "Open in CFF Explorer (copies path to clipboard)", True, None),
-    ("ResourceHackerExe", "Open in Resource Hacker", False, None),
-    (
-        "X64dbgExe", "Open in x64dbg", False,
-        "This opens the selected binary in x64dbg. Continue only in an isolated analysis environment.",
-    ),
-    (
-        "X32dbgExe", "Open in x32dbg", False,
-        "This opens the selected binary in x32dbg. Continue only in an isolated analysis environment.",
-    ),
+    ("RizinExe", "Open in Rizin", False, None),
+    ("AngrExe", "Open in Angr", False, None),
 )
 
 _SPEAKEASY_CONFIRM = (
@@ -164,40 +172,6 @@ def _row_values(r: FileRecord) -> list[str]:
     ]
 
 
-class _SigcheckWorker(QObject):
-    """Runs sigcheck.exe and captures its output - port of the shared
-    Invoke-CapturedTool helper's behavior for this one call site (30s
-    timeout, stdout+stderr combined), on a background thread instead of
-    Invoke-CapturedTool's synchronous WaitForExit."""
-
-    finished = Signal(str)
-    failed = Signal(str)
-
-    def __init__(self, exe_path: str, target_path: str) -> None:
-        super().__init__()
-        self._exe_path = exe_path
-        self._target_path = target_path
-
-    def run(self) -> None:
-        try:
-            proc = subprocess.run(
-                [self._exe_path, "-nobanner", "-accepteula", "-a", "-h", self._target_path],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            body = f"{proc.stdout}\n{proc.stderr}".strip()
-        except subprocess.TimeoutExpired as exc:
-            stderr = (exc.stderr or "").strip()
-            body = "Process timed out after 30 seconds and was terminated."
-            if stderr:
-                body += f"\n{stderr}"
-        except OSError as exc:
-            self.failed.emit(str(exc))
-            return
-        self.finished.emit(body or "(no output)")
-
-
 class _SpeakeasyWorker(QObject):
     """Runs core.speakeasy_scan.emulate_file() and formats the same
     summary-then-raw-dump report the PowerShell version built from its
@@ -237,9 +211,9 @@ class ResultsPage(QWidget):
         self._records: list[FileRecord] = []
         self._filter_label: str | None = None
         self._filter_predicate: Callable[[FileRecord], bool] | None = None
-        # Keeps background captured-tool threads (Sigcheck/Speakeasy) alive
-        # for their own lifetime - needed since nothing else holds a
-        # reference once _launch_sigcheck/_launch_speakeasy return.
+        # Keeps background captured-tool threads (Speakeasy) alive for their
+        # own lifetime - needed since nothing else holds a reference once
+        # _launch_speakeasy returns.
         self._tool_threads: list[tuple[QThread, QObject]] = []
 
         self._debounce_timer = QTimer(self)
@@ -501,16 +475,6 @@ class ResultsPage(QWidget):
         if ghidra_configured:
             ghidra_action.triggered.connect(lambda checked=False, target=target_path: self._launch_ghidra(target))
 
-        sigcheck_exe = self._config.SigcheckExe or ""
-        sigcheck_configured = bool(sigcheck_exe) and Path(sigcheck_exe).is_file()
-        sigcheck_label = "Verify signature and provenance (Sigcheck)"
-        sigcheck_action = menu.addAction(sigcheck_label if sigcheck_configured else f"{sigcheck_label} (not configured)")
-        sigcheck_action.setEnabled(sigcheck_configured)
-        if sigcheck_configured:
-            sigcheck_action.triggered.connect(
-                lambda checked=False, exe=sigcheck_exe, target=target_path: self._launch_sigcheck(exe, target)
-            )
-
         # Speakeasy has no exe to find anymore - emulate_file() is always
         # available once the speakeasy library is installed, so this entry
         # is never disabled (unlike the original, which checked for
@@ -520,7 +484,7 @@ class ResultsPage(QWidget):
 
         menu.addSeparator()
 
-        # Unlike Ghidra/Sigcheck, this has no external tool to find - it's
+        # Unlike Ghidra, this has no external tool to find - it's
         # pure local formatting (see core/ai_export.py's module docstring),
         # so the only prerequisite is somewhere to write the two output
         # files, same as the "Open report folder" toolbar button already
@@ -635,14 +599,6 @@ class ResultsPage(QWidget):
         except OSError as exc:
             QMessageBox.critical(self, "BinSifter", f"Could not write AI export: {exc}")
 
-    def _launch_sigcheck(self, exe_path: str, target_path: str) -> None:
-        if not Path(target_path).is_file():
-            return
-        self._start_captured_tool(
-            _SigcheckWorker(exe_path, target_path),
-            title=f"Sigcheck - {Path(target_path).name}",
-        )
-
     def _launch_speakeasy(self, target_path: str) -> None:
         if not Path(target_path).is_file():
             return
@@ -658,9 +614,11 @@ class ResultsPage(QWidget):
         )
 
     def _start_captured_tool(self, worker: QObject, title: str) -> None:
-        """Shared thread plumbing for Sigcheck/Speakeasy - both report their
-        result via a report popup (Show-ToolReportWindow's role) and share
-        the same success/failure signal shapes.
+        """Shared thread plumbing for background tool runs that report their
+        result via a report popup (Show-ToolReportWindow's role) - Speakeasy
+        is the only current user since Sigcheck (the other original user)
+        was dropped from Winnow's Linux quick-launch set, but this stays
+        general in case a future tool needs the same pattern.
 
         worker.finished/failed connect to bound methods of `self`, not
         lambdas: PySide6's cross-thread auto-connection only reliably

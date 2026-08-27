@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -550,7 +551,36 @@ class MainWindow(QMainWindow):
         self.pages = QStackedWidget()
         self.dashboard_page = DashboardPage(theme)
         self.dashboard_page.filter_requested.connect(self._on_dashboard_filter_requested)
-        self.pages.addWidget(self.dashboard_page)
+        # Wrapped in a QScrollArea rather than added directly - Dashboard's
+        # three tile rows + severity chart + summary line add up to more
+        # combined content than any other page, and on Linux (confirmed via
+        # a real Ubuntu-VM bug report, 2026-08-26) that combination made the
+        # whole MAIN WINDOW itself refuse to resize vertically at all - not
+        # just Dashboard - because QStackedWidget's own effective size
+        # hint/constraint is derived from the largest content among ALL of
+        # its pages, not just whichever one is currently visible. Isolated
+        # via a long real-machine bisection (StatTile alone: fine,
+        # SeverityBarChart alone: fine, up to 3 tile rows + chart: fine,
+        # only the FULL combination including the section-title labels and
+        # the word-wrapping summary label together actually reproduced the
+        # lock) without ever finding one single offending line - this is
+        # the standard, correct Qt fix for "a page has more natural content
+        # than reliably fits" regardless of the exact underlying layout
+        # interaction, since a QScrollArea's own size hint is independent
+        # of its inner content's size, so it can no longer propagate a
+        # rigid height constraint up to the window at all. setWidgetResizable(True)
+        # is required - without it the scroll area sizes itself to the
+        # page's sizeHint instead of letting the page fill/scroll within
+        # whatever space it's given, which would silently reintroduce the
+        # exact same problem.
+        dashboard_scroll = QScrollArea()
+        dashboard_scroll.setWidget(self.dashboard_page)
+        dashboard_scroll.setWidgetResizable(True)
+        dashboard_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        dashboard_scroll.setStyleSheet(
+            f"QScrollArea {{ background-color: {qcolor_to_css(theme.WindowBack)}; border: none; }}"
+        )
+        self.pages.addWidget(dashboard_scroll)
 
         self.scan_queue_page = ScanQueuePage(theme)
         self.scan_queue_page.start_clicked.connect(self._on_start_scan_clicked)
