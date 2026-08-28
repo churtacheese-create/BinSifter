@@ -70,6 +70,27 @@ dependencies = [
                            # before ever reaching a real signed/unsigned verdict) - found 2026-08-06
                            # via a real scan where 75 .msi files all landed in "UnknownError" for
                            # exactly this reason.
+    "oscrypto @ git+https://github.com/wbond/oscrypto.git@76bfdcb7285d856c44f8d0fbafe0ecca1c6d2f8b",
+                           # Explicit override for signify's own oscrypto<2,>=1.1 dependency - found
+                           # 2026-08-28 via a real .deb install crashing on a real Ubuntu 26.04 VM at
+                           # startup with oscrypto.errors.LibraryNotFoundError: "Error detecting the
+                           # version of libcrypto". Root cause, confirmed directly (not just from the
+                           # upstream bug report): oscrypto 1.3.0 - the only version ever published to
+                           # PyPI, since 2022 - detects the installed OpenSSL's version with the regex
+                           # \d\.\d\.\d[a-z]*, which only matches a SINGLE digit per version
+                           # component. Modern Ubuntu (and Debian bookworm+) ship an actively-patched
+                           # OpenSSL 3.0.x branch whose patch number is long past single digits
+                           # (3.0.13, 3.0.15, etc. as of this writing) - reproduced directly: 'OpenSSL
+                           # 3.0.13 30 Jan 2024' fails the shipped regex outright but matches fine
+                           # against oscrypto's own unreleased git-master regex (\d+\.\d+\.\d+[a-z]*,
+                           # same fix confirmed present at this pinned commit). The maintainer fixed
+                           # this in the repo but has never cut a new PyPI release (see
+                           # github.com/wbond/oscrypto issue #78) - installing directly from the fixed
+                           # commit is the only way to get a working oscrypto on any current Linux
+                           # distro's OpenSSL. Pinned to a specific commit (not @master) so this build
+                           # doesn't silently pick up an unrelated future change. Safe to drop this
+                           # override and go back to a normal PyPI version constraint if oscrypto ever
+                           # actually cuts a release with the fix included.
     "numpy>=1.24",         # Added 2026-08-04 for core/nsrl.py's cached binary NSRL index - a
                            # one-time C-level sort of tens of millions of 20-byte SHA-1 digests
                            # (np.sort on a 'V20' dtype view) plus np.memmap for shared, per-process
