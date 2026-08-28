@@ -94,8 +94,16 @@ jobs:
       - name: Install fpm and its per-format build dependencies
         run: |
           sudo gem install --no-document fpm
-          sudo apt-get install -y rpm   # fpm's rpm target shells out to rpmbuild
-          sudo apt-get install -y zstd  # fpm's pacman target compresses with zstd
+          sudo apt-get install -y rpm               # fpm's rpm target shells out to rpmbuild
+          sudo apt-get install -y zstd               # fpm's pacman target compresses with zstd
+          # fpm's pacman target also shells out to bsdtar (to build the
+          # .MTREE metadata file pacman packages require) - confirmed the
+          # hard way via a real workflow run, 2026-08-28: exit code 127
+          # ("bsdtar: command not found") on a bare ubuntu-latest runner,
+          # since bsdtar isn't part of Ubuntu's default install and isn't
+          # pulled in by anything installed above. Ships in libarchive-tools
+          # on Debian/Ubuntu, not a package literally named bsdtar/libarchive.
+          sudo apt-get install -y libarchive-tools
 
       - name: Read BinSifter's version
         id: version
