@@ -35,7 +35,13 @@ from PySide6.QtWidgets import (
 )
 
 from binsifter import __version__
-from binsifter.core.config import build_default_config, get_bundled_asset_path, set_tool_paths_from_directory
+from binsifter.core.config import (
+    build_default_config,
+    find_tool_path,
+    get_auto_installed_tools_dir,
+    get_bundled_asset_path,
+    set_tool_paths_from_directory,
+)
 from binsifter.core.engine import ScanResult, scan_directory
 from binsifter.core.models import FileRecord
 from binsifter.core.tool_bootstrap import ToolBootstrapResult, run_tool_bootstrap
@@ -174,7 +180,8 @@ class _ScanWorker(QObject):
 class _ToolBootstrapWorker(QObject):
     """Runs tool_bootstrap.run_tool_bootstrap() off the UI thread - added
     2026-09-03 per the project owner's direct request: on startup, missing
-    quick-launch tools (PE-bear/Anya/DIE/Rizin/Angr) should be found or
+    quick-launch tools (PE-bear/Anya/DIE/Cutter/Angr/GDB+GEF/Binwalk/
+    Malwoverview/Ghidra) should be found or
     auto-installed, but this can mean real network downloads (Angr's pip
     install pulls a whole dependency chain) that must never block the
     window from appearing or a scan from starting - same "don't freeze the
@@ -295,6 +302,17 @@ class MainWindow(QMainWindow):
         # actually makes a freshly-installed tool's menu item enable
         # without waiting for the next full app restart.
         set_tool_paths_from_directory(self.config, self.config.ToolsDir)
+        if not self.config.GhidraHeadlessExe:
+            # GhidraHeadlessExe sits outside TOOL_FILE_NAMES (see config.py's
+            # build_default_config() for why), so set_tool_paths_from_directory()
+            # above doesn't touch it - re-resolve it by hand the same way,
+            # now that a freshly auto-installed Ghidra may be sitting under
+            # AutoInstalledTools/ghidra.
+            self.config.GhidraHeadlessExe = find_tool_path(self.config.GhidraDir, "analyzeHeadless")
+            if not self.config.GhidraHeadlessExe:
+                self.config.GhidraHeadlessExe = find_tool_path(
+                    get_auto_installed_tools_dir() / "ghidra", "analyzeHeadless"
+                )
 
         installed = [r for r in results if r.status == "installed"]
         failed = [r for r in results if r.status == "failed"]

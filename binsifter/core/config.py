@@ -169,8 +169,26 @@ TOOL_FILE_NAMES: dict[str, tuple[str, ...]] = {
     "PeBearExe": ("PE-bear", "pe-bear", "PEBear"),
     "AnyaExe": ("anya", "Anya"),
     "DieExe": ("diec", "die"),
-    "RizinExe": ("rizin",),
+    # Rizin replaced with Cutter 2026-09-03 (see tool_bootstrap.py) - Rizin
+    # is a terminal-native REPL with no window of its own, so launching it
+    # via a bare subprocess.Popen from a GUI app (no attached terminal)
+    # produced no visible effect at all; a real user's install log showed
+    # exactly this ("PE-Bear nor Rizin would work when selected"). Cutter is
+    # rizin's own official Qt GUI front-end - same analysis engine, but an
+    # actual window a Popen launch can show.
+    "CutterExe": ("Cutter", "cutter"),
     "AngrExe": ("angr",),
+    # GDB itself is deliberately never auto-installed (needs apt/dnf/pacman,
+    # not root-free-installable) - PATH-only discovery, same as Rizin used
+    # to be before it got its own installer. GEF is layered on top of
+    # whatever gdb find_tool_path() finds and IS root-free-installable (a
+    # single curl'd Python script sourced from ~/.gdbinit), so it gets its
+    # own separate bootstrap entry in tool_bootstrap.py even though there's
+    # no separate "GefExe" to launch - GEF isn't a program, it's a gdb
+    # extension.
+    "GdbExe": ("gdb",),
+    "BinwalkExe": ("binwalk",),
+    "MalwoverviewExe": ("malwoverview", "malwoverview.py"),
 }
 
 
@@ -191,10 +209,10 @@ def find_tool_path(directory: str | Path | None, filenames: str | tuple[str, ...
     virtualenv (see angr's own INSTALL docs; several of its dependencies
     ship forked native libraries that can collide with system copies), and
     `pipx install` already solves exactly that: one isolated venv per tool,
-    exposed as a single ordinary command on PATH. PE-bear/DIE AppImages and
-    Rizin's native distro packages also normally end up on PATH rather than
-    copied into a scratch directory, so this removes the "central location"
-    requirement for all of them, not just angr.
+    exposed as a single ordinary command on PATH. PE-bear/DIE/Cutter
+    AppImages and GDB's native distro package also normally end up on PATH
+    rather than copied into a scratch directory, so this removes the
+    "central location" requirement for all of them, not just angr.
 
     Directory is still checked first for each candidate (an explicit copy
     staged under `directory` wins over an incidental system install) before
@@ -210,7 +228,22 @@ def find_tool_path(directory: str | Path | None, filenames: str | tuple[str, ...
 
     for filename in candidates:
         if has_root:
-            matches = sorted(root.rglob(filename), key=lambda p: str(p))
+            # REAL BUG FIXED 2026-09-03: rglob(filename) matches directories
+            # as well as files, with no filtering - confirmed from a real
+            # user's install log where AutoInstalledTools/anya/ (the
+            # extraction directory _install_appimage_tool creates) and
+            # AutoInstalledTools/anya/anya (the actual binary inside it)
+            # both matched, and the directory's path string being a strict
+            # prefix of the file's path string meant the directory sorted
+            # first and won the old sorted(...)[0] tiebreak. That directory
+            # path then failed every later Path(x).is_file() check, greying
+            # out the tool in the right-click menu even though the real
+            # binary was one level down. Filtering to is_file() here means
+            # only a real, launchable file can ever be returned.
+            matches = sorted(
+                (p for p in root.rglob(filename) if p.is_file()),
+                key=lambda p: str(p),
+            )
             if matches:
                 if len(matches) > 1:
                     logger.info(
@@ -231,8 +264,9 @@ def find_tool_path(directory: str | Path | None, filenames: str | tuple[str, ...
 def get_auto_installed_tools_dir() -> Path:
     """Fixed, per-user directory where core/tool_bootstrap.py's first-run
     auto-installer places anything it downloads for the quick-launch tools
-    (PE-bear/DIE/Anya AppImages, Rizin's static binary, Angr's private
-    venv) - separate from the user's own "Path to tools" directory so
+    (PE-bear/DIE/Anya/Cutter AppImages, Angr/Binwalk/Malwoverview's private
+    venvs, Ghidra's release zip + portable JDK) - separate from the user's
+    own "Path to tools" directory so
     auto-installed copies never mix with or overwrite anything the user
     placed there themselves. Added 2026-09-03 alongside tool_bootstrap.py;
     see that module's docstring for why auto-installing at all is safe to
@@ -296,8 +330,11 @@ class BinSifterConfig:
     PeBearExe: str = ""
     AnyaExe: str = ""
     DieExe: str = ""
-    RizinExe: str = ""
+    CutterExe: str = ""
     AngrExe: str = ""
+    GdbExe: str = ""
+    BinwalkExe: str = ""
+    MalwoverviewExe: str = ""
 
     # Fixed default locations next to the BinSifter install - not Settings
     # fields at all, same as the PowerShell version.
@@ -381,4 +418,13 @@ def build_default_config() -> BinSifterConfig:
     # round-trip through Settings.
     set_tool_paths_from_directory(config, config.ToolsDir)
     config.GhidraHeadlessExe = find_tool_path(config.GhidraDir, "analyzeHeadless")
+    if not config.GhidraHeadlessExe:
+        # Ghidra auto-install added 2026-09-03 (see tool_bootstrap.py) - same
+        # AutoInstalledTools fallback every other quick-launch tool already
+        # gets via set_tool_paths_from_directory(), applied here by hand
+        # since Ghidra's own resolution (GhidraDir -> analyzeHeadless) sits
+        # outside that helper.
+        config.GhidraHeadlessExe = find_tool_path(
+            get_auto_installed_tools_dir() / "ghidra", "analyzeHeadless"
+        )
     return config

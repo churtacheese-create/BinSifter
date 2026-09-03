@@ -20,7 +20,7 @@ x32dbg/Sigcheck line-up was Windows-only (Sysinternals tools and Windows
 PE editors/debuggers with no real Linux build), which no longer fits once
 Winnow itself is Linux-only. Replaced with Linux-native substitutes named
 directly by the project owner: PE-bear and Anya cover PE Studio/CFF
-Explorer/Resource Hacker's static-inspection role, Rizin and Angr cover
+Explorer/Resource Hacker's static-inspection role, Cutter and Angr cover
 x64dbg/x32dbg's debugging/analysis role, and DIE/Ghidra/Speakeasy/the AI
 export carry over unchanged since they were already cross-platform or
 already in-process libraries. Sigcheck itself is dropped outright - it's a
@@ -28,6 +28,29 @@ Sysinternals tool with no Linux build and no Linux substitute was named for
 it, unlike the other four. See core/config.py's TOOL_FILE_NAMES comment for
 why each new tool's config field searches a tuple of candidate filenames
 instead of one fixed name.
+
+Lineup revised again 2026-09-03, the same day core/tool_bootstrap.py's
+first-run auto-installer made these tools resolvable in practice for the
+first time on a real machine - a real install/scan log surfaced two
+genuine bugs (see core/config.py's find_tool_path() docstring and this
+module's cwd-hardening comment on _launch_quick_tool) and prompted the
+project owner to reconsider the lineup itself:
+- **Rizin -> Cutter.** Rizin is a terminal-native REPL with no window of
+  its own - launched via a bare subprocess.Popen from a GUI app with no
+  attached terminal, it produced no visible effect at all (confirmed
+  directly from that log: "PE-Bear nor Rizin would work when selected").
+  Cutter is rizin's own official Qt GUI front-end - same engine, but an
+  actual window.
+- **GDB (+ GEF), Binwalk, and Malwoverview added.** All three are equally
+  terminal-native CLI tools, so all three are launched inside a real
+  terminal emulator rather than repeating Rizin's exact bug three more
+  times - see _find_terminal_emulator()/_QUICK_LAUNCH_TOOLS' needs_terminal
+  field below. GEF is a gdb extension, not a separate program, layered
+  onto whatever `gdb` is already found; Malwoverview queries VirusTotal
+  with the file's hash (never the sample itself, per its own docs) - the
+  same third-party-service disclosure carries through to docs/winnow.md.
+- **Ghidra is now auto-installed too**, no longer manual-only, per an
+  explicit request ("I want Ghidra to be installed if not installed").
 
 Two menu actions needed real adaptation, not just a language port, because
 this Python rewrite made YARA/capa/ssdeep/FLOSS/Speakeasy in-process
@@ -48,6 +71,8 @@ TOOL_FILE_NAMES docstring):
 from __future__ import annotations
 
 import json
+import logging
+import shutil
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
@@ -80,15 +105,17 @@ from binsifter.core.models import FileRecord
 from binsifter.gui.theme import ThemePalette, qcolor_to_css
 from binsifter.gui.widgets import accent_to_css
 
+logger = logging.getLogger(__name__)
+
 # (config key, menu label, copy-path-to-clipboard-instead-of-arg,
 # confirmation message, extra argv inserted between the exe and the target
-# path) - Linux tool set, see module docstring above for what replaced
-# what and why. None of the five need the clipboard-copy trick CFF
-# Explorer used to (that was specific to CFF Explorer's command line being
-# reserved for its own Lua console) or a confirmation prompt (none of
-# these five directly execute the sample the way a live debugger does -
-# Rizin/Angr are static/symbolic analysis tools, not live executors,
-# unlike x64dbg/x32dbg were).
+# path, needs-a-terminal) - Linux tool set, see module docstring above for
+# what replaced what and why. None of these need the clipboard-copy trick
+# CFF Explorer used to (that was specific to CFF Explorer's command line
+# being reserved for its own Lua console) or a confirmation prompt (none
+# of these directly execute the sample the way a live debugger does -
+# Cutter/Angr/Binwalk/Malwoverview are static/symbolic analysis and
+# lookup tools, not live executors, unlike x64dbg/x32dbg were).
 #
 # The 5th field was added 2026-09-03 alongside core/tool_bootstrap.py,
 # which made Angr resolvable for the first time in practice - that
@@ -99,16 +126,66 @@ from binsifter.gui.widgets import accent_to_css
 # subprocess.Popen([exe, target]) would have errored out immediately every
 # single time, it just never got exercised before because nothing had
 # ever found a working AngrExe. Anya's CLI similarly needs "--file <path>"
-# per its own README, not a bare positional. PE-bear/DIE/Rizin all
+# per its own README, not a bare positional. PE-bear/DIE/Cutter all
 # genuinely do accept a bare "<exe> <file>" invocation, confirmed against
 # each project's own docs, so their tuples stay empty.
-_QUICK_LAUNCH_TOOLS: tuple[tuple[str, str, bool, str | None, tuple[str, ...]], ...] = (
-    ("PeBearExe", "Open in PE-bear", False, None, ()),
-    ("AnyaExe", "Open in Anya", False, None, ("--file",)),
-    ("DieExe", "Open in DIE", False, None, ()),
-    ("RizinExe", "Open in Rizin", False, None, ()),
-    ("AngrExe", "Open in Angr", False, None, ("decompile",)),
+#
+# The 6th field was added the same day the lineup itself changed (Rizin ->
+# Cutter, plus GDB+GEF/Binwalk/Malwoverview added): a real user's install
+# log showed Rizin's menu entry doing nothing when clicked even though its
+# path resolved correctly - Rizin is a terminal-native REPL with no window
+# of its own, so a bare subprocess.Popen (no attached terminal, since
+# Winnow itself is a GUI app) produced no visible effect at all. Cutter
+# fixes this for that specific role by being a real GUI app instead, but
+# GDB, Binwalk, and Malwoverview are all equally terminal-native CLI tools
+# with the exact same problem - rather than repeat that bug for three more
+# tools, each is launched inside a real terminal emulator instead (see
+# _find_terminal_emulator()/_launch_in_terminal() below).
+_QUICK_LAUNCH_TOOLS: tuple[tuple[str, str, bool, str | None, tuple[str, ...], bool], ...] = (
+    ("PeBearExe", "Open in PE-bear", False, None, (), False),
+    ("AnyaExe", "Open in Anya", False, None, ("--file",), False),
+    ("DieExe", "Open in DIE", False, None, (), False),
+    ("CutterExe", "Open in Cutter", False, None, (), False),
+    ("AngrExe", "Open in Angr", False, None, ("decompile",), False),
+    # GDB is launched bare (gdb <file>) - a real debugger session, meant to
+    # be interacted with directly in the terminal that opens.
+    ("GdbExe", "Open in GDB (with GEF)", False, None, (), True),
+    # Binwalk's plain invocation (binwalk <file>) prints its signature scan
+    # straight to stdout - needs a terminal to be seen at all, same as GDB.
+    ("BinwalkExe", "Scan with Binwalk", False, None, (), True),
+    # "-v 2 -f <path>" queries VirusTotal for this file's hash (malwoverview
+    # computes and submits only the hash, never the sample itself, per its
+    # own docs) and requires -f for -v 2 to work - confirmed against
+    # malwoverview's own README. Same third-party-service disclosure this
+    # entry carries in docs/winnow.md and _MANUAL_INSTALL_HINTS.
+    ("MalwoverviewExe", "Look up hash in Malwoverview (VirusTotal)", False, None, ("-v", "2", "-f"), True),
 )
+
+# Tried in order - first one found on PATH wins. Covers Debian/Ubuntu's
+# alternatives-based x-terminal-emulator, GNOME, KDE, XFCE, and a bare
+# xterm as the universal last resort every distro's repos carry.
+# (terminal binary name, argv prefix before the command to run)
+_TERMINAL_EMULATORS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("x-terminal-emulator", ("-e",)),
+    ("gnome-terminal", ("--",)),
+    ("konsole", ("-e",)),
+    ("xfce4-terminal", ("-x",)),
+    # -hold keeps the window open after the command exits so output/errors
+    # (or a live gdb/malwoverview session) stay visible instead of the
+    # terminal closing itself immediately - the other four terminals above
+    # only close-on-exit by default too, but xterm is the one most likely
+    # to be someone's bare-minimum fallback with no config of its own.
+    ("xterm", ("-hold", "-e")),
+)
+
+
+def _find_terminal_emulator() -> tuple[str, tuple[str, ...]] | None:
+    for name, prefix_args in _TERMINAL_EMULATORS:
+        path = shutil.which(name)
+        if path:
+            return path, prefix_args
+    return None
+
 
 _SPEAKEASY_CONFIRM = (
     "This emulates the selected binary's code. Emulation must be performed in an "
@@ -467,15 +544,15 @@ class ResultsPage(QWidget):
         QMenu.exec(), which blocks on a real event loop no automated test
         can drive."""
         menu = QMenu(self)
-        for config_key, label, copy_path, confirm, extra_argv in _QUICK_LAUNCH_TOOLS:
+        for config_key, label, copy_path, confirm, extra_argv, needs_terminal in _QUICK_LAUNCH_TOOLS:
             exe_path = getattr(self._config, config_key, "") or ""
             configured = bool(exe_path) and Path(exe_path).is_file()
             action = menu.addAction(label if configured else f"{label} (not configured)")
             action.setEnabled(configured)
             if configured:
                 action.triggered.connect(
-                    lambda checked=False, exe=exe_path, target=target_path, copy=copy_path, msg=confirm, argv=extra_argv: (
-                        self._launch_quick_tool(exe, target, copy, msg, argv)
+                    lambda checked=False, exe=exe_path, target=target_path, copy=copy_path, msg=confirm, argv=extra_argv, term=needs_terminal: (  # noqa: E501
+                        self._launch_quick_tool(exe, target, copy, msg, argv, term)
                     )
                 )
 
@@ -523,6 +600,7 @@ class ResultsPage(QWidget):
         copy_path_instead: bool,
         confirm_message: str | None,
         extra_argv: tuple[str, ...] = (),
+        needs_terminal: bool = False,
     ) -> None:
         if not Path(target_path).is_file():
             return
@@ -533,17 +611,59 @@ class ResultsPage(QWidget):
             )
             if answer != QMessageBox.StandardButton.Yes:
                 return
+        # extra_argv goes between the exe and the target path, e.g.
+        # ["angr", "decompile", target] or ["anya", "--file", target] - see
+        # _QUICK_LAUNCH_TOOLS' module comment for why Angr/Anya/GDB-adjacent
+        # tools specifically need this and PE-bear/DIE/Cutter don't.
+        argv = [exe_path, *extra_argv] if copy_path_instead else [exe_path, *extra_argv, target_path]
         try:
-            if copy_path_instead:
-                subprocess.Popen([exe_path, *extra_argv])
+            if needs_terminal:
+                # Terminal-native CLI tools (GDB, Binwalk, Malwoverview) have
+                # no window of their own - a bare subprocess.Popen with no
+                # attached terminal produces no visible effect at all, the
+                # exact "PE-Bear nor Rizin would work when selected" bug a
+                # real user hit with the old Rizin entry. Run it inside a
+                # real terminal emulator instead - see
+                # _find_terminal_emulator()'s own docstring for the search
+                # order.
+                terminal = _find_terminal_emulator()
+                if terminal is None:
+                    message = (
+                        "Could not launch: no terminal emulator found on PATH "
+                        "(tried x-terminal-emulator, gnome-terminal, konsole, xfce4-terminal, xterm). "
+                        "Install one of these, or run the command yourself:\n" + " ".join(argv)
+                    )
+                    logger.error("Could not launch %s - no terminal emulator on PATH", exe_path)
+                    QMessageBox.critical(self, "BinSifter", message)
+                    return
+                terminal_path, prefix_args = terminal
+                # Run through the exe's own directory as cwd (see
+                # _launch_ghidra's own cwd comment below) - harmless for
+                # tools that don't need it, and protects any that resolve
+                # sibling files/plugins relative to their own binary the
+                # way PE-bear's Qt build does.
+                subprocess.Popen([terminal_path, *prefix_args, *argv], cwd=str(Path(exe_path).parent))
+            elif copy_path_instead:
+                subprocess.Popen(argv, cwd=str(Path(exe_path).parent))
                 QGuiApplication.clipboard().setText(target_path)
             else:
-                # extra_argv goes between the exe and the target path, e.g.
-                # ["angr", "decompile", target] or ["anya", "--file", target]
-                # - see _QUICK_LAUNCH_TOOLS' module comment for why Angr and
-                # Anya specifically need this and PE-bear/DIE/Rizin don't.
-                subprocess.Popen([exe_path, *extra_argv, target_path])
+                # HARDENED 2026-09-03: cwd defaults to wherever Winnow itself
+                # was launched from, not the tool's own install directory -
+                # a real user's log showed PE-bear resolving to a real,
+                # executable file (a manually-built Qt binary under
+                # ~/Desktop/pe-bear/build_qt6/bin/) that still did nothing
+                # when clicked, with no error ever surfacing anywhere (the
+                # old bare `except OSError` here never logged either - see
+                # the logger.error() call below, added the same day). A Qt
+                # app built to look for its own plugins/resources relative
+                # to argv[0]'s directory can silently fail to find them
+                # when launched from an unrelated cwd; setting cwd to the
+                # exe's own directory is a cheap, safe default that removes
+                # this as a possible cause without needing to know which
+                # specific tool actually needs it.
+                subprocess.Popen(argv, cwd=str(Path(exe_path).parent))
         except OSError as exc:
+            logger.error("Could not launch %s (target %s): %s", exe_path, target_path, exc)
             QMessageBox.critical(self, "BinSifter", f"Could not launch: {exc}")
 
     def _launch_ghidra(self, target_path: str) -> None:
@@ -574,7 +694,8 @@ class ResultsPage(QWidget):
                     self._config.GhidraHeadlessExe, str(ghidra_projects_dir), project_name,
                     "-import", target_path,
                     "-overwrite", "-analysisTimeoutPerFile", "300",
-                ]
+                ],
+                cwd=str(Path(self._config.GhidraHeadlessExe).parent),
             )
             # Headless analysis runs for minutes with no further UI feedback
             # by design (it's not tracked/polled), so without this a
@@ -588,6 +709,7 @@ class ResultsPage(QWidget):
                 f"{ghidra_projects_dir / project_name}",
             )
         except OSError as exc:
+            logger.error("Could not launch Ghidra (target %s): %s", target_path, exc)
             QMessageBox.critical(self, "BinSifter", f"Could not launch Ghidra: {exc}")
 
     def _export_for_ai_analysis(self, target_path: str) -> None:

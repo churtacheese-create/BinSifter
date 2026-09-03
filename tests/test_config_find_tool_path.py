@@ -50,6 +50,27 @@ def test_returns_empty_string_when_nothing_found_anywhere(tmp_path, monkeypatch)
     assert find_tool_path(tmp_path, ("definitely-not-a-real-tool-xyz",)) == ""
 
 
+def test_directory_match_prefers_file_over_same_named_parent_directory(tmp_path, monkeypatch):
+    """REGRESSION for the real bug found from a user's install log 2026-09-03:
+    rglob(filename) matches directories as well as files, and when an
+    extraction directory shares its exact name with the binary inside it
+    (e.g. tool_bootstrap.py's AutoInstalledTools/anya/anya), the directory's
+    path string is a strict prefix of the file's path string, so naive
+    string-sorting picked the directory - which then failed every later
+    Path(x).is_file() check and greyed out the tool in the menu even though
+    the real binary was one level down. Reproduces that exact shape: a
+    directory and a file, both named "anya", under the same root."""
+    extraction_dir = tmp_path / "anya"
+    extraction_dir.mkdir()
+    real_binary = extraction_dir / "anya"
+    real_binary.write_text("#!/bin/sh\n")
+
+    monkeypatch.setattr("binsifter.core.config.shutil.which", lambda name: None)
+    result = find_tool_path(tmp_path, ("anya",))
+    assert result == str(real_binary)
+    assert Path(result).is_file()
+
+
 def test_path_hit_on_first_candidate_wins_over_directory_hit_on_second(tmp_path, monkeypatch):
     """Each candidate is checked directory-then-PATH before moving on to the
     next candidate - so a PATH hit on the first candidate ("diec") returns

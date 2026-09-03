@@ -1,12 +1,26 @@
 """First-run auto-installer for Winnow's quick-launch tools - built
 2026-09-03 directly in response to the project owner's request: on
-startup, check whether each of the five quick-launch tools (PE-bear, Anya,
-DIE, Rizin, Angr) is already findable; if not, try to install it; if that
-needs the internet and there isn't any, tell the user to either reconnect
-and relaunch or install it themselves. In every case, a missing/failed
-tool must never block Winnow from loading or from running a scan - every
-function in this module is written to fail soft, never raise out to a
-caller running on the GUI thread.
+startup, check whether each quick-launch tool is already findable; if not,
+try to install it; if that needs the internet and there isn't any, tell the
+user to either reconnect and relaunch or install it themselves. In every
+case, a missing/failed tool must never block Winnow from loading or from
+running a scan - every function in this module is written to fail soft,
+never raise out to a caller running on the GUI thread.
+
+Lineup as of 2026-09-03 (revised same day, after a real user's first .deb
+install/scan log surfaced two real bugs and prompted a tool-lineup
+reconsideration - see git history for the original five-tool version):
+PE-bear, Anya, DIE, Cutter (replacing Rizin), Angr, GEF (layered onto
+whatever `gdb` find_tool_path() finds on PATH), Binwalk, Malwoverview, and
+Ghidra (previously manual-only, now auto-installed on request). Rizin
+itself is gone from the auto-install list, not just relabeled: it's a
+terminal-native REPL with no window of its own, so launching it via a bare
+`subprocess.Popen` from a GUI app with no attached terminal produced no
+visible effect at all - confirmed from that same real log
+("PE-Bear nor Rizin would work when selected"). Cutter is rizin's own
+official Qt GUI front-end (same analysis engine underneath, actual window),
+so it replaces Rizin as the quick-launch entry while Rizin itself remains
+installable and usable from a real terminal exactly as before.
 
 Design choices worth explaining up front:
 
@@ -54,6 +68,7 @@ from __future__ import annotations
 
 import json
 import logging
+import platform
 import shutil
 import stat
 import subprocess
@@ -61,6 +76,7 @@ import tarfile
 import urllib.error
 import urllib.request
 import venv
+import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -94,13 +110,36 @@ _MANUAL_INSTALL_HINTS: dict[str, str] = {
         "download the Linux AppImage from https://github.com/horsicq/DIE-engine/releases/latest, "
         "make it executable, and place it somewhere on your PATH or under \"Path to tools\"."
     ),
-    "RizinExe": (
-        "install via your distro's package manager (e.g. \"sudo apt install rizin\", "
-        "\"sudo pacman -S rizin\") or download the static build from "
-        "https://github.com/rizinorg/rizin/releases/latest."
+    "CutterExe": (
+        "install via your distro's package manager (e.g. \"sudo apt install cutter\", "
+        "\"sudo pacman -S cutter\") or download the Linux AppImage from "
+        "https://github.com/rizinorg/cutter/releases/latest."
     ),
     "AngrExe": (
         "run: pipx install angr (or pip install angr in a virtualenv of your own)."
+    ),
+    "GdbExe": (
+        "install via your distro's package manager (e.g. \"sudo apt install gdb\", "
+        "\"sudo dnf install gdb\", \"sudo pacman -S gdb\") - GDB needs a real package "
+        "manager and can't be installed by Winnow itself without root."
+    ),
+    "BinwalkExe": (
+        "run: pipx install binwalk (or pip install binwalk in a virtualenv of your own; "
+        "your distro's binwalk package, e.g. \"sudo apt install binwalk\", also works and "
+        "additionally pulls in the extraction helper libraries binwalk itself doesn't ship)."
+    ),
+    "MalwoverviewExe": (
+        "run: pipx install malwoverview (or pip install malwoverview in a virtualenv of "
+        "your own). Note: malwoverview queries third-party online services (VirusTotal, "
+        "Hybrid-Analysis, and similar) with file hashes/IOCs - see its own docs before use."
+    ),
+    "GhidraHeadlessExe": (
+        "download the latest release from "
+        "https://github.com/NationalSecurityAgency/ghidra/releases/latest, extract it "
+        "anywhere, and point \"Path to Ghidra\" at the extracted folder. Ghidra needs a "
+        "JDK 21+ - install one via your distro's package manager "
+        "(e.g. \"sudo apt install openjdk-21-jdk\") or from https://adoptium.net/ if you'd "
+        "rather not let Winnow download its own copy."
     ),
 }
 
@@ -108,8 +147,12 @@ _TOOL_LABELS: dict[str, str] = {
     "PeBearExe": "PE-bear",
     "AnyaExe": "Anya",
     "DieExe": "DIE",
-    "RizinExe": "Rizin",
+    "CutterExe": "Cutter",
     "AngrExe": "Angr",
+    "GdbExe": "GDB + GEF",
+    "BinwalkExe": "Binwalk",
+    "MalwoverviewExe": "Malwoverview",
+    "GhidraHeadlessExe": "Ghidra",
 }
 
 
@@ -265,40 +308,69 @@ def _install_anya(dest_root: Path) -> ToolBootstrapResult:
     return ToolBootstrapResult("AnyaExe", label, "installed", path=resolved, detail=f"Downloaded {asset['name']}")
 
 
-def _install_rizin(dest_root: Path) -> ToolBootstrapResult:
-    label = _TOOL_LABELS["RizinExe"]
+def _install_cutter(dest_root: Path) -> ToolBootstrapResult:
+    """Cutter (rizin's own official Qt GUI front-end) replaces Rizin as the
+    quick-launch entry 2026-09-03 - see this module's docstring for why.
+    Cutter publishes a Linux AppImage on its GitHub Releases, same shape as
+    PE-bear/DIE, so this reuses _install_appimage_tool rather than
+    duplicating the old Rizin tarball-extraction logic Cutter doesn't need.
+    """
+    return _install_appimage_tool("CutterExe", "rizinorg", "cutter", dest_root, TOOL_FILE_NAMES["CutterExe"][1])
+
+
+# GEF's own documented one-liner installer - a single Python script fetched
+# straight into the user's home and sourced from ~/.gdbinit, genuinely
+# root-free (no package manager, no venv, nothing outside $HOME) unlike GDB
+# itself, which needs a real distro package and is PATH-only here (see
+# _MANUAL_INSTALL_HINTS["GdbExe"]).
+_GEF_INSTALL_URL = "https://gef.blah.cat/sh"
+
+
+def _install_gef(dest_root: Path) -> ToolBootstrapResult:
+    """GDB itself is never auto-installed (see module docstring) - this
+    only ever runs when `gdb` is already found on PATH (see
+    run_tool_bootstrap()'s special-cased "GdbExe" handling below), and adds
+    GEF on top of that existing GDB by running GEF's own documented
+    curl-to-`gdb -x`-based installer, which writes `source ~/.gdb-gef.py`
+    (or similar) into ~/.gdbinit itself - nothing for BinSifter to track or
+    re-resolve afterward, since the next `gdb` launch picks it up
+    automatically via the user's own gdbinit, the same as if the user had
+    run GEF's installer by hand.
+    """
+    label = _TOOL_LABELS["GdbExe"]
+    gdb_path = shutil.which("gdb")
+    if not gdb_path:
+        return ToolBootstrapResult(
+            "GdbExe", label, "failed", detail="gdb not found on PATH - GEF needs an existing gdb to attach to"
+        )
     try:
-        assets = _latest_release_assets("rizinorg", "rizin")
+        request = urllib.request.Request(_GEF_INSTALL_URL, headers={"User-Agent": _USER_AGENT})
+        with urllib.request.urlopen(request, timeout=_NETWORK_TIMEOUT_SECONDS) as response:
+            installer_script = response.read().decode("utf-8")
     except Exception as exc:  # noqa: BLE001
-        return ToolBootstrapResult(
-            "RizinExe", label, "failed", detail=f"Could not query rizinorg/rizin's latest release: {exc}"
-        )
-    # "static" + "x86_64" alone would also match the Android static build
-    # (rizin-vX.Y.Z-android-x86_64.tar.gz carries neither token together
-    # with "static" in the same asset... but double-check explicitly
-    # anyway, since asset naming across releases has changed before -
-    # excluding "android" is a cheap, explicit safety net either way.
-    asset = _pick_asset(assets, must_contain=("static", "x86_64"), must_not_contain=("android",))
-    if asset is None:
-        return ToolBootstrapResult(
-            "RizinExe", label, "failed", detail="No static x86_64 Linux build found in rizinorg/rizin's latest release"
-        )
-    extract_dir = dest_root / "rizin"
-    archive_path = extract_dir / asset["name"]
+        return ToolBootstrapResult("GdbExe", label, "failed", detail=f"Could not download GEF's installer: {exc}")
+
+    marker = dest_root / "gef-install.py"
     try:
-        _download(asset["browser_download_url"], archive_path)
-        with tarfile.open(archive_path) as tar:
-            tar.extractall(extract_dir)  # noqa: S202 - trusted source (GitHub release we just verified the name of)
-        archive_path.unlink(missing_ok=True)
-    except Exception as exc:  # noqa: BLE001
-        return ToolBootstrapResult("RizinExe", label, "failed", detail=f"Download/extract failed: {exc}")
-    resolved = find_tool_path(extract_dir, TOOL_FILE_NAMES["RizinExe"])
-    if not resolved:
-        return ToolBootstrapResult(
-            "RizinExe", label, "failed", detail=f"Extracted {asset['name']} but couldn't locate the rizin binary inside"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(installer_script, encoding="utf-8")
+        subprocess.run(
+            [gdb_path, "-q", "-x", str(marker)],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=_NETWORK_TIMEOUT_SECONDS * 2,
         )
-    _make_executable(Path(resolved))
-    return ToolBootstrapResult("RizinExe", label, "installed", path=resolved, detail=f"Downloaded {asset['name']}")
+    except subprocess.CalledProcessError as exc:
+        return ToolBootstrapResult(
+            "GdbExe", label, "failed", detail=f"GEF install script failed: {(exc.stderr or '').strip()[-500:] or exc}"
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return ToolBootstrapResult("GdbExe", label, "failed", detail=f"GEF install script failed: {exc}")
+
+    return ToolBootstrapResult(
+        "GdbExe", label, "installed", path=gdb_path, detail="Installed GEF into ~/.gdbinit for the existing gdb on PATH"
+    )
 
 
 def _install_angr(dest_root: Path) -> ToolBootstrapResult:
@@ -323,21 +395,49 @@ def _install_angr(dest_root: Path) -> ToolBootstrapResult:
     if not venv_python.is_file():
         return ToolBootstrapResult("AngrExe", label, "failed", detail="Virtualenv creation didn't produce a python binary")
 
-    try:
-        subprocess.run(
-            [str(venv_python), "-m", "pip", "install", "--quiet", "--disable-pip-version-check", "angr"],
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=_DOWNLOAD_TIMEOUT_SECONDS * 3,  # angr pulls a real dependency chain - a plain download timeout is too tight
-        )
-    except subprocess.CalledProcessError as exc:
+    # HARDENED 2026-09-03: angr's own pyproject.toml requires setuptools-rust
+    # and has a [[tool.setuptools-rust.ext-modules]] Cargo-based extension
+    # (angr.rustylib) - a bare `pip install angr` on a machine with no Rust
+    # toolchain present can fall through to a source build of that
+    # extension and fail with a long, generic Cargo/compiler error that
+    # gave a real user's log ("Angr could not be installed automatically")
+    # no useful detail at all. Try wheel-only first (--only-binary=:all:) -
+    # if PyPI has a prebuilt wheel for this platform/Python version, this
+    # succeeds fast with no compiler involved; if it doesn't, fall back to
+    # a normal install (which may still build from source, exactly like
+    # before) so a platform with no wheel isn't worse off than the old
+    # behavior. Either way the real pip stderr is captured and returned in
+    # `detail` - previously this was captured but never logged anywhere
+    # (see run_tool_bootstrap()'s new logging), so a failure's actual cause
+    # was invisible outside of a transient popup.
+    pip_attempts = (
+        ["--only-binary=:all:", "angr"],
+        ["angr"],
+    )
+    last_error = ""
+    installed = False
+    for pip_args in pip_attempts:
+        try:
+            subprocess.run(
+                [str(venv_python), "-m", "pip", "install", "--quiet", "--disable-pip-version-check", *pip_args],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=_DOWNLOAD_TIMEOUT_SECONDS * 3,  # angr pulls a real dependency chain - a plain download timeout is too tight
+            )
+            installed = True
+            break
+        except subprocess.CalledProcessError as exc:
+            last_error = (exc.stderr or "").strip()[-500:] or str(exc)
+            continue
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return ToolBootstrapResult("AngrExe", label, "failed", detail=f"pip install angr failed: {exc}")
+
+    if not installed:
         return ToolBootstrapResult(
             "AngrExe", label, "failed",
-            detail=f"pip install angr failed: {(exc.stderr or '').strip()[-500:] or exc}",
+            detail=f"pip install angr failed (tried a prebuilt wheel and a source build): {last_error}",
         )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        return ToolBootstrapResult("AngrExe", label, "failed", detail=f"pip install angr failed: {exc}")
 
     angr_exe = venv_dir / "bin" / "angr"
     if not angr_exe.is_file():
@@ -347,41 +447,298 @@ def _install_angr(dest_root: Path) -> ToolBootstrapResult:
     return ToolBootstrapResult("AngrExe", label, "installed", path=str(angr_exe), detail="Installed into a private virtualenv")
 
 
+def _install_pip_venv_tool(tool_key: str, package: str, console_script: str, dest_root: Path) -> ToolBootstrapResult:
+    """Shared logic for any tool that's a plain PyPI package with a console-
+    script entry point and no native/Rust build concerns (unlike angr) -
+    Binwalk and Malwoverview both fit this shape. Same private-virtualenv
+    approach as _install_angr, minus the wheel-first hardening that only
+    angr's build chain needs.
+    """
+    label = _TOOL_LABELS[tool_key]
+    venv_dir = dest_root / f"{package}-venv"
+    try:
+        venv.create(venv_dir, with_pip=True, clear=True)
+    except Exception as exc:  # noqa: BLE001
+        return ToolBootstrapResult(tool_key, label, "failed", detail=f"Could not create a virtualenv: {exc}")
+
+    venv_python = venv_dir / "bin" / "python"
+    if not venv_python.is_file():
+        return ToolBootstrapResult(tool_key, label, "failed", detail="Virtualenv creation didn't produce a python binary")
+
+    try:
+        subprocess.run(
+            [str(venv_python), "-m", "pip", "install", "--quiet", "--disable-pip-version-check", package],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=_DOWNLOAD_TIMEOUT_SECONDS * 2,
+        )
+    except subprocess.CalledProcessError as exc:
+        return ToolBootstrapResult(
+            tool_key, label, "failed", detail=f"pip install {package} failed: {(exc.stderr or '').strip()[-500:] or exc}"
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return ToolBootstrapResult(tool_key, label, "failed", detail=f"pip install {package} failed: {exc}")
+
+    tool_exe = venv_dir / "bin" / console_script
+    if not tool_exe.is_file():
+        return ToolBootstrapResult(
+            tool_key, label, "failed", detail=f"{package} installed but no bin/{console_script} console script was produced"
+        )
+    return ToolBootstrapResult(tool_key, label, "installed", path=str(tool_exe), detail="Installed into a private virtualenv")
+
+
+def _install_binwalk(dest_root: Path) -> ToolBootstrapResult:
+    """Binwalk's PyPI package (by ReFirmLabs, the project's current
+    maintainers) ships a real `binwalk` console-script entry point - the
+    pip install here covers signature scanning/carving out of the box;
+    some extraction paths (e.g. squashfs) additionally want distro tools
+    like sasquatch that only a real package manager provides, same
+    "core works, some extras need your distro's package" caveat as
+    docs/winnow.md already carries for building Winnow itself from source.
+    """
+    return _install_pip_venv_tool("BinwalkExe", "binwalk", "binwalk", dest_root)
+
+
+def _install_malwoverview(dest_root: Path) -> ToolBootstrapResult:
+    """Malwoverview's PyPI package ships a `malwoverview` console-script
+    entry point. Deliberately installed like any other quick-launch tool
+    here - the third-party-service disclosure (VirusTotal/Hybrid-Analysis/
+    etc. hash and IOC lookups) is a usage-time concern for whoever runs it,
+    not an install-time one, and is already surfaced in
+    _MANUAL_INSTALL_HINTS["MalwoverviewExe"] and docs/winnow.md.
+    """
+    return _install_pip_venv_tool("MalwoverviewExe", "malwoverview", "malwoverview", dest_root)
+
+
+_ADOPTIUM_JDK_API = "https://api.adoptium.net/v3/assets/latest/21/hotspot"
+
+
+def _adoptium_architecture() -> str:
+    machine = platform.machine().lower()
+    if machine in ("x86_64", "amd64"):
+        return "x64"
+    if machine in ("aarch64", "arm64"):
+        return "aarch64"
+    return machine  # best-effort passthrough; Adoptium's API just 404s cleanly if this is wrong
+
+
+def _install_portable_jdk(dest_root: Path) -> Path | None:
+    """Downloads a portable, root-free JDK 21 build from Eclipse Temurin
+    (via Adoptium's own release API, the same "ask the API, don't hard-code
+    a version" approach _latest_release_assets() uses for GitHub) for
+    Ghidra to run against, used only when no `java` is already on PATH.
+    Returns the extracted JDK's home directory, or None on any failure -
+    callers treat that the same as "couldn't get Ghidra a JDK" and report
+    Ghidra's own install as failed, never raise.
+    """
+    arch = _adoptium_architecture()
+    url = f"{_ADOPTIUM_JDK_API}?os=linux&architecture={arch}&image_type=jdk"
+    try:
+        data = _get_json(url, _NETWORK_TIMEOUT_SECONDS)
+        asset = data[0]
+        download_url = asset["binary"]["package"]["link"]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not resolve a portable JDK from Adoptium: %s", exc)
+        return None
+
+    jdk_root = dest_root / "ghidra-jdk"
+    archive_path = jdk_root / "jdk.tar.gz"
+    try:
+        _download(download_url, archive_path)
+        with tarfile.open(archive_path) as tar:
+            tar.extractall(jdk_root)  # noqa: S202 - trusted source (Adoptium's own official API response)
+        archive_path.unlink(missing_ok=True)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not download/extract the portable JDK: %s", exc)
+        return None
+
+    java_matches = sorted(
+        (p for p in jdk_root.rglob("java") if p.is_file()), key=lambda p: len(str(p))
+    )
+    if not java_matches:
+        return None
+    _make_executable(java_matches[0])
+    return java_matches[0].parent.parent  # .../<jdk>/bin/java -> .../<jdk>
+
+
+def _install_ghidra(dest_root: Path) -> ToolBootstrapResult:
+    """Ghidra (NationalSecurityAgency/ghidra on GitHub) publishes a single
+    large, platform-independent release zip (Java, not a native binary -
+    the same archive works on every OS/architecture with a compatible JDK),
+    so unlike every other installer here there's no per-platform asset
+    matching - just "the one .zip on the latest release." Previously
+    manual-install-only (a multi-hundred-MB download, meaningfully bigger
+    and slower than any other tool here) - added to the automatic list
+    2026-09-03 per an explicit request ("I want Ghidra to be installed if
+    not installed"), same fail-soft/no-internet handling as every other
+    tool, just a longer download.
+    """
+    label = _TOOL_LABELS["GhidraHeadlessExe"]
+    try:
+        assets = _latest_release_assets("NationalSecurityAgency", "ghidra")
+    except Exception as exc:  # noqa: BLE001
+        return ToolBootstrapResult(
+            "GhidraHeadlessExe", label, "failed",
+            detail=f"Could not query NationalSecurityAgency/ghidra's latest release: {exc}",
+        )
+    asset = _pick_asset(assets, must_contain=("ghidra_", ".zip"), must_not_contain=("src",))
+    if asset is None:
+        return ToolBootstrapResult(
+            "GhidraHeadlessExe", label, "failed", detail="No Ghidra release zip found in the latest release"
+        )
+
+    extract_dir = dest_root / "ghidra"
+    archive_path = extract_dir / asset["name"]
+    try:
+        _download(asset["browser_download_url"], archive_path)
+        with zipfile.ZipFile(archive_path) as zf:
+            zf.extractall(extract_dir)  # noqa: S202 - trusted source (GitHub release we just verified the name of)
+        archive_path.unlink(missing_ok=True)
+    except Exception as exc:  # noqa: BLE001
+        return ToolBootstrapResult("GhidraHeadlessExe", label, "failed", detail=f"Download/extract failed: {exc}")
+
+    resolved = find_tool_path(extract_dir, "analyzeHeadless")
+    if not resolved:
+        return ToolBootstrapResult(
+            "GhidraHeadlessExe", label, "failed",
+            detail=f"Extracted {asset['name']} but couldn't locate analyzeHeadless inside",
+        )
+    _make_executable(Path(resolved))
+
+    if not shutil.which("java"):
+        jdk_home = _install_portable_jdk(dest_root)
+        if jdk_home is None:
+            return ToolBootstrapResult(
+                "GhidraHeadlessExe", label, "failed",
+                detail=(
+                    f"Extracted Ghidra to {extract_dir}, but no JDK 21+ was found on PATH and downloading a "
+                    "portable one failed - install a JDK yourself (e.g. \"sudo apt install openjdk-21-jdk\") "
+                    "and relaunch Winnow."
+                ),
+            )
+        # Ghidra's own launch support (support/launch.sh) honors JAVA_HOME
+        # ahead of searching PATH, so a thin wrapper that exports it before
+        # exec'ing the real script is enough - no need to patch Ghidra's own
+        # launch scripts, which stay exactly as the zip shipped them.
+        wrapper = Path(resolved).parent / "analyzeHeadless-with-bundled-jdk.sh"
+        wrapper.write_text(
+            f'#!/bin/sh\nexport JAVA_HOME="{jdk_home}"\nexec "{resolved}" "$@"\n', encoding="utf-8"
+        )
+        _make_executable(wrapper)
+        resolved = str(wrapper)
+
+    return ToolBootstrapResult(
+        "GhidraHeadlessExe", label, "installed", path=resolved, detail=f"Downloaded {asset['name']}"
+    )
+
+
 _INSTALLERS: dict[str, Callable[[Path], ToolBootstrapResult]] = {
     "PeBearExe": _install_pe_bear,
     "AnyaExe": _install_anya,
     "DieExe": _install_die,
-    "RizinExe": _install_rizin,
+    "CutterExe": _install_cutter,
     "AngrExe": _install_angr,
+    "BinwalkExe": _install_binwalk,
+    "MalwoverviewExe": _install_malwoverview,
+    # GdbExe and GhidraHeadlessExe are deliberately absent here - both need
+    # special-cased handling in run_tool_bootstrap() below (GdbExe because
+    # GDB itself is PATH-only/never auto-installed and "already present"
+    # can't be answered by a single file check the way every other tool's
+    # can; GhidraHeadlessExe because it isn't a member of TOOL_FILE_NAMES at
+    # all - see config.py's build_default_config() for why Ghidra's own
+    # resolution sits outside that shared dict).
 }
 
 
-def run_tool_bootstrap(config: BinSifterConfig) -> list[ToolBootstrapResult]:
-    """Checks each of the five quick-launch tools; for anything not
-    already resolvable, attempts an install (network permitting). Safe to
-    call on every startup - a tool that's already found costs nothing
-    beyond the existing find_tool_path() check, and this never raises: any
-    unexpected failure in one tool's installer is caught and reported as
-    that tool's own "failed" outcome, so one broken installer can't stop
-    the others or bubble up to whatever's calling this (meant to be a
-    background thread, per the "must never block startup or a scan"
-    requirement this module exists to satisfy).
+def _gef_already_configured() -> bool:
+    """Best-effort check for whether GEF is already sourced from the
+    user's own ~/.gdbinit - there's no separate "GefExe" file BinSifter
+    controls the way it does for every other tool (GEF isn't a program,
+    it's a gdb extension loaded via gdbinit), so this is the only way to
+    avoid re-running GEF's installer, and network probe, on every single
+    startup once it's already set up. A false negative here just means
+    re-running an idempotent installer - not a hard failure - so this
+    stays a simple substring check rather than anything more elaborate.
+    """
+    gdbinit = Path.home() / ".gdbinit"
+    if not gdbinit.is_file():
+        return False
+    try:
+        contents = gdbinit.read_text(encoding="utf-8", errors="ignore").lower()
+    except OSError:
+        return False
+    return "gef" in contents
 
-    Deliberately excludes Ghidra - unlike the other five, it's a multi-
-    hundred-MB archive with its own JDK prerequisite, a meaningfully
-    bigger and slower download than any of these, and left for the user to
-    install manually per docs/winnow.md as before.
+
+def run_tool_bootstrap(config: BinSifterConfig) -> list[ToolBootstrapResult]:
+    """Checks each quick-launch tool; for anything not already resolvable,
+    attempts an install (network permitting). Safe to call on every
+    startup - a tool that's already found costs nothing beyond the
+    existing find_tool_path() check, and this never raises: any unexpected
+    failure in one tool's installer is caught and reported as that tool's
+    own "failed" outcome, so one broken installer can't stop the others or
+    bubble up to whatever's calling this (meant to be a background thread,
+    per the "must never block startup or a scan" requirement this module
+    exists to satisfy).
+
+    Every outcome is also logged here (2026-09-03) - previously
+    ToolBootstrapResult.detail (which carries the real pip/download/extract
+    error text) was only ever shown in a transient popup and never written
+    anywhere persistent, so a real failure (e.g. Angr's pip install failing
+    on a user's machine) left no trace at all in the Logs page for later
+    diagnosis. "already_present" is logged at debug level (routine, happens
+    on every normal startup); "installed" at info; "no_internet"/"failed"
+    at warning/error so they're visible in a normal log view without
+    needing debug verbosity turned on.
     """
     dest_root = get_auto_installed_tools_dir()
     results: list[ToolBootstrapResult] = []
     internet_checked = False
     internet_available = False
 
-    for field_name in TOOL_FILE_NAMES:
+    def _log(result: ToolBootstrapResult) -> None:
+        if result.status == "already_present":
+            logger.debug("%s already present at %s", result.tool_label, result.path)
+        elif result.status == "installed":
+            logger.info("%s installed to %s (%s)", result.tool_label, result.path, result.detail)
+        elif result.status == "no_internet":
+            logger.warning("%s not installed - no internet: %s", result.tool_label, result.detail)
+        else:
+            logger.error("%s auto-install failed: %s", result.tool_label, result.detail)
+
+    field_names = [*TOOL_FILE_NAMES.keys(), "GhidraHeadlessExe"]
+    for field_name in field_names:
         label = _TOOL_LABELS.get(field_name, field_name)
         already = getattr(config, field_name, "") or ""
-        if already and Path(already).is_file():
-            results.append(ToolBootstrapResult(field_name, label, "already_present", path=already))
+
+        if field_name == "GdbExe":
+            # GDB itself is never auto-installed (needs a real distro
+            # package manager - see module docstring), so "already present"
+            # for this entry means "gdb is on PATH AND GEF is already
+            # configured for it," and a missing gdb is reported as a
+            # permanent "failed" with the manual-install hint rather than
+            # "no_internet," since reconnecting the internet alone can't
+            # fix a missing gdb the way it can for every other tool.
+            if already and Path(already).is_file() and _gef_already_configured():
+                result = ToolBootstrapResult(field_name, label, "already_present", path=already)
+                results.append(result)
+                _log(result)
+                continue
+            if not already or not Path(already).is_file():
+                hint = _MANUAL_INSTALL_HINTS.get(field_name, "install it manually.")
+                result = ToolBootstrapResult(
+                    field_name, label, "failed", detail=f"gdb not found on PATH - {hint}"
+                )
+                results.append(result)
+                _log(result)
+                continue
+            # gdb is present but GEF isn't configured yet - falls through
+            # to the normal internet-check/installer path below.
+        elif already and Path(already).is_file():
+            result = ToolBootstrapResult(field_name, label, "already_present", path=already)
+            results.append(result)
+            _log(result)
             continue
 
         if not internet_checked:
@@ -390,21 +747,25 @@ def run_tool_bootstrap(config: BinSifterConfig) -> list[ToolBootstrapResult]:
 
         if not internet_available:
             hint = _MANUAL_INSTALL_HINTS.get(field_name, "install it manually and point \"Path to tools\" at it.")
-            results.append(
-                ToolBootstrapResult(
-                    field_name, label, "no_internet",
-                    detail=f"No internet connection - reconnect and relaunch Winnow, or {hint}",
-                )
+            result = ToolBootstrapResult(
+                field_name, label, "no_internet",
+                detail=f"No internet connection - reconnect and relaunch Winnow, or {hint}",
             )
+            results.append(result)
+            _log(result)
             continue
 
-        installer = _INSTALLERS.get(field_name)
+        installer = _install_gef if field_name == "GdbExe" else _INSTALLERS.get(field_name)
+        if field_name == "GhidraHeadlessExe":
+            installer = _install_ghidra
         if installer is None:
             continue
         try:
-            results.append(installer(dest_root))
+            result = installer(dest_root)
         except Exception as exc:  # noqa: BLE001 - absolute last resort; a per-installer try/except should already catch everything real
             logger.exception("Unexpected error auto-installing %s", label)
-            results.append(ToolBootstrapResult(field_name, label, "failed", detail=f"Unexpected error: {exc}"))
+            result = ToolBootstrapResult(field_name, label, "failed", detail=f"Unexpected error: {exc}")
+        results.append(result)
+        _log(result)
 
     return results
