@@ -35,9 +35,10 @@ from PySide6.QtWidgets import (
 )
 
 from binsifter import __version__
-from binsifter.core.config import build_default_config, get_bundled_asset_path
+from binsifter.core.config import build_default_config, get_bundled_asset_path, set_tool_paths_from_directory
 from binsifter.core.engine import ScanResult, scan_directory
 from binsifter.core.models import FileRecord
+from binsifter.core.tool_bootstrap import ToolBootstrapResult, run_tool_bootstrap
 from binsifter.core.tool_metadata import format_status_line, refresh_tool_metadata
 from binsifter.gui.archive_password_dialog import ArchivePasswordDialog
 from binsifter.gui.log_bridge import QtLogHandler
@@ -53,6 +54,8 @@ from binsifter.gui.pages.settings import SettingsPage
 from binsifter.gui.pages.yara_rules import YaraRulesPage
 from binsifter.gui.theme import ThemePalette, detect_os_dark_mode, get_theme_palette, logo_horizontal_filename, qcolor_to_css
 from binsifter.gui.widgets import NavButton, accent_to_css
+
+logger = logging.getLogger(__name__)
 
 # (label, icon_name) - order and icon choice match the sidebar's 7 entries
 # in the reference screenshot exactly.
@@ -168,6 +171,32 @@ class _ScanWorker(QObject):
         self._password_event.set()
 
 
+class _ToolBootstrapWorker(QObject):
+    """Runs tool_bootstrap.run_tool_bootstrap() off the UI thread - added
+    2026-09-03 per the project owner's direct request: on startup, missing
+    quick-launch tools (PE-bear/Anya/DIE/Rizin/Angr) should be found or
+    auto-installed, but this can mean real network downloads (Angr's pip
+    install pulls a whole dependency chain) that must never block the
+    window from appearing or a scan from starting - same "don't freeze the
+    GUI for a potentially-slow operation" rationale as _ScanWorker above,
+    just for startup instead of a scan.
+    """
+
+    finished = Signal(list)  # list[ToolBootstrapResult]
+
+    def __init__(self, config) -> None:
+        super().__init__()
+        self._config = config
+
+    def run(self) -> None:
+        try:
+            results = run_tool_bootstrap(self._config)
+        except Exception:  # noqa: BLE001 - run_tool_bootstrap is itself written to never raise; this is a last-resort net so a genuinely unexpected failure here still can't take the app down
+            logger.exception("Unexpected error during tool bootstrap")
+            results = []
+        self.finished.emit(results)
+
+
 class MainWindow(QMainWindow):
     def __init__(self, theme: ThemePalette | None = None) -> None:
         super().__init__()
@@ -227,6 +256,64 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
 
         self._nav_buttons[0].set_active(True)
+
+        self._tool_bootstrap_thread: QThread | None = None
+        self._tool_bootstrap_worker: _ToolBootstrapWorker | None = None
+        self._start_tool_bootstrap()
+
+    def _start_tool_bootstrap(self) -> None:
+        """Kicks off the first-run (and every-run-until-successful, see
+        tool_bootstrap.py's module docstring) quick-launch tool check on a
+        background thread, right after the window is otherwise fully
+        constructed. Deliberately NOT awaited or blocking anything below it
+        - the whole point is that a missing tool (and any network time
+        spent trying to auto-install it) can never delay the window
+        appearing or a scan starting, per the project owner's explicit
+        requirement.
+        """
+        self._tool_bootstrap_thread = QThread(self)
+        self._tool_bootstrap_worker = _ToolBootstrapWorker(self.config)
+        self._tool_bootstrap_worker.moveToThread(self._tool_bootstrap_thread)
+        self._tool_bootstrap_thread.started.connect(self._tool_bootstrap_worker.run)
+        self._tool_bootstrap_worker.finished.connect(self._on_tool_bootstrap_finished)
+        self._tool_bootstrap_thread.start()
+
+    def _on_tool_bootstrap_finished(self, results: list[ToolBootstrapResult]) -> None:
+        thread = self._tool_bootstrap_thread
+        if thread is not None:
+            thread.quit()
+            thread.wait()
+        self._tool_bootstrap_thread = None
+        self._tool_bootstrap_worker = None
+
+        if not results:
+            return  # nothing ran (e.g. every tool was already present) or bootstrap itself failed unexpectedly - either way, nothing to refresh or tell the user
+
+        # Re-resolve every tool path from config's own ToolsDir/PATH/
+        # AutoInstalledTools search, now that the bootstrap pass may have
+        # populated AutoInstalledTools - cheap (no network), and is what
+        # actually makes a freshly-installed tool's menu item enable
+        # without waiting for the next full app restart.
+        set_tool_paths_from_directory(self.config, self.config.ToolsDir)
+
+        installed = [r for r in results if r.status == "installed"]
+        failed = [r for r in results if r.status == "failed"]
+        no_internet = [r for r in results if r.status == "no_internet"]
+        if not installed and not failed and not no_internet:
+            return  # every tool was already present - stay silent, no popup on every ordinary launch
+
+        lines = []
+        if installed:
+            lines.append("Installed: " + ", ".join(r.tool_label for r in installed))
+        if failed:
+            lines.append("Could not auto-install: " + ", ".join(r.tool_label for r in failed))
+        if no_internet:
+            lines.append(
+                "No internet connection, so these couldn't be auto-installed. Reconnect and relaunch "
+                "Winnow to retry, or install them yourself:\n"
+                + "\n".join(f"  - {r.tool_label}" for r in no_internet)
+            )
+        QMessageBox.information(self, "BinSifter - quick-launch tools", "\n\n".join(lines))
 
     # ---------- sidebar ----------
 

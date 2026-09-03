@@ -81,19 +81,33 @@ from binsifter.gui.theme import ThemePalette, qcolor_to_css
 from binsifter.gui.widgets import accent_to_css
 
 # (config key, menu label, copy-path-to-clipboard-instead-of-arg,
-# confirmation message) - Linux tool set, see module docstring above for
-# what replaced what and why. None of the five need the clipboard-copy
-# trick CFF Explorer used to (that was specific to CFF Explorer's command
-# line being reserved for its own Lua console) or a confirmation prompt
-# (none of these five directly execute the sample the way a live debugger
-# does - Rizin/Angr are static/symbolic analysis tools, not live
-# executors, unlike x64dbg/x32dbg were).
-_QUICK_LAUNCH_TOOLS: tuple[tuple[str, str, bool, str | None], ...] = (
-    ("PeBearExe", "Open in PE-bear", False, None),
-    ("AnyaExe", "Open in Anya", False, None),
-    ("DieExe", "Open in DIE", False, None),
-    ("RizinExe", "Open in Rizin", False, None),
-    ("AngrExe", "Open in Angr", False, None),
+# confirmation message, extra argv inserted between the exe and the target
+# path) - Linux tool set, see module docstring above for what replaced
+# what and why. None of the five need the clipboard-copy trick CFF
+# Explorer used to (that was specific to CFF Explorer's command line being
+# reserved for its own Lua console) or a confirmation prompt (none of
+# these five directly execute the sample the way a live debugger does -
+# Rizin/Angr are static/symbolic analysis tools, not live executors,
+# unlike x64dbg/x32dbg were).
+#
+# The 5th field was added 2026-09-03 alongside core/tool_bootstrap.py,
+# which made Angr resolvable for the first time in practice - that
+# surfaced a real, previously-latent bug: Angr's actual CLI (confirmed
+# directly against its own pyproject.toml/[project.scripts] and
+# __main__.py) requires a subcommand before the binary path
+# ("angr decompile <file>", not a bare "angr <file>") - a plain
+# subprocess.Popen([exe, target]) would have errored out immediately every
+# single time, it just never got exercised before because nothing had
+# ever found a working AngrExe. Anya's CLI similarly needs "--file <path>"
+# per its own README, not a bare positional. PE-bear/DIE/Rizin all
+# genuinely do accept a bare "<exe> <file>" invocation, confirmed against
+# each project's own docs, so their tuples stay empty.
+_QUICK_LAUNCH_TOOLS: tuple[tuple[str, str, bool, str | None, tuple[str, ...]], ...] = (
+    ("PeBearExe", "Open in PE-bear", False, None, ()),
+    ("AnyaExe", "Open in Anya", False, None, ("--file",)),
+    ("DieExe", "Open in DIE", False, None, ()),
+    ("RizinExe", "Open in Rizin", False, None, ()),
+    ("AngrExe", "Open in Angr", False, None, ("decompile",)),
 )
 
 _SPEAKEASY_CONFIRM = (
@@ -453,15 +467,15 @@ class ResultsPage(QWidget):
         QMenu.exec(), which blocks on a real event loop no automated test
         can drive."""
         menu = QMenu(self)
-        for config_key, label, copy_path, confirm in _QUICK_LAUNCH_TOOLS:
+        for config_key, label, copy_path, confirm, extra_argv in _QUICK_LAUNCH_TOOLS:
             exe_path = getattr(self._config, config_key, "") or ""
             configured = bool(exe_path) and Path(exe_path).is_file()
             action = menu.addAction(label if configured else f"{label} (not configured)")
             action.setEnabled(configured)
             if configured:
                 action.triggered.connect(
-                    lambda checked=False, exe=exe_path, target=target_path, copy=copy_path, msg=confirm: (
-                        self._launch_quick_tool(exe, target, copy, msg)
+                    lambda checked=False, exe=exe_path, target=target_path, copy=copy_path, msg=confirm, argv=extra_argv: (
+                        self._launch_quick_tool(exe, target, copy, msg, argv)
                     )
                 )
 
@@ -503,7 +517,12 @@ class ResultsPage(QWidget):
         return menu
 
     def _launch_quick_tool(
-        self, exe_path: str, target_path: str, copy_path_instead: bool, confirm_message: str | None
+        self,
+        exe_path: str,
+        target_path: str,
+        copy_path_instead: bool,
+        confirm_message: str | None,
+        extra_argv: tuple[str, ...] = (),
     ) -> None:
         if not Path(target_path).is_file():
             return
@@ -516,10 +535,14 @@ class ResultsPage(QWidget):
                 return
         try:
             if copy_path_instead:
-                subprocess.Popen([exe_path])
+                subprocess.Popen([exe_path, *extra_argv])
                 QGuiApplication.clipboard().setText(target_path)
             else:
-                subprocess.Popen([exe_path, target_path])
+                # extra_argv goes between the exe and the target path, e.g.
+                # ["angr", "decompile", target] or ["anya", "--file", target]
+                # - see _QUICK_LAUNCH_TOOLS' module comment for why Angr and
+                # Anya specifically need this and PE-bear/DIE/Rizin don't.
+                subprocess.Popen([exe_path, *extra_argv, target_path])
         except OSError as exc:
             QMessageBox.critical(self, "BinSifter", f"Could not launch: {exc}")
 

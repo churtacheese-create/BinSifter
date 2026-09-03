@@ -39,6 +39,23 @@ Right-click any row in Results for on-demand actions, driven by "Path to tools"/
 
 None of these five tools ship one single canonical Linux binary name the way a Windows `.exe` usually does, so BinSifter tries a couple of common filename spellings for each - if your install uses a different filename, rename or symlink it to match, or check the Logs page to see what BinSifter actually searched for. Sigcheck (Rowan's Sysinternals signature check) has no Linux equivalent and isn't offered here.
 
+**These five tools also install themselves automatically - you don't have to do any of this by hand.** As of 2026-09-03, on every startup BinSifter checks whether each of PE-bear/Anya/DIE/Rizin/Angr is already findable (your "Path to tools" directory, your normal shell PATH, or a copy BinSifter downloaded itself previously); anything missing gets downloaded and installed automatically in the background, without ever blocking the window from opening or a scan from running. Everything is a plain per-user download - never `sudo`, never a system package manager - so nothing here needs elevated permissions:
+
+- **Rizin, PE-bear, and DIE** are fetched directly from each project's own GitHub Releases (Rizin's static Linux binary, PE-bear/DIE's Linux AppImages) and dropped into a BinSifter-managed folder.
+- **Anya** is fetched the same way, using its static Linux CLI tarball.
+- **Angr** is a PyPI package, not a downloadable binary - its own docs recommend a dedicated virtualenv rather than a system-wide install, so BinSifter builds one just for Angr (kept separate from BinSifter's own Python environment) and installs it there.
+
+If there's no internet connection when a tool is missing, BinSifter tells you so (in a popup once the check finishes, and in the Logs page) and offers two options: reconnect and relaunch Winnow so it tries again, or install the tool yourself using the commands below - either way, a missing tool never stops the rest of the app from working. Manual install, if you'd rather do it that way or the automatic download fails for some reason:
+
+- **Rizin** has native packages on most distros (`sudo apt install rizin`, `sudo pacman -S rizin`, etc.) - install it normally and BinSifter finds it on PATH.
+- **PE-bear** and **DIE** both publish Linux AppImages on their GitHub Releases. Make the AppImage executable and drop it somewhere already on PATH (e.g. `~/.local/bin/pe-bear`) rather than a scratch folder, and it's found the same way.
+- **[Anya](https://github.com/elementmerc/anya)** publishes real Linux packages too (`.AppImage`/`.deb`/`.rpm` for the GUI, a static musl binary tarball for the CLI) and its own one-liner installer (`curl -fsSL https://raw.githubusercontent.com/elementmerc/anya/main/install.sh | bash`) that puts a plain `anya` command on PATH directly - no build step, no venv, of the five tools here this is the simplest to get running.
+- **Angr** is a PyPI package, not a standalone binary - its own docs recommend installing into a dedicated virtualenv rather than system-wide. The cleanest way to get it onto PATH as a single runnable command is [`pipx`](https://pipx.pypa.io/) (`pipx install angr`, plus a small wrapper script if you want a one-shot CLI over angr's Python API rather than writing a script by hand each time) - pipx builds the isolated venv for you and exposes just the command.
+
+Ghidra is deliberately not part of the automatic install - it's a multi-hundred-MB archive with its own JDK prerequisite, a meaningfully bigger and slower download than any of the five above, so it's still a manual install per the Requirements section.
+
+"Path to tools" still works exactly as before for anything you'd rather keep in one curated directory (including a fully-self-built Angr venv/wrapper) - a hit under that directory always wins over a PATH hit for the same tool. It's just no longer the only way to get a tool found.
+
 Any entry showing "(not configured)" means that tool's path wasn't found under "Path to tools" (or "Path to Ghidra" for the Ghidra entry).
 
 ## Dark/light mode

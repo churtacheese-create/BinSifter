@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -177,27 +178,68 @@ def find_tool_path(directory: str | Path | None, filenames: str | tuple[str, ...
     """Recursively search `directory` for the first of `filenames` (a single
     name or an ordered tuple of candidates) that turns up anywhere in the
     tree; within one candidate, first match sorted by full path wins - same
-    tiebreak rule as the PowerShell Find-ToolPath. Returns "" if none of the
-    candidates are found or directory is falsy/missing, mirroring the
-    PowerShell version's blank-tolerant/graceful-skip behavior.
+    tiebreak rule as the PowerShell Find-ToolPath.
+
+    Falls back to the OS's own PATH (via shutil.which()) for any candidate
+    not found under `directory` - added 2026-09-02 so a tool that's already
+    runnable from a terminal (installed via apt/pacman, `pipx install`, a
+    plain symlink into ~/.local/bin, an AppImage the user already put on
+    PATH, etc.) is found automatically without also being staged into
+    "Path to tools". This matters most for tools that don't want to live as
+    a lone binary in one curated folder at all - angr is a PyPI package
+    that explicitly recommends installing into its own dedicated
+    virtualenv (see angr's own INSTALL docs; several of its dependencies
+    ship forked native libraries that can collide with system copies), and
+    `pipx install` already solves exactly that: one isolated venv per tool,
+    exposed as a single ordinary command on PATH. PE-bear/DIE AppImages and
+    Rizin's native distro packages also normally end up on PATH rather than
+    copied into a scratch directory, so this removes the "central location"
+    requirement for all of them, not just angr.
+
+    Directory is still checked first for each candidate (an explicit copy
+    staged under `directory` wins over an incidental system install) before
+    falling back to PATH for that same candidate; only once every candidate
+    has been tried both ways does this return "". `directory` may be falsy
+    or missing entirely - that just skips straight to the PATH check for
+    every candidate, mirroring the old blank-tolerant/graceful-skip
+    behavior for the directory half while still gaining the PATH half.
     """
-    if not directory:
-        return ""
-    root = Path(directory)
-    if not root.is_dir():
-        return ""
     candidates = (filenames,) if isinstance(filenames, str) else filenames
+    root = Path(directory) if directory else None
+    has_root = root is not None and root.is_dir()
+
     for filename in candidates:
-        matches = sorted(root.rglob(filename), key=lambda p: str(p))
-        if not matches:
-            continue
-        if len(matches) > 1:
+        if has_root:
+            matches = sorted(root.rglob(filename), key=lambda p: str(p))
+            if matches:
+                if len(matches) > 1:
+                    logger.info(
+                        "Found %d copies of %s under %s - using %s",
+                        len(matches), filename, root, matches[0],
+                    )
+                return str(matches[0])
+        found_on_path = shutil.which(filename)
+        if found_on_path:
             logger.info(
-                "Found %d copies of %s under %s - using %s",
-                len(matches), filename, root, matches[0],
+                "Found %s on PATH at %s (not staged under %s)",
+                filename, found_on_path, root if root else "<no ToolsDir set>",
             )
-        return str(matches[0])
+            return found_on_path
     return ""
+
+
+def get_auto_installed_tools_dir() -> Path:
+    """Fixed, per-user directory where core/tool_bootstrap.py's first-run
+    auto-installer places anything it downloads for the quick-launch tools
+    (PE-bear/DIE/Anya AppImages, Rizin's static binary, Angr's private
+    venv) - separate from the user's own "Path to tools" directory so
+    auto-installed copies never mix with or overwrite anything the user
+    placed there themselves. Added 2026-09-03 alongside tool_bootstrap.py;
+    see that module's docstring for why auto-installing at all is safe to
+    do without root (everything here is a per-user download, never a
+    system package).
+    """
+    return get_binsifter_data_root() / "AutoInstalledTools"
 
 
 def set_tool_paths_from_directory(config: "BinSifterConfig", directory: str | Path | None) -> None:
@@ -205,9 +247,24 @@ def set_tool_paths_from_directory(config: "BinSifterConfig", directory: str | Pa
     writes the results onto `config` in place - same role as the
     PowerShell Set-ToolPathsFromDirectory, called on Settings Save and once
     at startup for a cached ToolsDir.
+
+    Falls back to get_auto_installed_tools_dir() for any tool `directory`
+    (and, via find_tool_path()'s own PATH check, the system PATH too)
+    couldn't find - added 2026-09-03 so a tool the first-run auto-installer
+    downloaded is picked back up on every later startup with no separate
+    persistence logic needed, the same way a manually-curated ToolsDir
+    already is. Priority order per tool: explicit ToolsDir > PATH (checked
+    inside the first find_tool_path() call) > BinSifter's own
+    auto-installed copy - an explicit user choice always wins, a real
+    system install is preferred over BinSifter re-downloading its own copy,
+    and the auto-installed copy is only ever the last resort.
     """
+    auto_dir = get_auto_installed_tools_dir()
     for field_name, filenames in TOOL_FILE_NAMES.items():
-        setattr(config, field_name, find_tool_path(directory, filenames))
+        found = find_tool_path(directory, filenames)
+        if not found:
+            found = find_tool_path(auto_dir, filenames)
+        setattr(config, field_name, found)
 
 
 @dataclass
@@ -309,4 +366,19 @@ def build_default_config() -> BinSifterConfig:
         BlocklistPath=str(blocklist_path),
     )
     _load_cached_settings(config, root)
+    # REAL BUG FIXED 2026-09-03: this used to stop right after loading the
+    # cached ToolsDir/GhidraDir *strings* - it never actually re-resolved
+    # PeBearExe/AnyaExe/DieExe/RizinExe/AngrExe/GhidraHeadlessExe from them,
+    # even though set_tool_paths_from_directory()'s own docstring has
+    # always claimed this happens "once at startup for a cached ToolsDir".
+    # In practice every single quick-launch menu item showed "(not
+    # configured)" on every fresh launch, no matter how the tools were
+    # installed, until the user opened Settings and clicked Save once with
+    # nothing changed - the only place this resolution call actually
+    # existed was settings.py's own Save handler. Fixed by doing the exact
+    # same two calls here that Save already does, so a remembered ToolsDir/
+    # GhidraDir is honored immediately on launch, not just after a manual
+    # round-trip through Settings.
+    set_tool_paths_from_directory(config, config.ToolsDir)
+    config.GhidraHeadlessExe = find_tool_path(config.GhidraDir, "analyzeHeadless")
     return config
