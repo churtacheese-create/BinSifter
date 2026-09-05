@@ -204,7 +204,11 @@ class _FakeSignedFile:
             raise RuntimeError("simulated add_catalog failure")
         self.added_catalogs.append((catalog, check))
 
-    def explain_verify(self):
+    def explain_verify(self, **kwargs):
+        # Real explain_verify() accepts trusted_certificate_store= (and
+        # more) via **kwargs - check_signature() now passes that
+        # explicitly (see authenticode.py's _SANITIZED_TRUST_STORE), so
+        # this fake must accept it too rather than raising TypeError.
         return _FakeCatalogResult(self._explain_result), None
 
 
@@ -262,24 +266,46 @@ def test_check_signature_with_no_catalogs_argument_is_unchanged(tmp_path, monkey
     assert fake_file.added_catalogs == []
 
 
-def test_default_trust_store_is_actually_populated():
-    """2026-08-06: regression guard for the trust-store correction described
-    in authenticode.py's module docstring. check_signature() relies entirely
-    on signify's AuthenticodeSignature.verify() default
-    (`trusted_certificate_store=TRUSTED_CERTIFICATE_STORE`) to get real
-    trust-chain validation - it never builds or passes its own store. This
+def test_sanitized_trust_store_is_actually_populated():
+    """2026-08-06, updated 2026-09-04: regression guard for the trust-store
+    correction described in authenticode.py's module docstring.
+    check_signature() passes _SANITIZED_TRUST_STORE (built once at import
+    time from signify's own TRUSTED_CERTIFICATE_STORE) to explain_verify()
+    explicitly - see _build_sanitized_trust_store()'s docstring for why a
+    sanitized copy is used instead of the raw upstream store directly. This
     doesn't exercise check_signature() itself (that needs a real embedded-
     signed PE, not available in this sandbox), but it pins down the one
     thing that would silently break "Valid" results for everyone if the
-    `mscerts` package ever failed to install/load correctly or signify
-    changed its default: the store BinSifter is implicitly depending on
-    must contain real root certificates, not be empty.
+    `mscerts` package ever failed to install/load correctly, signify
+    changed its default, or a future mscerts release made every single
+    certificate unparseable: the store BinSifter actually uses must
+    contain real root certificates, not be empty.
     """
-    from signify.authenticode import TRUSTED_CERTIFICATE_STORE
+    from binsifter.core.authenticode import _SANITIZED_TRUST_STORE
 
-    certs = list(TRUSTED_CERTIFICATE_STORE)
+    certs = list(_SANITIZED_TRUST_STORE)
     assert len(certs) > 0
     assert any("Microsoft" in cert.subject.dn for cert in certs)
+
+
+def test_sanitized_trust_store_certs_are_all_actually_usable():
+    """Regression guard for the real 2026-09-04 bug this sanitization
+    exists to fix: a fresh `mscerts` install (2026.8.28) bundles 7 post-
+    quantum pilot root certificates using the ML-DSA-87 public-key
+    algorithm OID, which the newest available asn1crypto (1.5.1) has no
+    spec entry for - asking any of those 7 certificates for their subject
+    public-key algorithm (which signify's own chain-building does for
+    every candidate certificate it considers) raises a bare KeyError.
+    _build_sanitized_trust_store() is supposed to filter exactly this class
+    of certificate out up front, so every certificate that made it into
+    _SANITIZED_TRUST_STORE must be fully usable - hash() alone reproduces
+    the crash (see Certificate.__hash__ -> subject_public_algorithm) if
+    filtering ever regresses.
+    """
+    from binsifter.core.authenticode import _SANITIZED_TRUST_STORE
+
+    for cert in _SANITIZED_TRUST_STORE:
+        hash(cert)  # must not raise for any certificate that survived filtering
 
 
 def test_certificate_trust_list_subjects_are_cached_not_reparsed_every_call():
