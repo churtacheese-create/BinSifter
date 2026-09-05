@@ -81,7 +81,7 @@ Every entry here is optional - a missing file just means that tool's path stays 
 
 BinSifter tries a couple of common filename spellings for each of these (see core/config.py's TOOL_FILE_NAMES) since none of them ship one single canonical Linux binary name the way a Windows .exe usually has - if your install uses a different filename, rename or symlink it to match, or check the Logs page to see what BinSifter actually searched for.
 
-GDB, Binwalk, and Malwoverview are all plain command-line tools with no window of their own, so their quick-launch entries open a real terminal (whichever of x-terminal-emulator/gnome-terminal/konsole/xfce4-terminal/xterm is found on PATH) rather than doing nothing the way a bare background launch would.
+GDB, Binwalk, and Malwoverview are all plain command-line tools with no window of their own, so their quick-launch entries open a real terminal (whichever of x-terminal-emulator/gnome-terminal/konsole/xfce4-terminal/xterm is found on PATH) rather than doing nothing the way a bare background launch would - that terminal stays open and prints an exit status after the command finishes, so a fast crash is visible instead of the window closing before you can read it. PE-bear/DIE/Cutter are launched with --appimage-extract-and-run whenever the target is genuinely an AppImage, which works even without libfuse2 installed (several modern distros no longer ship it by default). Any quick-launch tool that exits immediately after being launched now shows an error with whatever it printed, instead of silently doing nothing.
 
 YARA, capa, ssdeep, FLOSS, and Speakeasy are NOT on this list - they're built into BinSifter as Python libraries and always available once installed, regardless of what's in "Path to tools".
 
