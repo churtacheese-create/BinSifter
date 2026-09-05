@@ -1,6 +1,8 @@
 """Tests for binsifter.gui.capa_rules_listing - the pure-Python capa rules
 directory scan (no Qt import, no display needed). Real tmp_path files."""
 
+from pathlib import Path
+
 from binsifter.gui.capa_rules_listing import list_capa_rule_files
 
 
@@ -30,7 +32,7 @@ def test_finds_yml_yaml_and_json_recursively_sorted(tmp_path):
     (tmp_path / "ignored.txt").write_text("not a rule file")
 
     result = list_capa_rule_files(str(tmp_path))
-    names = [p.split("/")[-1] for p in result]
+    names = [Path(p).name for p in result]
     assert names == sorted(names)
     assert set(names) == {"a.yaml", "b.yml", "c.json"}
 
