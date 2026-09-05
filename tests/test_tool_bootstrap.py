@@ -375,15 +375,25 @@ def test_install_anya_extracts_tarball_and_locates_binary(monkeypatch, tmp_path)
     assert Path(result.path).stat().st_mode & 0o111
 
 
+def _fake_create_private_venv(path: Path) -> str:
+    """Stand-in for tb._create_private_venv() used by every installer test
+    below - creates a real bin/python placeholder and reports success (""),
+    without touching the real venv module or a real system python3. See
+    the dedicated _create_private_venv tests further down for coverage of
+    that function's own real/fallback logic."""
+    bin_dir = path / "bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    (bin_dir / "python").write_text("#!/bin/sh\n")
+    (bin_dir / "python").chmod(0o755)
+    return ""
+
+
 def test_install_angr_uses_private_venv_and_checks_for_console_script(monkeypatch, tmp_path):
     created_venvs = []
 
-    def _fake_venv_create(path, with_pip=True, clear=True):  # noqa: ARG001
+    def _fake_create_venv(path):
         created_venvs.append(path)
-        bin_dir = path / "bin"
-        bin_dir.mkdir(parents=True)
-        (bin_dir / "python").write_text("#!/bin/sh\n")
-        (bin_dir / "python").chmod(0o755)
+        return _fake_create_private_venv(path)
 
     def _fake_pip_install(cmd, **kwargs):  # noqa: ARG001
         # Simulate `pip install --only-binary=:all: angr` succeeding on the
@@ -394,7 +404,7 @@ def test_install_angr_uses_private_venv_and_checks_for_console_script(monkeypatc
         (bin_dir / "angr").chmod(0o755)
         return subprocess_completed_process_stub()
 
-    monkeypatch.setattr(tb.venv, "create", _fake_venv_create)
+    monkeypatch.setattr(tb, "_create_private_venv", _fake_create_venv)
     monkeypatch.setattr(tb.subprocess, "run", _fake_pip_install)
 
     result = tb._install_angr(tmp_path)
@@ -418,10 +428,6 @@ def test_install_angr_falls_back_to_source_build_when_no_wheel_available(monkeyp
     outright the moment no prebuilt wheel matches."""
     import subprocess as real_subprocess
 
-    def _fake_venv_create(path, with_pip=True, clear=True):  # noqa: ARG001
-        (path / "bin").mkdir(parents=True)
-        (path / "bin" / "python").write_text("#!/bin/sh\n")
-
     attempts = []
 
     def _fake_pip_install(cmd, **kwargs):  # noqa: ARG001
@@ -433,7 +439,7 @@ def test_install_angr_falls_back_to_source_build_when_no_wheel_available(monkeyp
         (bin_dir / "angr").chmod(0o755)
         return subprocess_completed_process_stub()
 
-    monkeypatch.setattr(tb.venv, "create", _fake_venv_create)
+    monkeypatch.setattr(tb, "_create_private_venv", _fake_create_private_venv)
     monkeypatch.setattr(tb.subprocess, "run", _fake_pip_install)
 
     result = tb._install_angr(tmp_path)
@@ -444,14 +450,10 @@ def test_install_angr_falls_back_to_source_build_when_no_wheel_available(monkeyp
 def test_install_angr_reports_failed_when_both_pip_attempts_fail(monkeypatch, tmp_path):
     import subprocess as real_subprocess
 
-    def _fake_venv_create(path, with_pip=True, clear=True):  # noqa: ARG001
-        (path / "bin").mkdir(parents=True)
-        (path / "bin" / "python").write_text("#!/bin/sh\n")
-
     def _fake_pip_install(cmd, **kwargs):  # noqa: ARG001
         raise real_subprocess.CalledProcessError(1, cmd, output="", stderr="ERROR: could not find a version")
 
-    monkeypatch.setattr(tb.venv, "create", _fake_venv_create)
+    monkeypatch.setattr(tb, "_create_private_venv", _fake_create_private_venv)
     monkeypatch.setattr(tb.subprocess, "run", _fake_pip_install)
 
     result = tb._install_angr(tmp_path)
@@ -462,18 +464,13 @@ def test_install_angr_reports_failed_when_both_pip_attempts_fail(monkeypatch, tm
 # ---------- Binwalk / Malwoverview (shared _install_pip_venv_tool) ----------
 
 def test_install_binwalk_uses_private_venv_and_checks_for_console_script(monkeypatch, tmp_path):
-    def _fake_venv_create(path, with_pip=True, clear=True):  # noqa: ARG001
-        bin_dir = path / "bin"
-        bin_dir.mkdir(parents=True)
-        (bin_dir / "python").write_text("#!/bin/sh\n")
-
     def _fake_pip_install(cmd, **kwargs):  # noqa: ARG001
         bin_dir = Path(cmd[0]).parent
         (bin_dir / "binwalk").write_text("#!/bin/sh\n")
         (bin_dir / "binwalk").chmod(0o755)
         return subprocess_completed_process_stub()
 
-    monkeypatch.setattr(tb.venv, "create", _fake_venv_create)
+    monkeypatch.setattr(tb, "_create_private_venv", _fake_create_private_venv)
     monkeypatch.setattr(tb.subprocess, "run", _fake_pip_install)
 
     result = tb._install_binwalk(tmp_path)
@@ -484,19 +481,74 @@ def test_install_binwalk_uses_private_venv_and_checks_for_console_script(monkeyp
 def test_install_malwoverview_reports_failed_when_pip_install_fails(monkeypatch, tmp_path):
     import subprocess as real_subprocess
 
-    def _fake_venv_create(path, with_pip=True, clear=True):  # noqa: ARG001
-        (path / "bin").mkdir(parents=True)
-        (path / "bin" / "python").write_text("#!/bin/sh\n")
-
     def _fake_pip_install(cmd, **kwargs):  # noqa: ARG001
         raise real_subprocess.CalledProcessError(1, cmd, output="", stderr="ERROR: no matching distribution")
 
-    monkeypatch.setattr(tb.venv, "create", _fake_venv_create)
+    monkeypatch.setattr(tb, "_create_private_venv", _fake_create_private_venv)
     monkeypatch.setattr(tb.subprocess, "run", _fake_pip_install)
 
     result = tb._install_malwoverview(tmp_path)
     assert result.status == "failed"
     assert "no matching distribution" in result.detail
+
+
+# ---------- _create_private_venv itself ----------
+
+def test_create_private_venv_uses_system_python3_when_available(monkeypatch, tmp_path):
+    """REGRESSION for the real bug found from a packaged-app user's log
+    2026-09-04: venv.create() bases the new venv on sys.executable, which
+    is the frozen BinSifter-Winnow binary once packaged, not a real
+    interpreter - 'ensurepip' inside that venv then fails outright. This
+    confirms the fix actually prefers a real system python3 (via
+    shutil.which) over the stdlib venv module when one is on PATH."""
+    venv_calls = []
+
+    def _fake_which(name):
+        return "/usr/bin/python3" if name == "python3" else None
+
+    def _fake_run(cmd, **kwargs):  # noqa: ARG001
+        venv_calls.append(cmd)
+        return subprocess_completed_process_stub()
+
+    def _fail_if_called(*_a, **_k):
+        raise AssertionError("venv.create() should not be used when a system python3 is available")
+
+    monkeypatch.setattr(tb.shutil, "which", _fake_which)
+    monkeypatch.setattr(tb.subprocess, "run", _fake_run)
+    monkeypatch.setattr(tb.venv, "create", _fail_if_called)
+
+    venv_dir = tmp_path / "some-venv"
+    error = tb._create_private_venv(venv_dir)
+    assert error == ""
+    assert venv_calls == [["/usr/bin/python3", "-m", "venv", str(venv_dir)]]
+
+
+def test_create_private_venv_falls_back_to_venv_module_when_no_system_python(monkeypatch, tmp_path):
+    monkeypatch.setattr(tb.shutil, "which", lambda name: None)
+
+    fallback_calls = []
+
+    def _fake_venv_create(path, with_pip=True, clear=True):  # noqa: ARG001
+        fallback_calls.append(path)
+
+    monkeypatch.setattr(tb.venv, "create", _fake_venv_create)
+    venv_dir = tmp_path / "some-venv"
+    error = tb._create_private_venv(venv_dir)
+    assert error == ""
+    assert fallback_calls == [venv_dir]
+
+
+def test_create_private_venv_reports_error_when_system_python_venv_creation_fails(monkeypatch, tmp_path):
+    import subprocess as real_subprocess
+
+    monkeypatch.setattr(tb.shutil, "which", lambda name: "/usr/bin/python3" if name == "python3" else None)
+
+    def _fake_run(cmd, **kwargs):  # noqa: ARG001
+        raise real_subprocess.CalledProcessError(1, cmd, output="", stderr="ensurepip is not available")
+
+    monkeypatch.setattr(tb.subprocess, "run", _fake_run)
+    error = tb._create_private_venv(tmp_path / "some-venv")
+    assert "ensurepip is not available" in error
 
 
 # ---------- GEF ----------

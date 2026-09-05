@@ -373,6 +373,64 @@ def _install_gef(dest_root: Path) -> ToolBootstrapResult:
     )
 
 
+def _create_private_venv(venv_dir: Path) -> str:
+    """Creates a virtualenv at `venv_dir`, preferring a real system python3
+    over the currently-running interpreter. Returns "" on success, or an
+    error detail string on failure - never raises.
+
+    REAL BUG FOUND AND FIXED 2026-09-04, from a real user's packaged-app
+    log: the stdlib `venv` module's `venv.create()` always bases the new
+    environment on `sys.executable` - the CURRENTLY RUNNING interpreter.
+    That's a real python3 in this dev sandbox and under `pip install -e .`,
+    but once Winnow is frozen by PyInstaller (installer/winnow.spec's whole
+    point), `sys.executable` IS the compiled `BinSifter-Winnow` binary
+    itself, not a general-purpose python3 executable. `venv.create()`
+    still "succeeds" (it copies/symlinks the frozen exe into
+    `<venv>/bin/BinSifter-Winnow`), but running
+    `<venv>/bin/BinSifter-Winnow -m ensurepip` inside that venv immediately
+    fails - confirmed directly from the log: "Could not create a
+    virtualenv: Command
+    ['.../binwalk-venv/bin/BinSifter-Winnow', '-m', 'ensurepip', ...]
+    returned non-zero exit status 255." - since that "python" is actually
+    the whole frozen GUI app, not an interpreter that understands `-m`.
+    This broke every venv-based installer (Angr, Binwalk, Malwoverview) on
+    every real packaged install, every time, not intermittently - it only
+    went unnoticed for Angr specifically because that user had already
+    installed it manually via pipx before Winnow's own attempt ever ran.
+
+    Fixed by shelling out to a real system python3 (found via
+    `shutil.which`, the same PATH-fallback approach every other tool here
+    already uses) to create the venv instead of trusting the running
+    interpreter - `python3 -m venv <dir>` is a completely ordinary
+    invocation on any machine with Python 3 installed at all, which is
+    effectively guaranteed on Debian/Ubuntu/Fedora/Arch (all of them
+    depend on system Python for their own package managers). Falls back to
+    the old `venv.create()` behavior only if no system python3 can be
+    found at all - e.g. a from-source/dev environment, where the running
+    interpreter genuinely already is the right one to use.
+    """
+    system_python = shutil.which("python3") or shutil.which("python")
+    if system_python:
+        try:
+            subprocess.run(
+                [system_python, "-m", "venv", str(venv_dir)],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=_NETWORK_TIMEOUT_SECONDS * 4,
+            )
+            return ""
+        except subprocess.CalledProcessError as exc:
+            return (exc.stderr or "").strip()[-500:] or str(exc)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return str(exc)
+    try:
+        venv.create(venv_dir, with_pip=True, clear=True)
+        return ""
+    except Exception as exc:  # noqa: BLE001
+        return str(exc)
+
+
 def _install_angr(dest_root: Path) -> ToolBootstrapResult:
     """Angr is a PyPI package, not a GitHub-release binary - its own docs
     recommend a dedicated virtualenv rather than a system-wide install
@@ -386,10 +444,9 @@ def _install_angr(dest_root: Path) -> ToolBootstrapResult:
     """
     label = _TOOL_LABELS["AngrExe"]
     venv_dir = dest_root / "angr-venv"
-    try:
-        venv.create(venv_dir, with_pip=True, clear=True)
-    except Exception as exc:  # noqa: BLE001
-        return ToolBootstrapResult("AngrExe", label, "failed", detail=f"Could not create a virtualenv: {exc}")
+    venv_error = _create_private_venv(venv_dir)
+    if venv_error:
+        return ToolBootstrapResult("AngrExe", label, "failed", detail=f"Could not create a virtualenv: {venv_error}")
 
     venv_python = venv_dir / "bin" / "python"
     if not venv_python.is_file():
@@ -456,10 +513,9 @@ def _install_pip_venv_tool(tool_key: str, package: str, console_script: str, des
     """
     label = _TOOL_LABELS[tool_key]
     venv_dir = dest_root / f"{package}-venv"
-    try:
-        venv.create(venv_dir, with_pip=True, clear=True)
-    except Exception as exc:  # noqa: BLE001
-        return ToolBootstrapResult(tool_key, label, "failed", detail=f"Could not create a virtualenv: {exc}")
+    venv_error = _create_private_venv(venv_dir)
+    if venv_error:
+        return ToolBootstrapResult(tool_key, label, "failed", detail=f"Could not create a virtualenv: {venv_error}")
 
     venv_python = venv_dir / "bin" / "python"
     if not venv_python.is_file():

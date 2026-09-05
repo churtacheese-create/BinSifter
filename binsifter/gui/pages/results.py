@@ -72,6 +72,7 @@ from __future__ import annotations
 
 import json
 import logging
+import shlex
 import shutil
 import subprocess
 from collections.abc import Callable
@@ -165,17 +166,17 @@ _QUICK_LAUNCH_TOOLS: tuple[tuple[str, str, bool, str | None, tuple[str, ...], bo
 # alternatives-based x-terminal-emulator, GNOME, KDE, XFCE, and a bare
 # xterm as the universal last resort every distro's repos carry.
 # (terminal binary name, argv prefix before the command to run)
+#
+# None of these carry a hold-open flag anymore (xterm's own -hold used to
+# be here) - see _wrap_for_terminal_pause()'s docstring for why relying on
+# each terminal's own hold-open support (inconsistent - only xterm has
+# one) was replaced with a uniform wrapper applied to every terminal here.
 _TERMINAL_EMULATORS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("x-terminal-emulator", ("-e",)),
     ("gnome-terminal", ("--",)),
     ("konsole", ("-e",)),
     ("xfce4-terminal", ("-x",)),
-    # -hold keeps the window open after the command exits so output/errors
-    # (or a live gdb/malwoverview session) stay visible instead of the
-    # terminal closing itself immediately - the other four terminals above
-    # only close-on-exit by default too, but xterm is the one most likely
-    # to be someone's bare-minimum fallback with no config of its own.
-    ("xterm", ("-hold", "-e")),
+    ("xterm", ("-e",)),
 )
 
 
@@ -186,6 +187,61 @@ def _find_terminal_emulator() -> tuple[str, tuple[str, ...]] | None:
             return path, prefix_args
     return None
 
+
+def _wrap_for_terminal_pause(argv: list[str]) -> list[str]:
+    """Wraps `argv` in a small `sh -c` snippet that reports the exit status
+    and waits for a keypress before the terminal's own process exits.
+
+    Added 2026-09-04 after a real user's terminal-launched GDB did nothing
+    visible when clicked - their system `gdb` turned out to be broken
+    (crashes near-instantly with a `libpython`/`libexpat` symbol mismatch,
+    a real problem with their machine, not something BinSifter's code
+    caused or can fix), and only xterm's own `-hold` flag (see the old
+    _TERMINAL_EMULATORS comment) would have kept a window open long enough
+    to show that crash - whichever OTHER terminal got picked instead
+    (gnome-terminal/konsole/xfce4-terminal/x-terminal-emulator, none of
+    which were given a hold-open flag) would have flashed open and closed
+    itself the instant the command exited, indistinguishable from nothing
+    happening at all. Wrapping the command this way, uniformly, for every
+    terminal, means a fast crash is now always visible - the terminal
+    stays open and shows the real error - and it isn't a guess about which
+    terminal happens to be installed.
+    """
+    command = " ".join(shlex.quote(arg) for arg in argv)
+    script = f'{command}; status=$?; echo; echo "[exit status $status - press Enter to close]"; read _dummy'
+    return ["sh", "-c", script]
+
+
+def _is_appimage(path: str) -> bool:
+    """True if `path` is an AppImage - detected via the format's own magic
+    bytes (0x41 0x49 0x01/0x02, "AI" + type, at file offset 8), the same
+    signature AppImage's own tooling and `file(1)` use, rather than
+    guessing from the filename or which tool this is. Added 2026-09-04
+    after a real user's Cutter (freshly auto-installed as an AppImage,
+    confirmed via the bootstrap log) did nothing when clicked - the classic
+    symptom of a missing libfuse2 on a modern distro (Ubuntu dropped it
+    from the default image starting 22.04): an AppImage launched without
+    FUSE available exits immediately with no window and no Python-level
+    exception at all (subprocess.Popen succeeds at fork/exec; the child
+    just dies a moment later), so this failure was completely invisible
+    before now. PE-bear/DIE/Cutter are the only quick-launch tools ever
+    delivered as AppImages when auto-installed, but a user's own manually
+    supplied "Path to tools" copy might be a real native build instead
+    (confirmed for PE-bear in an earlier real log) - checking the actual
+    file signature, not the tool identity, means this only ever adds
+    --appimage-extract-and-run when the target genuinely needs it.
+    """
+    try:
+        with open(path, "rb") as handle:
+            header = handle.read(11)
+    except OSError:
+        return False
+    return len(header) >= 11 and header[8:10] == b"AI" and header[10] in (1, 2)
+
+
+# How long to wait, in ms, before checking whether a just-launched
+# quick-launch tool already died - see _popen_watched()'s own docstring.
+_LIVENESS_CHECK_DELAY_MS = 400
 
 _SPEAKEASY_CONFIRM = (
     "This emulates the selected binary's code. Emulation must be performed in an "
@@ -615,7 +671,20 @@ class ResultsPage(QWidget):
         # ["angr", "decompile", target] or ["anya", "--file", target] - see
         # _QUICK_LAUNCH_TOOLS' module comment for why Angr/Anya/GDB-adjacent
         # tools specifically need this and PE-bear/DIE/Cutter don't.
-        argv = [exe_path, *extra_argv] if copy_path_instead else [exe_path, *extra_argv, target_path]
+        #
+        # --appimage-extract-and-run goes right after the exe itself (before
+        # extra_argv/target) whenever exe_path genuinely is an AppImage -
+        # see _is_appimage()'s own docstring for why this exists. This
+        # bypasses FUSE entirely (extracting to a temp dir and running
+        # directly), so it works whether or not libfuse2 happens to be
+        # installed - strictly safer than the old bare invocation, never
+        # narrower.
+        appimage_flag = ["--appimage-extract-and-run"] if _is_appimage(exe_path) else []
+        argv = (
+            [exe_path, *appimage_flag, *extra_argv]
+            if copy_path_instead
+            else [exe_path, *appimage_flag, *extra_argv, target_path]
+        )
         try:
             if needs_terminal:
                 # Terminal-native CLI tools (GDB, Binwalk, Malwoverview) have
@@ -642,9 +711,10 @@ class ResultsPage(QWidget):
                 # tools that don't need it, and protects any that resolve
                 # sibling files/plugins relative to their own binary the
                 # way PE-bear's Qt build does.
-                subprocess.Popen([terminal_path, *prefix_args, *argv], cwd=str(Path(exe_path).parent))
+                wrapped = _wrap_for_terminal_pause(argv)
+                subprocess.Popen([terminal_path, *prefix_args, *wrapped], cwd=str(Path(exe_path).parent))
             elif copy_path_instead:
-                subprocess.Popen(argv, cwd=str(Path(exe_path).parent))
+                self._popen_watched(argv, str(Path(exe_path).parent), exe_path)
                 QGuiApplication.clipboard().setText(target_path)
             else:
                 # HARDENED 2026-09-03: cwd defaults to wherever Winnow itself
@@ -661,10 +731,53 @@ class ResultsPage(QWidget):
                 # exe's own directory is a cheap, safe default that removes
                 # this as a possible cause without needing to know which
                 # specific tool actually needs it.
-                subprocess.Popen(argv, cwd=str(Path(exe_path).parent))
+                self._popen_watched(argv, str(Path(exe_path).parent), exe_path)
         except OSError as exc:
             logger.error("Could not launch %s (target %s): %s", exe_path, target_path, exc)
             QMessageBox.critical(self, "BinSifter", f"Could not launch: {exc}")
+
+    def _popen_watched(self, argv: list[str], cwd: str, exe_path: str) -> subprocess.Popen:
+        """subprocess.Popen() wrapper used by every GUI-tool quick-launch
+        branch above (and Ghidra's own launch below) - captures stderr and
+        schedules a short liveness check via QTimer.singleShot rather than
+        blocking the GUI thread with a real sleep.
+
+        REAL GAP FOUND AND FIXED 2026-09-04: subprocess.Popen() succeeds
+        (returns a real PID) even when the spawned process crashes moments
+        later at the OS level - a missing shared library, a missing FUSE
+        for an AppImage (see _is_appimage()), a bad invocation - none of
+        which raise a Python exception. Previously this class of failure
+        produced NO log entry and NO error dialog at all, completely
+        indistinguishable from nothing happening - the exact complaint a
+        real user reported for a quick-launch tool that resolved to a real,
+        executable file yet still appeared to do nothing when clicked. This
+        doesn't guarantee a tool that survives the check is actually
+        visible or fully working - only that it didn't die within the
+        first fraction of a second - but that's exactly the failure mode
+        this exists to catch.
+        """
+        process = subprocess.Popen(argv, cwd=cwd, stderr=subprocess.PIPE, stdout=subprocess.DEVNULL)
+        QTimer.singleShot(
+            _LIVENESS_CHECK_DELAY_MS, lambda: self._check_quick_launch_liveness(process, exe_path)
+        )
+        return process
+
+    def _check_quick_launch_liveness(self, process: subprocess.Popen, exe_path: str) -> None:
+        if process.poll() is None:
+            return  # still running - looks fine, nothing to report
+        if process.returncode == 0:
+            return  # exited cleanly and fast - some tools legitimately do this; not our business to second-guess
+        stderr_text = ""
+        if process.stderr is not None:
+            try:
+                stderr_text = process.stderr.read().decode("utf-8", errors="replace").strip()
+            except OSError:
+                pass
+        detail = stderr_text or f"exited immediately with status {process.returncode}"
+        logger.error("%s exited immediately after launch: %s", exe_path, detail)
+        QMessageBox.critical(
+            self, "BinSifter", f"{Path(exe_path).name} exited immediately after launching:\n\n{detail}"
+        )
 
     def _launch_ghidra(self, target_path: str) -> None:
         if not Path(target_path).is_file():
@@ -688,14 +801,18 @@ class ResultsPage(QWidget):
             )
             # Fire-and-forget, same as the original - headless analysis can
             # run for minutes and Ghidra is purely static, so there's
-            # nothing to wait on here.
-            subprocess.Popen(
+            # nothing to wait on here. Still watched via _popen_watched()
+            # for a fast, wrong-JAVA_HOME-style crash (previously such a
+            # failure would still show the "analysis started" success
+            # popup below, silently misreporting it).
+            self._popen_watched(
                 [
                     self._config.GhidraHeadlessExe, str(ghidra_projects_dir), project_name,
                     "-import", target_path,
                     "-overwrite", "-analysisTimeoutPerFile", "300",
                 ],
-                cwd=str(Path(self._config.GhidraHeadlessExe).parent),
+                str(Path(self._config.GhidraHeadlessExe).parent),
+                self._config.GhidraHeadlessExe,
             )
             # Headless analysis runs for minutes with no further UI feedback
             # by design (it's not tracked/polled), so without this a
