@@ -41,10 +41,11 @@ Trust store: `AuthenticodeSignature.verify()` defaults
 `trusted_certificate_store` to TRUSTED_CERTIFICATE_STORE, a real, populated
 CombinedCertificateStore built from the `mscerts` package (Microsoft's
 official Authenticode Certificate Trust List plus cacert.pem).
-check_signature() below calls `explain_verify()` with no override, so this
-default is what's actually used - BinSifter gets real trust-chain
-validation for embedded signatures with no extra wiring. Not yet spot-
-checked against a genuinely signed PE on real Windows hardware (only
+check_signature() below explicitly passes a SANITIZED copy of that store
+(see _build_sanitized_trust_store()) rather than relying on the implicit
+default - BinSifter gets real trust-chain validation for embedded
+signatures with no extra wiring beyond that one substitution. Not yet
+spot-checked against a genuinely signed PE on real Windows hardware (only
 signify's own test suite, which asserts the same zero-argument default
 resolves to "Valid" against real Microsoft/vendor-signed executables).
 
@@ -63,9 +64,14 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 try:
-    from signify.authenticode import AuthenticodeFile, AuthenticodeVerificationResult  # noqa: F401
+    from signify.authenticode import (  # noqa: F401
+        TRUSTED_CERTIFICATE_STORE,
+        AuthenticodeFile,
+        AuthenticodeVerificationResult,
+    )
     from signify.authenticode.trust_list import CertificateTrustList
     from signify.exceptions import ParseError as _SignifyParseError
+    from signify.x509.context import CertificateStore
 
     _SIGNIFY_AVAILABLE = True
 except ImportError:  # signify not installed - degrade to UnknownError, don't crash the scan
@@ -153,6 +159,66 @@ if _SIGNIFY_AVAILABLE:
             cls.get_fingerprint = _cached_get_fingerprint
 
     _patch_signify_fingerprint_caching()
+
+    # REAL BUG FOUND AND FIXED 2026-09-04, from a genuine Linux install (not
+    # a Windows-only quirk): `mscerts` bundles real, current root-CA data
+    # from the CA/Browser Forum's own program - as of the 2026.8.28 release
+    # that includes 7 post-quantum pilot roots (DigiCert/Sectigo/SSL.com/
+    # IdenTrust/HARICA/ComSign/UniTrust "ML-DSA-87" test CAs) using the
+    # ML-DSA-87 public-key algorithm OID (2.16.840.1.101.3.4.3.19). The
+    # installed asn1crypto (1.5.1, the newest release on PyPI at the time of
+    # this fix) has no spec entry for that OID at all, so simply asking any
+    # of those 7 certificates for their public-key algorithm - which
+    # signify's own CombinedCertificateStore.find_certificates() does for
+    # every candidate certificate while deduplicating results via a
+    # `set()`, i.e. exactly the code path real chain-building calls - raises
+    # a bare KeyError instead of returning a result. Confirmed directly:
+    # `hash(cert)` on each of TRUSTED_CERTIFICATE_STORE's 574 real
+    # certificates raises on precisely these 7.
+    #
+    # This is a genuine, unbounded-going-forward incompatibility, not a
+    # one-off - CA root programs are actively adding more post-quantum
+    # roots as the industry transitions, so more certificates using OIDs
+    # asn1crypto doesn't recognize yet will keep showing up in future
+    # mscerts releases. Pinning mscerts to a version predating this would
+    # only defer the same crash to the next incompatible addition, and
+    # would also freeze BinSifter's trust store against genuinely revoked/
+    # added roots indefinitely. The correct fix is for BinSifter's own
+    # trust store to degrade gracefully: skip whatever asn1crypto cannot
+    # yet parse, keep the (currently 567) certificates it can, and let a
+    # security-analysis tool doing signature verification never crash just
+    # because one specific root - almost never relevant to the file being
+    # checked - uses cryptography the underlying library hasn't caught up
+    # to yet.
+    #
+    # Built once per worker process (mirrors the caching patches above) into
+    # a flat, single-level CertificateStore - deliberately NOT another
+    # CombinedCertificateStore, since find_certificates() on a *flat* store
+    # (see signify.x509.context.CertificateStore.find_certificates) filters
+    # by plain attribute comparison, not a hash-based set, so a store built
+    # this way can never hit this bug again even if a still-different
+    # unparseable algorithm shows up in a future mscerts release.
+    def _build_sanitized_trust_store() -> "CertificateStore":
+        good_certs = []
+        skipped = 0
+        for store in TRUSTED_CERTIFICATE_STORE.stores:
+            for cert in store:
+                try:
+                    hash(cert)
+                except Exception:  # noqa: BLE001 - asn1crypto can raise more than just KeyError for a spec it doesn't recognize
+                    skipped += 1
+                    continue
+                good_certs.append(cert)
+        if skipped:
+            logger.warning(
+                "Trust store: skipped %d certificate(s) the installed asn1crypto "
+                "cannot parse (likely a newer signature algorithm, e.g. a "
+                "post-quantum root) - the remaining %d are used for verification",
+                skipped, len(good_certs),
+            )
+        return CertificateStore(good_certs, trusted=True)
+
+    _SANITIZED_TRUST_STORE = _build_sanitized_trust_store()
 
 
 @dataclasses.dataclass
@@ -257,7 +323,7 @@ def check_signature(path: str, catalogs: "list[CertificateTrustList] | None" = N
                     signed_file.add_catalog(catalog, check=True)
                 except Exception as exc:  # noqa: BLE001 - a catalog-matching failure shouldn't sink the whole check
                     logger.debug("add_catalog() failed for %s: %s", path, exc)
-            result, _exc = signed_file.explain_verify()
+            result, _exc = signed_file.explain_verify(trusted_certificate_store=_SANITIZED_TRUST_STORE)
             status = _STATUS_MAP.get(result.name, "UnknownError")
 
             signer_name = _resolve_signer_name(signed_file, path)
