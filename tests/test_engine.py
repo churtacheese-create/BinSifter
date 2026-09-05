@@ -464,7 +464,7 @@ def test_archive_contents_scanned_through_real_worker_pool_with_source_archive_s
     config = BinSifterConfig(SrcDir=str(src_dir), ReportDirectory=str(report_dir))
     result = scan_directory(config)
 
-    by_name = {r.Path.split("/")[-1]: r for r in result.records}
+    by_name = {Path(r.Path).name: r for r in result.records}
     assert set(by_name) == {"plain.txt", "bundle.zip", "inner1.txt", "inner2.txt"}
     assert all(r.Status == "Completed" for r in by_name.values())
 

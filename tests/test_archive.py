@@ -10,6 +10,7 @@ it does", which a mock would just assert away.
 import gzip
 import tarfile
 import zipfile
+from pathlib import Path
 
 import py7zr
 import pyzipper
@@ -271,7 +272,7 @@ def test_expand_archives_stops_recursing_past_max_depth(tmp_path, monkeypatch):
 
     # outer.zip (depth 0) is still allowed to extract - the cap only stops
     # recursing INTO what it finds once depth has already reached the cap.
-    extracted_names = [p.split("/")[-1] for p in result.extracted_files]
+    extracted_names = [Path(p).name for p in result.extracted_files]
     assert "inner.zip" in extracted_names
     assert not any(p.endswith("secret.txt") for p in result.extracted_files)
 
