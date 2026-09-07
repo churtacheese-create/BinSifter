@@ -272,8 +272,45 @@ def get_auto_installed_tools_dir() -> Path:
     see that module's docstring for why auto-installing at all is safe to
     do without root (everything here is a per-user download, never a
     system package).
+
+    REAL BUG FOUND AND FIXED 2026-09-07, from a real user's launch report
+    ("Angr, Binwalk, and Malwoverview opened terminal windows - but each
+    had errored out"): this used to be get_binsifter_data_root() /
+    "AutoInstalledTools" - and get_binsifter_data_root()'s Linux fallback
+    is Path.home() / "BinSifter Winnow", a directory name with a SPACE in
+    it. pip's own console-script generator writes a raw `#!<venv>/bin/
+    python` shebang line for some packages (binwalk's own upstream-shipped
+    launcher script confirmed directly to be one of them - others, like
+    angr's, happen to get pip's safer `#!/bin/sh` + `exec "<path>"`
+    wrapper instead, which is why only some of these tools broke, not all
+    of them). A raw kernel shebang line has NO way to represent a space in
+    the interpreter path - the kernel's own `#!` parser stops at the first
+    whitespace, so `binwalk` (and any future console-script-based tool
+    that gets the same unsafe, unwrapped shebang form) tried to exec a
+    literal path truncated at the space ("/home/hal/BinSifter") and failed
+    with ENOENT ("No such file or directory") on every launch. Confirmed
+    directly: running binwalk's own script produced exactly that error;
+    switching this one directory to a space-free path and letting it
+    reinstall made the identical script work immediately, no other change
+    needed.
+
+    Fixed by moving this specific directory OUT from under "BinSifter
+    Winnow" entirely, to a dedicated, space-free, XDG-Base-Directory-
+    compliant location - $XDG_DATA_HOME (or ~/.local/share if unset), the
+    standard Linux convention for a per-user application's own persistent,
+    non-config data, which is exactly what these downloaded tools are.
+    Deliberately NOT just "BinSifter_Winnow" (underscore) or similar right
+    next to the old location - a genuinely different, standard directory
+    tree removes this whole CLASS of "some path under here has a space"
+    risk for good, rather than trading one specific space for another.
+    This only affects auto-DOWNLOADED tool copies, never Reports/Settings/
+    the NSRL cache (all untouched, still under get_binsifter_data_root()) -
+    existing users just get a one-time, self-healing re-download of these
+    tools into the new location, the same graceful "auto-install runs
+    every launch until successful" behavior tool_bootstrap.py already had.
     """
-    return get_binsifter_data_root() / "AutoInstalledTools"
+    xdg_data_home = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+    return Path(xdg_data_home) / "binsifter-winnow" / "AutoInstalledTools"
 
 
 def set_tool_paths_from_directory(config: "BinSifterConfig", directory: str | Path | None) -> None:

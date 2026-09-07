@@ -71,6 +71,30 @@ def test_get_binsifter_data_root_falls_back_without_localappdata_set(tmp_path, m
     assert result.is_dir()
 
 
+def test_get_auto_installed_tools_dir_path_has_no_space(monkeypatch, tmp_path):
+    """REAL BUG FOUND AND FIXED 2026-09-07: this used to live under
+    get_binsifter_data_root(), whose Linux fallback is "BinSifter Winnow"
+    (a space in the name) - a raw kernel shebang line (some pip-installed
+    console scripts, binwalk's own confirmed directly) cannot represent a
+    space in its interpreter path at all, so any private-venv tool
+    installed under the old location could fail to launch with ENOENT.
+    Confirms the returned path is space-free regardless of $XDG_DATA_HOME
+    being set or not."""
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setattr(config_module.Path, "home", classmethod(lambda cls: fake_home))
+    result = config_module.get_auto_installed_tools_dir()
+    assert " " not in str(result)
+    assert result == fake_home / ".local" / "share" / "binsifter-winnow" / "AutoInstalledTools"
+
+
+def test_get_auto_installed_tools_dir_respects_xdg_data_home(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "custom-xdg"))
+    result = config_module.get_auto_installed_tools_dir()
+    assert result == tmp_path / "custom-xdg" / "binsifter-winnow" / "AutoInstalledTools"
+
+
 def test_build_default_config_uses_data_root(tmp_path, monkeypatch):
     monkeypatch.setattr(config_module, "get_binsifter_root", lambda: tmp_path)
     cfg = config_module.build_default_config()
