@@ -411,9 +411,62 @@ def _create_private_venv(venv_dir: Path) -> str:
     """
     system_python = shutil.which("python3") or shutil.which("python")
     if system_python:
+        # REAL BUG FOUND AND FIXED 2026-09-07, from a real user's Ubuntu
+        # 26.04 install: plain `python3 -m venv <dir>` tries to bootstrap
+        # pip into the new environment via the stdlib `ensurepip` module
+        # internally - but some real, current distros (confirmed directly
+        # against a real Ubuntu 26.04 machine this session, not a guess)
+        # ship a system python3 with NO ensurepip module at all
+        # ("No module named ensurepip"), so that internal bootstrap step
+        # fails and the whole `venv` invocation exits non-zero, even though
+        # creating the venv's directory structure itself would have worked
+        # fine. Every private-venv installer (Angr, Binwalk, Malwoverview)
+        # shares this one function, so this one gap took out all three at
+        # once - exactly what the user's launch report showed.
+        #
+        # Fixed the same way this exact failure was worked around by hand
+        # against a real affected VM earlier this project: create the venv
+        # with --without-pip (never touches ensurepip, so it can't fail
+        # this way), then bootstrap pip in two steps - try the stdlib
+        # `ensurepip` module first (fast, no network, works whenever it's
+        # merely unimported rather than genuinely absent), and only fall
+        # back to downloading PyPA's own official get-pip.py bootstrapper
+        # (the documented recovery path for exactly this situation, see
+        # https://pip.pypa.io/en/stable/installation/#get-pip-py) if that
+        # also fails - this project already downloads Ghidra release
+        # assets over the network for the same kind of auto-install, so
+        # this isn't a new category of trust, just a different URL.
         try:
             subprocess.run(
-                [system_python, "-m", "venv", str(venv_dir)],
+                [system_python, "-m", "venv", "--without-pip", str(venv_dir)],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=_NETWORK_TIMEOUT_SECONDS * 4,
+            )
+        except subprocess.CalledProcessError as exc:
+            return (exc.stderr or "").strip()[-500:] or str(exc)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return str(exc)
+
+        venv_python = venv_dir / "bin" / "python"
+        if not venv_python.is_file():
+            return "Virtualenv creation didn't produce a python binary"
+
+        ensurepip_result = subprocess.run(
+            [str(venv_python), "-m", "ensurepip", "--upgrade"],
+            capture_output=True,
+            text=True,
+            timeout=_NETWORK_TIMEOUT_SECONDS * 4,
+        )
+        if ensurepip_result.returncode == 0:
+            return ""
+
+        try:
+            get_pip_path = venv_dir / "get-pip.py"
+            _download("https://bootstrap.pypa.io/get-pip.py", get_pip_path, timeout=_DOWNLOAD_TIMEOUT_SECONDS)
+            subprocess.run(
+                [str(venv_python), str(get_pip_path)],
                 check=True,
                 capture_output=True,
                 text=True,
@@ -422,8 +475,9 @@ def _create_private_venv(venv_dir: Path) -> str:
             return ""
         except subprocess.CalledProcessError as exc:
             return (exc.stderr or "").strip()[-500:] or str(exc)
-        except (OSError, subprocess.TimeoutExpired) as exc:
+        except (OSError, subprocess.TimeoutExpired, urllib.error.URLError) as exc:
             return str(exc)
+
     try:
         venv.create(venv_dir, with_pip=True, clear=True)
         return ""

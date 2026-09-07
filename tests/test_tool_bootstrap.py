@@ -500,14 +500,24 @@ def test_create_private_venv_uses_system_python3_when_available(monkeypatch, tmp
     is the frozen BinSifter-Winnow binary once packaged, not a real
     interpreter - 'ensurepip' inside that venv then fails outright. This
     confirms the fix actually prefers a real system python3 (via
-    shutil.which) over the stdlib venv module when one is on PATH."""
-    venv_calls = []
+    shutil.which) over the stdlib venv module when one is on PATH.
+
+    Also covers the 2026-09-07 fix (--without-pip + ensurepip bootstrap,
+    see _create_private_venv's own docstring): the venv-creation call now
+    passes --without-pip and a working `<venv>/bin/python -m ensurepip`
+    is expected as the next step, rather than pip coming from `venv`
+    itself in one shot."""
+    calls = []
 
     def _fake_which(name):
         return "/usr/bin/python3" if name == "python3" else None
 
     def _fake_run(cmd, **kwargs):  # noqa: ARG001
-        venv_calls.append(cmd)
+        calls.append(cmd)
+        if cmd[1:3] == ["-m", "venv"]:
+            venv_bin = Path(cmd[-1]) / "bin"
+            venv_bin.mkdir(parents=True, exist_ok=True)
+            (venv_bin / "python").touch()
         return subprocess_completed_process_stub()
 
     def _fail_if_called(*_a, **_k):
@@ -520,7 +530,8 @@ def test_create_private_venv_uses_system_python3_when_available(monkeypatch, tmp
     venv_dir = tmp_path / "some-venv"
     error = tb._create_private_venv(venv_dir)
     assert error == ""
-    assert venv_calls == [["/usr/bin/python3", "-m", "venv", str(venv_dir)]]
+    assert calls[0] == ["/usr/bin/python3", "-m", "venv", "--without-pip", str(venv_dir)]
+    assert calls[1] == [str(venv_dir / "bin" / "python"), "-m", "ensurepip", "--upgrade"]
 
 
 def test_create_private_venv_falls_back_to_venv_module_when_no_system_python(monkeypatch, tmp_path):
@@ -549,6 +560,52 @@ def test_create_private_venv_reports_error_when_system_python_venv_creation_fail
     monkeypatch.setattr(tb.subprocess, "run", _fake_run)
     error = tb._create_private_venv(tmp_path / "some-venv")
     assert "ensurepip is not available" in error
+
+
+def test_create_private_venv_falls_back_to_get_pip_when_ensurepip_module_missing(monkeypatch, tmp_path):
+    """REAL BUG FOUND AND FIXED 2026-09-07, from a real user's Ubuntu 26.04
+    machine: that system's python3 has no ensurepip module at all, so
+    `<venv_python> -m ensurepip` exits non-zero (not an exception - a
+    clean failed run) rather than raising. This is the one real distro
+    condition already confirmed to exist (not hypothetical) that took out
+    every private-venv installer (Angr/Binwalk/Malwoverview) at once, so
+    it gets its own dedicated regression: ensurepip failing cleanly must
+    fall back to downloading and running PyPA's get-pip.py, not just give
+    up."""
+    monkeypatch.setattr(tb.shutil, "which", lambda name: "/usr/bin/python3" if name == "python3" else None)
+
+    calls = []
+
+    def _fake_run(cmd, **kwargs):  # noqa: ARG001
+        calls.append(cmd)
+        if cmd[1:3] == ["-m", "venv"]:
+            venv_bin = Path(cmd[-1]) / "bin"
+            venv_bin.mkdir(parents=True, exist_ok=True)
+            (venv_bin / "python").touch()
+            return subprocess_completed_process_stub()
+        if "ensurepip" in cmd:
+            stub = subprocess_completed_process_stub()
+            stub.returncode = 1
+            stub.stderr = "No module named ensurepip"
+            return stub
+        # The get-pip.py invocation - succeeds.
+        return subprocess_completed_process_stub()
+
+    downloaded = []
+
+    def _fake_download(url, dest, timeout=None):  # noqa: ARG001
+        downloaded.append(url)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.touch()
+
+    monkeypatch.setattr(tb.subprocess, "run", _fake_run)
+    monkeypatch.setattr(tb, "_download", _fake_download)
+
+    venv_dir = tmp_path / "some-venv"
+    error = tb._create_private_venv(venv_dir)
+    assert error == ""
+    assert downloaded == ["https://bootstrap.pypa.io/get-pip.py"]
+    assert calls[-1] == [str(venv_dir / "bin" / "python"), str(venv_dir / "get-pip.py")]
 
 
 # ---------- GEF ----------
