@@ -66,9 +66,24 @@ own_datas = [
 #   - speakeasy (speakeasy-emulator on PyPI, imported as `speakeasy`):
 #     ships JSON/data describing Windows API behavior that its emulation
 #     core reads at runtime, not just Python bytecode.
+#   - signify itself: ships signify/authenticode/legacy-certs.pem, read by
+#     signify.x509.context's TRUSTED_CERTIFICATE_STORE loader at IMPORT
+#     TIME (not lazily) - 2026-09-06 addition, found the hard way by
+#     actually running a real PyInstaller build of this spec for the first
+#     time (see this file's own top-of-file caveat about never having done
+#     that from this sandbox before) and installing/launching the frozen
+#     .deb on a real Ubuntu VM: it crashed immediately on startup with
+#     FileNotFoundError for exactly this file, because binsifter/core/
+#     authenticode.py's _build_sanitized_trust_store() (2026-09-04 fix for
+#     the post-quantum-root crash) iterates TRUSTED_CERTIFICATE_STORE at
+#     module import time, and mscerts' own data being bundled was never
+#     the whole story - signify's OWN legacy-certs.pem was missed too,
+#     since nothing here was previously collecting signify's package data
+#     at all, only mscerts'.
 # ---------------------------------------------------------------------------
 mscerts_datas, mscerts_binaries, mscerts_hidden = collect_all("mscerts")
 speakeasy_datas, speakeasy_binaries, speakeasy_hidden = collect_all("speakeasy")
+signify_datas, signify_binaries, signify_hidden = collect_all("signify")
 
 # 2026-08-09, added after a real installer crashed at startup on TWO
 # separate Windows machines with unicorn's own "ERROR: fail to load the
@@ -138,13 +153,13 @@ ssdeep_metadata = copy_metadata("ppdeep")
 a = Analysis(
     [str(repo_root / "binsifter" / "gui" / "__main__.py")],
     pathex=[str(repo_root)],
-    binaries=[*mscerts_binaries, *speakeasy_binaries, *unicorn_binaries],
+    binaries=[*mscerts_binaries, *speakeasy_binaries, *unicorn_binaries, *signify_binaries],
     datas=[
-        *own_datas, *mscerts_datas, *speakeasy_datas, *unicorn_datas,
+        *own_datas, *mscerts_datas, *speakeasy_datas, *unicorn_datas, *signify_datas,
         *yara_metadata, *capa_metadata, *ssdeep_metadata,
     ],
     hiddenimports=[
-        *mscerts_hidden, *speakeasy_hidden, *unicorn_hidden,
+        *mscerts_hidden, *speakeasy_hidden, *unicorn_hidden, *signify_hidden,
         *vivisect_hidden, *envi_hidden, *capa_hidden,
         # multiprocessing.Pool workers (engine.py's scan_directory()) need
         # their own entry point resolvable when frozen - PyInstaller's
