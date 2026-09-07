@@ -27,6 +27,19 @@ class LogsPage(QWidget):
         self.log_view = QPlainTextEdit()
         self.log_view.setReadOnly(True)
         self.log_view.setFont(QFont("Consolas", 10))
+        # REAL BUG FOUND AND FIXED 2026-09-07: this had no cap at all, so a
+        # long real scan (thousands of log lines from every worker) grew
+        # this widget's backing document without bound - confirmed on a
+        # real Ubuntu VM to reach 5.6GB of resident memory over a ~43
+        # minute scan of real casework, at which point the kernel OOM-
+        # killer terminated the app outright. engine.py's worker log-level
+        # fix (see _pool_worker_init()'s own comment) addresses the biggest
+        # source of that volume, but this page should never again be able
+        # to grow unbounded regardless of how much a future log source
+        # produces - 20,000 lines is generous for an interactively-useful
+        # scrollback (old lines are dropped from the top as new ones
+        # arrive) while capping worst-case memory to a small, fixed amount.
+        self.log_view.setMaximumBlockCount(20000)
         self.log_view.setStyleSheet(
             f"QPlainTextEdit {{ background-color: {qcolor_to_css(theme.SurfaceBack)}; "
             f"color: {qcolor_to_css(theme.Fore)}; border: 1px solid {qcolor_to_css(theme.Border)}; }}"

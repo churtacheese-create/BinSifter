@@ -354,7 +354,32 @@ def _pool_worker_init(
         root_logger = logging.getLogger()
         root_logger.handlers.clear()
         root_logger.addHandler(logging.handlers.QueueHandler(log_queue))
-        root_logger.setLevel(logging.INFO)
+        # Root logger stays at its WARNING default deliberately - NOT bumped
+        # to INFO - and only binsifter's own logger tree is raised, mirroring
+        # cli.py's main() (see that module's own comment on this exact
+        # tradeoff). REAL BUG FOUND AND FIXED 2026-09-07: this used to call
+        # root_logger.setLevel(logging.INFO), which - because a logger with
+        # no explicit level of its own inherits its EFFECTIVE level from the
+        # nearest ancestor that has one - silently raised every third-party
+        # logger in this worker to INFO too, vivisect's very much included.
+        # vivisect is independently documented (both in cli.py's own comment
+        # and in FLOSS's own CLI, which explicitly suppresses vivisect's
+        # logger for the same reason) to be extremely noisy at INFO.
+        #
+        # Confirmed against a real multi-hour scan of real casework on a
+        # real Ubuntu VM: the Logs page's QPlainTextEdit (see
+        # gui/pages/logs.py's append_line(), which had no
+        # setMaximumBlockCount() cap - fixed separately, see that file) grew
+        # from ~280MB to 5.6GB of resident memory in the GUI process over
+        # ~43 minutes as every worker's flood of INFO-level vivisect noise
+        # (multiplied by every capa-eligible file in the batch) was queued
+        # to the parent process and rendered into that unbounded widget,
+        # eventually triggering the kernel OOM-killer. The Logs page fix
+        # bounds the damage regardless of log volume, but generating and
+        # cross-process-queuing that volume of noise in the first place was
+        # always wasted work and memory pressure worth eliminating at the
+        # source too - not a problem this fix defers to the sink alone.
+        logging.getLogger("binsifter").setLevel(logging.INFO)
 
     _worker_config = config
     _worker_yara_rules = yara_scan.compile_rules(config.YaraRules) if config.YaraRules else None
