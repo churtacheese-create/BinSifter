@@ -145,22 +145,36 @@ logger = logging.getLogger(__name__)
 # _find_terminal_emulator()/_launch_in_terminal() below).
 _QUICK_LAUNCH_TOOLS: tuple[tuple[str, str, bool, str | None, tuple[str, ...], bool], ...] = (
     ("PeBearExe", "Open in PE-bear", False, None, (), False),
-    ("AnyaExe", "Open in Anya", False, None, ("--file",), False),
+    # REAL BUG FOUND AND FIXED 2026-09-07, from a real user's launch report
+    # ("nothing worked" when Anya was selected): Anya is a terminal/stdout
+    # report tool, same as GDB/Binwalk/Malwoverview below - not a windowed
+    # GUI app. Confirmed directly by running Anya's own real binary: it
+    # produces a full, correct, multi-section analysis report (hashes, PE
+    # header, imports, entropy, packer/anti-analysis detection, extracted
+    # strings) - entirely via stdout. needs_terminal=False routed that
+    # whole report straight to /dev/null (see _popen_watched()'s
+    # stdout=DEVNULL) with nothing visible ever appearing - the process
+    # succeeded every time, the user just never saw any of it.
+    ("AnyaExe", "Open in Anya", False, None, ("--file",), True),
     ("DieExe", "Open in DIE", False, None, (), False),
     ("CutterExe", "Open in Cutter", False, None, (), False),
-    ("AngrExe", "Open in Angr", False, None, ("decompile",), False),
+    # REAL BUG FOUND AND FIXED 2026-09-07: same root cause as Anya above -
+    # confirmed directly by running angr's own `decompile` subcommand for
+    # real, it produces real, correct pseudo-C decompilation output, all
+    # via stdout, with needs_terminal=False silently discarding all of it.
+    ("AngrExe", "Open in Angr", False, None, ("decompile",), True),
     # GDB is launched bare (gdb <file>) - a real debugger session, meant to
     # be interacted with directly in the terminal that opens.
     ("GdbExe", "Open in GDB (with GEF)", False, None, (), True),
     # Binwalk's plain invocation (binwalk <file>) prints its signature scan
     # straight to stdout - needs a terminal to be seen at all, same as GDB.
     ("BinwalkExe", "Scan with Binwalk", False, None, (), True),
-    # "-v 2 -f <path>" queries VirusTotal for this file's hash (malwoverview
-    # computes and submits only the hash, never the sample itself, per its
-    # own docs) and requires -f for -v 2 to work - confirmed against
-    # malwoverview's own README. Same third-party-service disclosure this
-    # entry carries in docs/winnow.md and _MANUAL_INSTALL_HINTS.
-    ("MalwoverviewExe", "Look up hash in Malwoverview (VirusTotal)", False, None, ("-v", "2", "-f"), True),
+    # Malwoverview is NOT in this generic table (removed 2026-09-07, see
+    # _launch_malwoverview() below) - its CLI has moved on to a subcommand
+    # model (`malwoverview vt hash <hash>`) since the "-v 2 -f <path>" form
+    # this table was written against, and it now takes a HASH VALUE, not a
+    # file path, needing a lookup this generic tuple-driven dispatch has no
+    # way to express.
 )
 
 # Tried in order - first one found on PATH wins. Covers Debian/Ubuntu's
@@ -243,6 +257,12 @@ def _is_appimage(path: str) -> bool:
 # How long to wait, in ms, before checking whether a just-launched
 # quick-launch tool already died - see _popen_watched()'s own docstring.
 _LIVENESS_CHECK_DELAY_MS = 400
+
+# How often, in ms, to poll a running Ghidra headless analysis for
+# completion - see _watch_ghidra_completion()'s own docstring. 5s is
+# generous for a background poll against a job that can run for minutes;
+# no real cost to checking a little late.
+_GHIDRA_COMPLETION_POLL_MS = 5000
 
 _SPEAKEASY_CONFIRM = (
     "This emulates the selected binary's code. Emulation must be performed in an "
@@ -623,6 +643,25 @@ class ResultsPage(QWidget):
         if ghidra_configured:
             ghidra_action.triggered.connect(lambda checked=False, target=target_path: self._launch_ghidra(target))
 
+        # REAL BUG FOUND AND FIXED 2026-09-07: moved out of the generic
+        # _QUICK_LAUNCH_TOOLS table above - malwoverview's CLI has since
+        # moved to a subcommand model taking a HASH VALUE
+        # (`malwoverview vt hash <hash>`), not a file path, so this needs
+        # its own dispatch that looks the file's already-computed hash up
+        # from self._records first, same pattern _launch_ghidra() already
+        # uses for its own project-naming SHA1 lookup.
+        malwoverview_exe = self._config.MalwoverviewExe or ""
+        malwoverview_configured = bool(malwoverview_exe) and Path(malwoverview_exe).is_file()
+        malwoverview_label = "Look up hash in Malwoverview (VirusTotal)"
+        malwoverview_action = menu.addAction(
+            malwoverview_label if malwoverview_configured else f"{malwoverview_label} (not configured)"
+        )
+        malwoverview_action.setEnabled(malwoverview_configured)
+        if malwoverview_configured:
+            malwoverview_action.triggered.connect(
+                lambda checked=False, target=target_path: self._launch_malwoverview(target)
+            )
+
         # Speakeasy has no exe to find anymore - emulate_file() is always
         # available once the speakeasy library is installed, so this entry
         # is never disabled (unlike the original, which checked for
@@ -688,36 +727,13 @@ class ResultsPage(QWidget):
         )
         try:
             if needs_terminal:
-                # Terminal-native CLI tools (GDB, Binwalk, Malwoverview) have
-                # no window of their own - a bare subprocess.Popen with no
-                # attached terminal produces no visible effect at all, the
-                # exact "PE-Bear nor Rizin would work when selected" bug a
-                # real user hit with the old Rizin entry. Run it inside a
-                # real terminal emulator instead - see
-                # _find_terminal_emulator()'s own docstring for the search
-                # order.
-                terminal = _find_terminal_emulator()
-                if terminal is None:
-                    message = (
-                        "Could not launch: no terminal emulator found on PATH "
-                        "(tried x-terminal-emulator, gnome-terminal, konsole, xfce4-terminal, xterm). "
-                        "Install one of these, or run the command yourself:\n" + " ".join(argv)
-                    )
-                    logger.error("Could not launch %s - no terminal emulator on PATH", exe_path)
-                    QMessageBox.critical(self, "BinSifter", message)
-                    return
-                terminal_path, prefix_args = terminal
-                # Run through the exe's own directory as cwd (see
-                # _launch_ghidra's own cwd comment below) - harmless for
-                # tools that don't need it, and protects any that resolve
-                # sibling files/plugins relative to their own binary the
-                # way PE-bear's Qt build does.
-                wrapped = _wrap_for_terminal_pause(argv)
-                subprocess.Popen(
-                    [terminal_path, *prefix_args, *wrapped],
-                    cwd=str(Path(exe_path).parent),
-                    env=external_subprocess_env(),
-                )
+                # Terminal-native CLI tools (GDB, Binwalk) have no window of
+                # their own - a bare subprocess.Popen with no attached
+                # terminal produces no visible effect at all, the exact
+                # "PE-Bear nor Rizin would work when selected" bug a real
+                # user hit with the old Rizin entry. Run it inside a real
+                # terminal emulator instead - see _launch_in_terminal().
+                self._launch_in_terminal(argv, str(Path(exe_path).parent), exe_path)
             elif copy_path_instead:
                 self._popen_watched(argv, str(Path(exe_path).parent), exe_path)
                 QGuiApplication.clipboard().setText(target_path)
@@ -740,6 +756,33 @@ class ResultsPage(QWidget):
         except OSError as exc:
             logger.error("Could not launch %s (target %s): %s", exe_path, target_path, exc)
             QMessageBox.critical(self, "BinSifter", f"Could not launch: {exc}")
+
+    def _launch_in_terminal(self, argv: list[str], cwd: str, exe_path: str) -> None:
+        """Shared by every terminal-native CLI tool (GDB, Binwalk,
+        Malwoverview) - extracted 2026-09-07 from _launch_quick_tool() so
+        _launch_malwoverview() (which needs its own hash-lookup argv
+        construction, not the generic _QUICK_LAUNCH_TOOLS shape) can reuse
+        the exact same terminal-finding/wrap-for-pause logic instead of a
+        second, easy-to-drift copy of it. See _find_terminal_emulator()'s
+        own docstring for the search order.
+        """
+        terminal = _find_terminal_emulator()
+        if terminal is None:
+            message = (
+                "Could not launch: no terminal emulator found on PATH "
+                "(tried x-terminal-emulator, gnome-terminal, konsole, xfce4-terminal, xterm). "
+                "Install one of these, or run the command yourself:\n" + " ".join(argv)
+            )
+            logger.error("Could not launch %s - no terminal emulator on PATH", exe_path)
+            QMessageBox.critical(self, "BinSifter", message)
+            return
+        terminal_path, prefix_args = terminal
+        wrapped = _wrap_for_terminal_pause(argv)
+        subprocess.Popen(
+            [terminal_path, *prefix_args, *wrapped],
+            cwd=cwd,
+            env=external_subprocess_env(),
+        )
 
     def _popen_watched(self, argv: list[str], cwd: str, exe_path: str) -> subprocess.Popen:
         """subprocess.Popen() wrapper used by every GUI-tool quick-launch
@@ -797,6 +840,50 @@ class ResultsPage(QWidget):
             self, "BinSifter", f"{Path(exe_path).name} exited immediately after launching:\n\n{detail}"
         )
 
+    def _watch_ghidra_completion(self, process: subprocess.Popen, ghidra_root: Path, project_file: Path) -> None:
+        """Polls a running `analyzeHeadless` process (via a non-blocking
+        QTimer, not a blocking wait()) until it exits, then launches
+        Ghidra's own GUI (`ghidraRun <project_file>`) so the just-analyzed
+        project is already open for the analyst to review - added
+        2026-09-07 per a direct request. Ghidra's own `ghidraRun` script
+        passes every argument straight through to its `ghidra.GhidraRun`
+        Java entry point, which opens a project file given as an argument
+        directly - documented Ghidra behavior, not a guess, though not
+        independently GUI-verified end-to-end here (a full Ghidra GUI boot
+        under a scripted headless Xvfb session is impractical to verify
+        the same rigorous way the rest of this project's real bugs were -
+        see this project's own established precedent of being explicit
+        about untested GUI paths rather than silently claiming otherwise).
+
+        A non-zero exit or a missing `ghidraRun` (e.g. GhidraHeadlessExe
+        resolved to some other layout) skips opening the GUI silently -
+        _check_quick_launch_liveness() already reports a FAST failure, and
+        a slow failure (a real analysis error after minutes of real work)
+        isn't something popping open an empty/failed project would help
+        with anyway.
+        """
+        def _poll() -> None:
+            if process.poll() is None:
+                QTimer.singleShot(_GHIDRA_COMPLETION_POLL_MS, _poll)
+                return
+            if process.returncode != 0 or not project_file.is_file():
+                return
+            ghidra_run = ghidra_root / "ghidraRun"
+            if not ghidra_run.is_file():
+                return
+            try:
+                subprocess.Popen(
+                    [str(ghidra_run), str(project_file)],
+                    cwd=str(ghidra_root),
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    env=external_subprocess_env(),
+                )
+            except OSError as exc:
+                logger.error("Could not auto-open Ghidra project %s: %s", project_file, exc)
+
+        QTimer.singleShot(_GHIDRA_COMPLETION_POLL_MS, _poll)
+
     def _launch_ghidra(self, target_path: str) -> None:
         if not Path(target_path).is_file():
             return
@@ -817,13 +904,18 @@ class ResultsPage(QWidget):
             project_name = (
                 f"BinSifter_{record.SHA1}" if record and record.SHA1 else f"BinSifter_{Path(target_path).stem}"
             )
-            # Fire-and-forget, same as the original - headless analysis can
-            # run for minutes and Ghidra is purely static, so there's
-            # nothing to wait on here. Still watched via _popen_watched()
-            # for a fast, wrong-JAVA_HOME-style crash (previously such a
-            # failure would still show the "analysis started" success
-            # popup below, silently misreporting it).
-            self._popen_watched(
+            # Watched via _popen_watched() for a fast, wrong-JAVA_HOME-style
+            # crash (previously such a failure would still show the
+            # "analysis started" success popup below, silently
+            # misreporting it) AND, once it actually finishes, to auto-open
+            # the resulting project in Ghidra's own GUI - see
+            # _watch_ghidra_completion()'s own docstring, added 2026-09-07
+            # per a direct request ("when the Ghidra headless analysis
+            # completes it should open Ghidra and be loaded for user
+            # review") - previously genuinely fire-and-forget with no way
+            # to know when it was actually done short of watching the
+            # filesystem by hand.
+            process = self._popen_watched(
                 [
                     self._config.GhidraHeadlessExe, str(ghidra_projects_dir), project_name,
                     "-import", target_path,
@@ -832,8 +924,11 @@ class ResultsPage(QWidget):
                 str(Path(self._config.GhidraHeadlessExe).parent),
                 self._config.GhidraHeadlessExe,
             )
+            ghidra_root = Path(self._config.GhidraHeadlessExe).parent.parent
+            project_file = ghidra_projects_dir / f"{project_name}.gpr"
+            self._watch_ghidra_completion(process, ghidra_root, project_file)
             # Headless analysis runs for minutes with no further UI feedback
-            # by design (it's not tracked/polled), so without this a
+            # by design (it's not blocked on here), so without this a
             # right-click here looks like nothing happened. This is a
             # one-time "yes, it started" acknowledgment, not a progress
             # indicator - dismissed immediately, doesn't block anything.
@@ -841,11 +936,44 @@ class ResultsPage(QWidget):
                 self, "BinSifter",
                 f"Ghidra headless analysis started for {Path(target_path).name}.\n\n"
                 f"This can take several minutes. Results will be saved under:\n"
-                f"{ghidra_projects_dir / project_name}",
+                f"{ghidra_projects_dir / project_name}\n\n"
+                f"Ghidra will open automatically with this project once analysis completes.",
             )
         except OSError as exc:
             logger.error("Could not launch Ghidra (target %s): %s", target_path, exc)
             QMessageBox.critical(self, "BinSifter", f"Could not launch Ghidra: {exc}")
+
+    def _launch_malwoverview(self, target_path: str) -> None:
+        """REAL BUG FOUND AND FIXED 2026-09-07, from a real user's launch
+        report: malwoverview's CLI has moved on from the "-v 2 -f <path>"
+        form this quick-launch entry was originally written against (see
+        the removed _QUICK_LAUNCH_TOOLS row's own comment) to a subcommand
+        model - `malwoverview vt hash <hash>` - confirmed directly against
+        the real, currently-installed malwoverview's own --help output.
+        Critically, `hash` is a HASH VALUE, not a file path - this project
+        already computes SHA-1 for every scanned file (same value
+        _launch_ghidra() reuses for its own project naming), so that's
+        looked up from self._records here instead of passing target_path
+        itself - reusing the file's SHA-1 preserves the original design's
+        own stated intent ("computes and submits only the hash, never the
+        sample itself") exactly, just via a real, current invocation.
+        """
+        if not Path(target_path).is_file():
+            return
+        malwoverview_exe = self._config.MalwoverviewExe or ""
+        if not malwoverview_exe or not Path(malwoverview_exe).is_file():
+            return
+        record = next((r for r in self._records if r.Path == target_path), None)
+        sha1 = record.SHA1 if record else None
+        if not sha1:
+            QMessageBox.information(
+                self, "BinSifter",
+                "No SHA-1 hash available for this file yet - it may not have finished scanning.",
+            )
+            return
+        self._launch_in_terminal(
+            [malwoverview_exe, "vt", "hash", sha1], str(Path(malwoverview_exe).parent), malwoverview_exe
+        )
 
     def _export_for_ai_analysis(self, target_path: str) -> None:
         """Writes the Markdown+JSON pair for one file's already-extracted
