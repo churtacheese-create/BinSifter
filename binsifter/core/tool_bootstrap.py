@@ -22,6 +22,13 @@ official Qt GUI front-end (same analysis engine underneath, actual window),
 so it replaces Rizin as the quick-launch entry while Rizin itself remains
 installable and usable from a real terminal exactly as before.
 
+Every subprocess.run() here that launches an EXTERNAL program (a real
+system python3, pip, gdb) passes env=external_subprocess_env() - see
+core/proc_env.py's own docstring for the real bug this fixes (a frozen
+PyInstaller build's LD_LIBRARY_PATH, inherited by default, silently
+swaps in BinSifter's own bundled OpenSSL/etc. underneath an unrelated
+external program).
+
 Design choices worth explaining up front:
 
 - **No root/sudo, ever.** All five tools can be gotten onto a per-user,
@@ -87,6 +94,7 @@ from binsifter.core.config import (
     find_tool_path,
     get_auto_installed_tools_dir,
 )
+from binsifter.core.proc_env import external_subprocess_env
 
 logger = logging.getLogger(__name__)
 
@@ -331,11 +339,31 @@ def _install_gef(dest_root: Path) -> ToolBootstrapResult:
     only ever runs when `gdb` is already found on PATH (see
     run_tool_bootstrap()'s special-cased "GdbExe" handling below), and adds
     GEF on top of that existing GDB by running GEF's own documented
-    curl-to-`gdb -x`-based installer, which writes `source ~/.gdb-gef.py`
-    (or similar) into ~/.gdbinit itself - nothing for BinSifter to track or
-    re-resolve afterward, since the next `gdb` launch picks it up
-    automatically via the user's own gdbinit, the same as if the user had
-    run GEF's installer by hand.
+    installer, which writes `source ~/.gef-<tag>.py` into ~/.gdbinit
+    itself - nothing for BinSifter to track or re-resolve afterward, since
+    the next `gdb` launch picks it up automatically via the user's own
+    gdbinit, the same as if the user had run GEF's installer by hand.
+
+    REAL BUG FOUND AND FIXED 2026-09-07, from a real user's launch report
+    ("Could not auto-install ... GDB + GEF") and confirmed directly by
+    fetching and reading the real, current script at _GEF_INSTALL_URL: it
+    is a plain #!/usr/bin/env bash script (GEF's actual current one-liner
+    installer is `bash -c "$(curl -fsSL https://gef.blah.cat/sh)"`), not a
+    gdb-embedded Python script - it never invokes gdb at all itself, it
+    just uses the SYSTEM's own python3 (via plain subprocess calls from
+    bash) to resolve GEF's latest release tag and download gef.py, then
+    edits ~/.gdbinit directly with a shell sed/grep pipeline. The previous
+    code here saved this script as "gef-install.py" and ran it via
+    `gdb -q -x <marker>`, which - because of the .py extension - made gdb
+    try to interpret this bash script AS PYTHON, immediately failing with
+    a SyntaxError on the second real line ("set -e"). Confirmed by running
+    the real fetched script both ways on a real machine: `gdb -x` fails in
+    under a second with a Python SyntaxError; `bash <script>` succeeds in
+    a few seconds and produces a real, complete ~350KB+ gef.py plus a
+    correctly updated ~/.gdbinit. This bug predates and is independent of
+    the LD_LIBRARY_PATH fix elsewhere in this module - GEF's installer was
+    never going to succeed via the old gdb-based invocation regardless of
+    environment.
     """
     label = _TOOL_LABELS["GdbExe"]
     gdb_path = shutil.which("gdb")
@@ -343,6 +371,9 @@ def _install_gef(dest_root: Path) -> ToolBootstrapResult:
         return ToolBootstrapResult(
             "GdbExe", label, "failed", detail="gdb not found on PATH - GEF needs an existing gdb to attach to"
         )
+    bash_path = shutil.which("bash")
+    if not bash_path:
+        return ToolBootstrapResult("GdbExe", label, "failed", detail="bash not found on PATH - GEF's installer needs it")
     try:
         request = urllib.request.Request(_GEF_INSTALL_URL, headers={"User-Agent": _USER_AGENT})
         with urllib.request.urlopen(request, timeout=_NETWORK_TIMEOUT_SECONDS) as response:
@@ -350,16 +381,22 @@ def _install_gef(dest_root: Path) -> ToolBootstrapResult:
     except Exception as exc:  # noqa: BLE001
         return ToolBootstrapResult("GdbExe", label, "failed", detail=f"Could not download GEF's installer: {exc}")
 
-    marker = dest_root / "gef-install.py"
+    marker = dest_root / "gef-install.sh"
     try:
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.write_text(installer_script, encoding="utf-8")
         subprocess.run(
-            [gdb_path, "-q", "-x", str(marker)],
+            [bash_path, str(marker)],
             check=True,
             capture_output=True,
             text=True,
-            timeout=_NETWORK_TIMEOUT_SECONDS * 2,
+            # GEF's installer makes two real network calls of its own (a
+            # GitHub API tag lookup, then a raw-content gef.py download) on
+            # top of this process's own already-elapsed download above -
+            # 4x (not 2x) matches the same generosity given to every other
+            # tool's own real pip/download work elsewhere in this module.
+            timeout=_NETWORK_TIMEOUT_SECONDS * 4,
+            env=external_subprocess_env(),
         )
     except subprocess.CalledProcessError as exc:
         return ToolBootstrapResult(
@@ -443,6 +480,7 @@ def _create_private_venv(venv_dir: Path) -> str:
                 capture_output=True,
                 text=True,
                 timeout=_NETWORK_TIMEOUT_SECONDS * 4,
+                env=external_subprocess_env(),
             )
         except subprocess.CalledProcessError as exc:
             return (exc.stderr or "").strip()[-500:] or str(exc)
@@ -458,6 +496,7 @@ def _create_private_venv(venv_dir: Path) -> str:
             capture_output=True,
             text=True,
             timeout=_NETWORK_TIMEOUT_SECONDS * 4,
+            env=external_subprocess_env(),
         )
         if ensurepip_result.returncode == 0:
             return ""
@@ -471,6 +510,7 @@ def _create_private_venv(venv_dir: Path) -> str:
                 capture_output=True,
                 text=True,
                 timeout=_NETWORK_TIMEOUT_SECONDS * 4,
+                env=external_subprocess_env(),
             )
             return ""
         except subprocess.CalledProcessError as exc:
@@ -535,6 +575,7 @@ def _install_angr(dest_root: Path) -> ToolBootstrapResult:
                 capture_output=True,
                 text=True,
                 timeout=_DOWNLOAD_TIMEOUT_SECONDS * 3,  # angr pulls a real dependency chain - a plain download timeout is too tight
+                env=external_subprocess_env(),
             )
             installed = True
             break
@@ -582,6 +623,7 @@ def _install_pip_venv_tool(tool_key: str, package: str, console_script: str, des
             capture_output=True,
             text=True,
             timeout=_DOWNLOAD_TIMEOUT_SECONDS * 2,
+            env=external_subprocess_env(),
         )
     except subprocess.CalledProcessError as exc:
         return ToolBootstrapResult(

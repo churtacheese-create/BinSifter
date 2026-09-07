@@ -103,6 +103,7 @@ from binsifter.core import ai_export, speakeasy_scan
 from binsifter.core.config import BinSifterConfig
 from binsifter.core.disposition import save_disposition_entry
 from binsifter.core.models import FileRecord
+from binsifter.core.proc_env import external_subprocess_env
 from binsifter.gui.theme import ThemePalette, qcolor_to_css
 from binsifter.gui.widgets import accent_to_css
 
@@ -712,7 +713,11 @@ class ResultsPage(QWidget):
                 # sibling files/plugins relative to their own binary the
                 # way PE-bear's Qt build does.
                 wrapped = _wrap_for_terminal_pause(argv)
-                subprocess.Popen([terminal_path, *prefix_args, *wrapped], cwd=str(Path(exe_path).parent))
+                subprocess.Popen(
+                    [terminal_path, *prefix_args, *wrapped],
+                    cwd=str(Path(exe_path).parent),
+                    env=external_subprocess_env(),
+                )
             elif copy_path_instead:
                 self._popen_watched(argv, str(Path(exe_path).parent), exe_path)
                 QGuiApplication.clipboard().setText(target_path)
@@ -755,8 +760,21 @@ class ResultsPage(QWidget):
         visible or fully working - only that it didn't die within the
         first fraction of a second - but that's exactly the failure mode
         this exists to catch.
+
+        env=external_subprocess_env() - REAL BUG FOUND AND FIXED
+        2026-09-07, confirmed via strace against a real frozen install:
+        every quick-launch tool here is an EXTERNAL program (AppImages,
+        Ghidra, GDB, a private-venv console script), and without this,
+        each one would inherit the frozen app's own LD_LIBRARY_PATH -
+        pointed at BinSifter's own bundled libraries - silently swapping
+        in a mismatched/incompatible shared library underneath a
+        completely unrelated, independently-compiled tool. See
+        core/proc_env.py's own docstring for the full story (the same bug
+        broke Angr/Binwalk/Malwoverview/GDB+GEF's auto-install too).
         """
-        process = subprocess.Popen(argv, cwd=cwd, stderr=subprocess.PIPE, stdout=subprocess.DEVNULL)
+        process = subprocess.Popen(
+            argv, cwd=cwd, stderr=subprocess.PIPE, stdout=subprocess.DEVNULL, env=external_subprocess_env()
+        )
         QTimer.singleShot(
             _LIVENESS_CHECK_DELAY_MS, lambda: self._check_quick_launch_liveness(process, exe_path)
         )

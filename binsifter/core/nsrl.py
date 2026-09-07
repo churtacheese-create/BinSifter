@@ -239,30 +239,65 @@ def build_index(source_path: str, cache_path: str) -> int:
     only reach this when cache_is_fresh() says the existing cache (if any)
     is missing or stale, not on every scan.
 
+    REAL BUG FOUND AND FIXED 2026-09-07, from a real user's scan against a
+    real, current NSRL export - not the 72-million-row set this module's
+    own docstring was written against, but a 432,866,778-row, 59.78GB
+    NSRLFile.txt (NIST's "modern" full RDS set keeps growing release over
+    release). The previous version of this function accumulated every
+    parsed record into ONE contiguous in-memory `bytearray` before writing
+    anything to disk at all - at 20 bytes/record, 432.8 million records is
+    ~8.65GB for that buffer alone, which is already MORE than this real
+    machine's entire 7.2GB of RAM, regardless of how fast the source file
+    can be read or how efficient the eventual per-worker mmap lookup is.
+    Confirmed as a real contributor to a scan that ran for a very long
+    time under severe memory pressure (htop showing 6.90GB/7.20GB used,
+    CPU cores pegged at 100%) - the mmap-based lookup design this module's
+    own docstring describes was always about fixing the PER-WORKER
+    duplication cost, but the ONE-TIME parse-and-sort step itself still
+    required the entire result set to be simultaneously RAM-resident
+    before a single byte reached disk, an assumption that doesn't scale to
+    an arbitrarily large real-world NSRL export.
+
+    Fixed by never materializing the full record set in memory at all:
+    each 20-byte record is written directly to the temp output file as
+    it's parsed (streaming - O(1) extra memory for the write itself, same
+    as _extract_hex_hashes()'s own streaming read side), and the sort runs
+    against a numpy memmap of that SAME on-disk temp file (mode="r+"),
+    not an in-memory array - sorting in place still produces byte-identical
+    output to the old bytearray-backed sort (same dtype="V20" comparison,
+    same underlying bytes), but now the OS can page the working set in and
+    out of RAM under memory pressure exactly the way open_index()'s own
+    read-side mmap already does, instead of requiring the whole thing
+    resident at once. A machine with less RAM than the full sorted index
+    will run slower (real page faults against a real 59.78GB source
+    scenario), not fail outright the way a single ~8.65GB anonymous
+    allocation attempt can on a 7.2GB machine.
+
     Written to a .tmp path first and then os.replace()'d into place, which
     is atomic on both POSIX and Windows - a crash or kill mid-build leaves
     either no cache file or the previous good one, never a half-written one
-    that a later cache_is_fresh() check could mistake for valid.
+    that a later cache_is_fresh() check could mistake for valid. The mmap
+    object is explicitly closed (del) before os.replace() runs - required
+    for a rename/replace over an open-mapped file on Windows, harmless on
+    POSIX where it isn't strictly required.
     """
-    buf = bytearray()
-    for hexstr in _extract_hex_hashes(source_path):
-        buf += bytes.fromhex(hexstr)
+    tmp_path = cache_path + ".tmp"
+    count = 0
+    with open(tmp_path, "wb") as fh:
+        fh.write(bytes(_HEADER_SIZE))  # placeholder, patched below once count/source stat are known
+        for hexstr in _extract_hex_hashes(source_path):
+            fh.write(bytes.fromhex(hexstr))
+            count += 1
 
-    count = len(buf) // _RECORD_SIZE
     if count:
-        # np.frombuffer over a (mutable) bytearray gives a WRITABLE view,
-        # not a copy - sorting it in place sorts `buf` itself too, avoiding
-        # a second ~1.4GB-at-72M-records allocation just to sort. This
-        # in-place sort on a bytearray-backed view produces byte-identical
-        # results to Python's own list.sort() over the equivalent bytes
-        # objects.
-        np.frombuffer(buf, dtype="V20").sort()
+        records = np.memmap(tmp_path, dtype="V20", mode="r+", offset=_HEADER_SIZE, shape=(count,))
+        records.sort()
+        records.flush()
+        del records
 
     st = os.stat(source_path)
-    tmp_path = cache_path + ".tmp"
-    with open(tmp_path, "wb") as fh:
+    with open(tmp_path, "r+b") as fh:
         fh.write(_HEADER.pack(_MAGIC, _FORMAT_VERSION, count, st.st_mtime_ns, st.st_size))
-        fh.write(buf)
     os.replace(tmp_path, cache_path)
     return count
 

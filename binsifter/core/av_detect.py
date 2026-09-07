@@ -72,6 +72,8 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from binsifter.core.proc_env import external_subprocess_env
+
 logger = logging.getLogger(__name__)
 
 
@@ -192,6 +194,7 @@ def _systemd_unit_installed(unit: str) -> bool:
         result = subprocess.run(
             ["systemctl", "list-unit-files", unit, "--no-legend"],
             capture_output=True, text=True, timeout=10,
+            env=external_subprocess_env(),
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False

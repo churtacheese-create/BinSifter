@@ -20,6 +20,8 @@ from pathlib import Path
 
 from PySide6.QtGui import QColor
 
+from binsifter.core.proc_env import external_subprocess_env
+
 
 @dataclass(frozen=True)
 class ThemePalette:
@@ -180,7 +182,7 @@ def _run_short(args: list[str]) -> str | None:
     to never make startup feel stuck if something's badly misconfigured).
     """
     try:
-        proc = subprocess.run(args, capture_output=True, text=True, timeout=2)
+        proc = subprocess.run(args, capture_output=True, text=True, timeout=2, env=external_subprocess_env())
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return None
     if proc.returncode != 0:

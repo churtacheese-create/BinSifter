@@ -628,9 +628,16 @@ def test_install_gef_fails_when_gdb_not_on_path(monkeypatch, tmp_path):
     assert "gdb" in result.detail.lower()
 
 
+def _fake_which_gdb_and_bash(name: str) -> str | None:
+    return {"gdb": "/usr/bin/gdb", "bash": "/usr/bin/bash"}.get(name)
+
+
 def test_install_gef_downloads_and_runs_installer_script(monkeypatch, tmp_path):
-    monkeypatch.setattr(tb.shutil, "which", lambda name: "/usr/bin/gdb" if name == "gdb" else None)
-    monkeypatch.setattr(tb.urllib.request, "urlopen", lambda *a, **k: io.BytesIO(b"# fake gef installer\n"))
+    """REGRESSION for the real bug found 2026-09-07: GEF's actual installer
+    at _GEF_INSTALL_URL is a bash script, not a gdb-embedded Python script
+    - this confirms _install_gef() invokes it via bash, not `gdb -x`."""
+    monkeypatch.setattr(tb.shutil, "which", _fake_which_gdb_and_bash)
+    monkeypatch.setattr(tb.urllib.request, "urlopen", lambda *a, **k: io.BytesIO(b"#!/usr/bin/env bash\necho fake\n"))
 
     run_calls = []
 
@@ -642,14 +649,14 @@ def test_install_gef_downloads_and_runs_installer_script(monkeypatch, tmp_path):
     result = tb._install_gef(tmp_path)
     assert result.status == "installed"
     assert result.path == "/usr/bin/gdb"
-    assert run_calls and run_calls[0][0] == "/usr/bin/gdb"
+    assert run_calls and run_calls[0][0] == "/usr/bin/bash"
 
 
 def test_install_gef_reports_failed_when_installer_script_fails(monkeypatch, tmp_path):
     import subprocess as real_subprocess
 
-    monkeypatch.setattr(tb.shutil, "which", lambda name: "/usr/bin/gdb" if name == "gdb" else None)
-    monkeypatch.setattr(tb.urllib.request, "urlopen", lambda *a, **k: io.BytesIO(b"# fake gef installer\n"))
+    monkeypatch.setattr(tb.shutil, "which", _fake_which_gdb_and_bash)
+    monkeypatch.setattr(tb.urllib.request, "urlopen", lambda *a, **k: io.BytesIO(b"#!/usr/bin/env bash\necho fake\n"))
 
     def _fake_run(cmd, **kwargs):  # noqa: ARG001
         raise real_subprocess.CalledProcessError(1, cmd, output="", stderr="gdb: syntax error")
@@ -658,6 +665,13 @@ def test_install_gef_reports_failed_when_installer_script_fails(monkeypatch, tmp
     result = tb._install_gef(tmp_path)
     assert result.status == "failed"
     assert "syntax error" in result.detail
+
+
+def test_install_gef_fails_when_bash_not_on_path(monkeypatch, tmp_path):
+    monkeypatch.setattr(tb.shutil, "which", lambda name: "/usr/bin/gdb" if name == "gdb" else None)
+    result = tb._install_gef(tmp_path)
+    assert result.status == "failed"
+    assert "bash" in result.detail.lower()
 
 
 # ---------- Ghidra (+ portable JDK) ----------
