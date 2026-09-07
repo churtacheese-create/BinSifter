@@ -15,8 +15,6 @@ save, and Start-ToolMetadataRefresh's status-bar tool-version text.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QApplication,
@@ -24,13 +22,12 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
-from binsifter.core import av_detect, defender
+from binsifter.core import av_detect
 from binsifter.core.config import (
     BinSifterConfig,
     find_tool_path,
@@ -120,13 +117,12 @@ class SettingsPage(QWidget):
         self.status_label = QLabel("")
         root.addWidget(self.status_label)
 
-        # The Defender exclusion button below only helps if Defender is the
-        # machine's active antivirus product. This detects whatever's
-        # actually installed (via av_detect.py - the root/SecurityCenter2
-        # WMI class Windows' own Security app reads, or a curated table of
-        # known systemd units/processes/install paths on Linux) and, for
-        # anything other than Windows Defender, points the analyst at that
-        # vendor's own exclusion settings instead.
+        # Detects whatever AV/EDR product is actually installed (via
+        # av_detect.py's curated table of known Linux systemd
+        # units/processes/install paths) and points the analyst at that
+        # vendor's own exclusion settings - there's no automated exclusion
+        # action here (that was a Windows Defender-specific feature, removed
+        # 2026-09-07 since Winnow is Linux-only and it could never work).
         root.addSpacing(24)
         av_label = QLabel("Antivirus")
         av_label.setStyleSheet(
@@ -135,10 +131,9 @@ class SettingsPage(QWidget):
         root.addWidget(av_label)
 
         av_explainer = QLabel(
-            "Detects known antivirus/EDR product(s) installed on this machine - via Windows "
-            "Security Center on Windows, or known services/processes on Linux. The automated "
-            "exclusion button below only works for Windows Defender - for any other product, this "
-            "points you at where to add the exclusion yourself."
+            "Detects known antivirus/EDR product(s) installed on this machine via known Linux "
+            "services/processes, and points you at where to add a scan exclusion for that product "
+            "if extracted archive contents are being flagged/quarantined during a scan."
         )
         av_explainer.setWordWrap(True)
         av_explainer.setStyleSheet(f"color: {accent_to_css(theme.MutedFore)}; border: none; background: transparent;")
@@ -157,45 +152,6 @@ class SettingsPage(QWidget):
         self.av_detect_status_label = QLabel("")
         self.av_detect_status_label.setWordWrap(True)
         root.addWidget(self.av_detect_status_label)
-
-        # Windows Defender's real-time protection can race BinSifter's
-        # worker pool, quarantining extracted archive contents between
-        # extraction and BinSifter opening them (OSError [Errno 22]
-        # mid-scan). This button adds <ReportDirectory>/extracted_archives
-        # to Defender's scan-exclusion list to avoid that race -
-        # deliberately a separate, explicit, confirmation-gated action, not
-        # something a scan does on its own (see defender.py for the
-        # elevation design).
-        root.addSpacing(24)
-        defender_label = QLabel("Windows Defender")
-        defender_label.setStyleSheet(
-            f"color: {accent_to_css(theme.Fore)}; border: none; background: transparent; font-weight: bold;"
-        )
-        root.addWidget(defender_label)
-
-        defender_explainer = QLabel(
-            "If real-time protection is quarantining extracted archive contents before BinSifter "
-            "can finish scanning them, you can exclude the extraction folder from Defender's "
-            "scanning. This requires administrator approval (a UAC prompt) and means Defender will "
-            "NOT automatically flag anything placed in that folder - only use this on a machine "
-            "where you're comfortable with that tradeoff for malware analysis."
-        )
-        defender_explainer.setWordWrap(True)
-        defender_explainer.setStyleSheet(f"color: {accent_to_css(theme.MutedFore)}; border: none; background: transparent;")
-        root.addWidget(defender_explainer)
-
-        root.addSpacing(8)
-        self.defender_button = QPushButton("Add extraction folder to Defender exclusions...")
-        self.defender_button.setFixedHeight(32)
-        self.defender_button.setStyleSheet(
-            f"QPushButton {{ background-color: {qcolor_to_css(theme.ButtonBack)}; "
-            f"color: {accent_to_css(theme.Fore)}; border: 1px solid {qcolor_to_css(theme.Border)}; }}"
-        )
-        self.defender_button.clicked.connect(self._on_add_defender_exclusion_clicked)
-        root.addWidget(self.defender_button)
-
-        self.defender_status_label = QLabel("")
-        root.addWidget(self.defender_status_label)
 
         root.addStretch(1)
 
@@ -275,55 +231,3 @@ class SettingsPage(QWidget):
         self.av_detect_status_label.setStyleSheet(f"color: {accent_to_css(theme.Success)}; border: none; background: transparent;")
         self.av_detect_status_label.setText("\n".join(lines))
         self.av_detect_button.setEnabled(True)
-
-    def _on_add_defender_exclusion_clicked(self) -> None:
-        theme = self._theme
-        report_dir = self._config.ReportDirectory
-        if not report_dir:
-            self.defender_status_label.setStyleSheet(f"color: {accent_to_css(theme.Danger)}; border: none; background: transparent;")
-            self.defender_status_label.setText("Report Directory isn't set yet - save Settings first.")
-            return
-
-        target = str(Path(report_dir) / "extracted_archives")
-
-        confirmed = QMessageBox.question(
-            self,
-            "Add Defender Exclusion",
-            f"This will prompt for administrator approval and add the following folder to Windows "
-            f"Defender's scan exclusions:\n\n{target}\n\n"
-            "Files placed there (including real malware extracted from archives during a scan) will "
-            "NOT be automatically flagged by Defender. Continue?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if confirmed != QMessageBox.StandardButton.Yes:
-            return
-
-        # Make sure the folder actually exists before excluding it - Add-
-        # MpPreference accepts a path to a not-yet-existing folder fine,
-        # but a real folder here means the exclusion can immediately be
-        # verified in Windows Security's own UI without wondering whether
-        # BinSifter will create it with a different path later.
-        try:
-            Path(target).mkdir(parents=True, exist_ok=True)
-        except OSError:
-            pass  # non-fatal - Add-MpPreference itself doesn't require the path to exist yet
-
-        self.defender_button.setEnabled(False)
-        self.defender_status_label.setStyleSheet(f"color: {accent_to_css(theme.Fore)}; border: none; background: transparent;")
-        self.defender_status_label.setText("Waiting for UAC elevation - check for a prompt on your screen...")
-        # Repaint before the blocking subprocess call below - otherwise the
-        # status text above wouldn't actually appear until AFTER the (up to
-        # 2-minute) elevation/Add-MpPreference call already returned.
-        QApplication.processEvents()
-
-        try:
-            defender.add_exclusion_path(target)
-        except defender.DefenderExclusionError as exc:
-            self.defender_status_label.setStyleSheet(f"color: {accent_to_css(theme.Danger)}; border: none; background: transparent;")
-            self.defender_status_label.setText(str(exc))
-        else:
-            self.defender_status_label.setStyleSheet(f"color: {accent_to_css(theme.Success)}; border: none; background: transparent;")
-            self.defender_status_label.setText(f"Added to Defender exclusions: {target}")
-        finally:
-            self.defender_button.setEnabled(True)
