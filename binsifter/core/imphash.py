@@ -15,6 +15,7 @@ verify against a known-good sample first.
 from __future__ import annotations
 
 import bisect
+import gc
 import logging
 
 import pefile
@@ -84,6 +85,52 @@ def _patch_pefile_section_lookup() -> None:
 
 
 _patch_pefile_section_lookup()
+
+
+# REAL BUG FOUND AND FIXED 2026-09-08, from a real user's scan of real
+# casework - and very likely the dominant part of the same "imphash
+# averaging 9.08s/file" the section-lookup patch above was written to
+# chase (that patch is real and correct, but its own commit message
+# noted it couldn't reproduce the full number synthetically - this is
+# why). pefile.PE._close_data() ends with an UNCONDITIONAL gc.collect() -
+# a full generational garbage collection - on every single PE.close(),
+# and compute_imphash() closes a PE per file. That call is trivial in
+# isolation, but a BinSifter scan worker process has a huge, permanently
+# live heap resident the whole scan: the NSRL known-good index (hundreds
+# of millions of hashes), the loaded capa ruleset, the MITRE ATT&CK
+# database, YARA rules, disposition/blocklist data. gc.collect() has to
+# walk all of it looking for cycles, every file, and it is a FIXED cost
+# with no relation to the PE being hashed - measured directly on a real
+# Linux VM: ~19ms with a small heap, ~800-1000ms with a synthetic ~8M
+# object heap, and a real scan showed a 14KB .NET DLL taking 4.3s. Over
+# a few hundred files this dwarfs every other per-file stage.
+#
+# Fixed by wrapping _close_data() to suppress just its forced collection
+# (pefile calls gc.collect() unqualified against the module global, so
+# gc.disable() does NOT stop it - confirmed - the collection has to be
+# neutralised specifically). pefile only forces it to free PE-object
+# reference cycles promptly; Python's normal automatic, threshold-driven
+# gc still runs and still collects those cycles a moment later, so this
+# is a pure throughput fix with no correctness or leak consequence -
+# verified byte-identical imphash output before/after against real PEs.
+# Same "patch the installed third-party library in place, don't vendor a
+# fork" approach as the section-lookup patch above and authenticode.py's
+# signify patches.
+def _patch_pefile_close_skip_forced_gc() -> None:
+    original = pefile.PE._close_data
+
+    def _close_data_without_forced_gc(self: "pefile.PE") -> None:
+        saved_collect = gc.collect
+        gc.collect = lambda *args, **kwargs: 0
+        try:
+            original(self)
+        finally:
+            gc.collect = saved_collect
+
+    pefile.PE._close_data = _close_data_without_forced_gc
+
+
+_patch_pefile_close_skip_forced_gc()
 
 
 def compute_imphash(path: str) -> str | None:
