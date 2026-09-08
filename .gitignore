@@ -23,6 +23,9 @@ Catalogs/
 *_workspaceFix.ps1
 *_workspaceFix_*.log
 
+# Claude Code local session settings (permissions etc.) - machine-local, never source
+.claude/settings.local.json
+
 # OS junk
 Thumbs.db
 .DS_Store
