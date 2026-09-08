@@ -21,7 +21,7 @@
 ; installer\Output\BinSifter-Winnow-Setup.exe
 
 #define MyAppName "BinSifter Winnow"
-#define MyAppVersion "2.0.0"
+#define MyAppVersion "2.0.7"
 #define MyAppPublisher "BinSifter Project"
 #define MyAppExeName "BinSifter-Winnow.exe"
 #define MyDistDir "dist\BinSifter-Winnow"
