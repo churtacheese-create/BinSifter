@@ -190,6 +190,59 @@ def test_installer_exception_becomes_a_failed_result_not_a_raise(monkeypatch):
     assert "simulated unexpected failure" in cutter_result.detail
 
 
+def test_failed_result_gets_manual_install_and_directory_fallback_appended(monkeypatch, tmp_path):
+    """REAL GAP FOUND AND FIXED 2026-09-07, per a direct request: a bare
+    technical error told the analyst WHAT broke but never what to do
+    about it. A "failed" result's detail should end up with both the real
+    error AND concrete next steps: the tool's own manual-install command
+    plus a reminder that dropping the result under BinSifter's own
+    auto-installed-tools folder works with no Settings change needed."""
+    config = _config_with_all_tools_missing()
+    monkeypatch.setattr(tb, "check_internet_available", lambda: True)
+    monkeypatch.setattr(tb, "get_auto_installed_tools_dir", lambda: tmp_path / "AutoInstalledTools")
+
+    def _real_failure(_dest_root):
+        return tb.ToolBootstrapResult("CutterExe", "Cutter", "failed", detail="download failed: connection reset")
+
+    monkeypatch.setitem(tb._INSTALLERS, "CutterExe", _real_failure)
+    for key in ("PeBearExe", "AnyaExe", "DieExe", "AngrExe", "UnblobExe", "MalwoverviewExe"):
+        monkeypatch.setitem(tb._INSTALLERS, key, lambda _d, k=key: tb.ToolBootstrapResult(k, k, "failed", detail="stubbed"))
+    monkeypatch.setattr(tb, "_install_gef", lambda _d: tb.ToolBootstrapResult("GdbExe", "GDB + GEF", "failed", detail="stubbed"))
+    monkeypatch.setattr(tb, "_install_ghidra", lambda _d: tb.ToolBootstrapResult("GhidraHeadlessExe", "Ghidra", "failed", detail="stubbed"))
+
+    results = tb.run_tool_bootstrap(config)
+    cutter_result = next(r for r in results if r.tool_key == "CutterExe")
+    assert cutter_result.status == "failed"
+    assert "download failed: connection reset" in cutter_result.detail
+    assert "Path to tools" in cutter_result.detail
+    assert str(tmp_path / "AutoInstalledTools") in cutter_result.detail
+
+
+def test_gdb_gef_failure_does_not_get_directory_fallback_appended(monkeypatch, tmp_path):
+    """GDB/GEF is deliberately excluded from the directory-fallback advice
+    (see run_tool_bootstrap()'s own comment) - GEF isn't a relocatable
+    binary the "drop it under BinSifter's own folder" instruction makes
+    sense for, it's a ~/.gdbinit-sourced script tied to an existing real
+    gdb already on PATH."""
+    config = _config_with_all_tools_missing()
+    config.GdbExe = "/usr/bin/gdb"
+    monkeypatch.setattr(tb.shutil, "which", lambda name: "/usr/bin/gdb" if name == "gdb" else None)
+    monkeypatch.setattr(tb, "check_internet_available", lambda: True)
+    monkeypatch.setattr(tb, "get_auto_installed_tools_dir", lambda: tmp_path / "AutoInstalledTools")
+
+    for key in tb.TOOL_FILE_NAMES:
+        monkeypatch.setitem(tb._INSTALLERS, key, lambda _d, k=key: tb.ToolBootstrapResult(k, k, "failed", detail="stubbed"))
+    monkeypatch.setattr(
+        tb, "_install_gef", lambda _d: tb.ToolBootstrapResult("GdbExe", "GDB + GEF", "failed", detail="GEF install script failed: real error")
+    )
+    monkeypatch.setattr(tb, "_install_ghidra", lambda _d: tb.ToolBootstrapResult("GhidraHeadlessExe", "Ghidra", "failed", detail="stubbed"))
+
+    results = tb.run_tool_bootstrap(config)
+    gdb_result = next(r for r in results if r.tool_key == "GdbExe")
+    assert gdb_result.detail == "GEF install script failed: real error"
+    assert str(tmp_path / "AutoInstalledTools") not in gdb_result.detail
+
+
 def test_successful_installer_result_is_passed_through(monkeypatch, tmp_path):
     config = _config_with_all_tools_missing()
     monkeypatch.setattr(tb, "check_internet_available", lambda: True)
