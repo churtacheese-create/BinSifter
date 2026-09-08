@@ -349,6 +349,75 @@ def test_stalled_worker_is_abandoned_instead_of_hanging_forever(tmp_path, monkey
     assert other_statuses == ["Completed", "Completed"]
 
 
+def test_slow_stage_logs_a_warning_naming_the_file_and_size(tmp_path, monkeypatch):
+    """REGRESSION for the real diagnostic gap found 2026-09-07: a real
+    scan's end-of-scan aggregate summary could show THAT the imphash stage
+    was slow on average (9.08s/file), but nothing recorded which SPECIFIC
+    file(s) actually caused it, making the real root cause (a pefile
+    performance bug - see imphash.py) impossible to confirm against the
+    actual files after the fact. _stage_end() now logs a warning, per
+    stage, the moment any one file exceeds that stage's own threshold (see
+    engine.py's _SLOW_STAGE_THRESHOLDS_SECONDS) - this confirms that
+    warning actually fires, names the real file path, and includes its
+    size for quick "expected for a file this size or not" triage.
+
+    Uses the same in-process _FakePool substitute the stalled-worker test
+    above does, so _process_one_file() runs directly in this test process
+    (no real multiprocessing spawn). Captured via monkeypatching
+    engine.py's own `logger.warning` directly rather than pytest's caplog -
+    _pool_worker_init() (run for real here, exactly as a real worker
+    would) clears the root logger's handlers as part of its own real,
+    correct behavior (see that function's own docstring), which would
+    otherwise silently swallow caplog's handler too since this all runs
+    in the test's own process.
+    """
+    import time as time_mod
+
+    import binsifter.core.engine as engine_mod
+
+    src_dir = _make_files(tmp_path, 1)
+    slow_path = str(Path(src_dir) / "file0.bin")
+    file_size = Path(slow_path).stat().st_size
+    config = _config(src_dir)
+
+    real_hash_and_score_file = engine_mod.hashing.hash_and_score_file
+
+    def _slow_hash_and_score_file(path):
+        time_mod.sleep(2.1)  # exceeds the "hash" stage's 2.0s threshold
+        return real_hash_and_score_file(path)
+
+    monkeypatch.setattr(engine_mod.hashing, "hash_and_score_file", _slow_hash_and_score_file)
+
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        engine_mod.logger, "warning", lambda fmt, *args: warnings.append(fmt % args)
+    )
+
+    class _FakePool:
+        def __init__(self, *, processes, initializer, initargs):
+            initializer(*initargs)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            return False
+
+        def apply_async(self, func, args, callback=None, error_callback=None):
+            result = func(*args)
+            if callback:
+                callback(result)
+
+    monkeypatch.setattr(engine_mod, "_NoDaemonPool", _FakePool)
+
+    scan_directory(config)
+
+    slow_warnings = [w for w in warnings if "Slow hash stage" in w]
+    assert len(slow_warnings) == 1
+    assert slow_path in slow_warnings[0]
+    assert str(file_size) in slow_warnings[0]
+
+
 def test_stop_clicked_mid_scan_actually_stops_instead_of_reverting(tmp_path, monkeypatch):
     """2026-08-14: real-world report - clicking Stop mid-scan showed
     "Stopping..." in the status bar and then went right back to

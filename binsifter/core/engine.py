@@ -99,6 +99,38 @@ logger = logging.getLogger(__name__)
 # _default_worker_count().
 MAX_SCAN_WORKERS = 16
 
+# Any single per-file stage taking at least its own threshold here gets a
+# warning-level log line - see _process_one_file()'s _stage_end() for why
+# (added 2026-09-07, per a direct request to pin down which specific
+# real-world files were behind a scan averaging 9.08s/file for imphash
+# alone - the existing aggregate summary could show THAT it was slow, but
+# never which file(s) actually caused it). Deliberately per-stage, not one
+# blanket number: these stages have genuinely different normal cost
+# profiles, confirmed directly against real data - a single threshold low
+# enough to catch a genuine imphash anomaly (confirmed cost on a real
+# 23MB legitimate DLL: ~0.06s) would fire on every routine ssdeep call
+# (this project's own documented pure-Python throughput, ~1.16MB/s, makes
+# 17s+ NORMAL for just a ~20MB file) and every routine capa call (a real
+# scan's own aggregate showed a ~20.9s average on the one file that ran
+# it) - which would drown out the one signal this exists to surface
+# instead of helping find it. Each threshold below is set well above that
+# stage's own observed-normal cost, low enough to still catch a real
+# regression early (e.g. the old, since-fixed uncached-catalog bug that
+# made authenticode average 61.8s/file - a 2s authenticode threshold would
+# have caught that on literally the first file, not 4+ hours in), and
+# below the point where a stage already has its own dedicated hang-safety
+# net (capa's own PersistentCapaWorker 90s timeout).
+_SLOW_STAGE_THRESHOLDS_SECONDS: dict[str, float] = {
+    "hash": 2.0,
+    "authenticode": 2.0,
+    "imphash": 2.0,
+    "ssdeep": 20.0,
+    "yara": 5.0,
+    "capa": 60.0,
+    "floss_iocs": 10.0,
+}
+_DEFAULT_SLOW_STAGE_THRESHOLD_SECONDS = 5.0
+
 # Hard ceiling on how long scan_directory()'s result-draining loop will
 # wait with ZERO forward progress before giving up on the rest of the
 # batch, rather than blocking forever. capa is the only per-file stage with
@@ -464,7 +496,40 @@ def _process_one_file(path: str) -> _WorkerFileResult:
         return time.perf_counter()
 
     def _stage_end(label: str, t0: float) -> None:
-        stage_seconds[label] = stage_seconds.get(label, 0.0) + (time.perf_counter() - t0)
+        """Also logs a warning for any single stage that takes an unusually
+        long time on ONE file - added 2026-09-07, per a direct request to
+        dig into a real scan's imphash stage averaging 9.08s/file (54.5% of
+        all per-file time). The existing aggregate stage_seconds dict below
+        (see scan_directory()'s own end-of-scan summary) only ever reports
+        a batch-wide AVERAGE, which is exactly what made the original
+        investigation hard - a real root cause (a pefile performance bug
+        triggered by files with an unusual section layout - see
+        imphash.py's own fix) was found and fixed, but which SPECIFIC
+        file(s) actually hit it in that real scan couldn't be pinned down
+        after the fact, since nothing recorded per-file timing anywhere.
+
+        Deliberately NOT a new CSV column (report.py's own module
+        docstring is explicit that its 37-column layout is a fixed,
+        stable format matching the original PowerShell version exactly -
+        analysts' existing tooling/muscle-memory depends on it not
+        silently gaining columns) - a log line reuses the exact mechanism
+        this project's own diagnostics already go through (the Logs page,
+        already piped to file when launched from a terminal - see
+        winnow-run.log from earlier real scans), giving the same
+        "which file, which stage, how long" answer without touching the
+        report format at all. File size is included so a slow line can be
+        eyeballed as "large file, plausibly expected" vs. "small file,
+        genuinely suspicious" without needing a second lookup.
+        """
+        elapsed = time.perf_counter() - t0
+        stage_seconds[label] = stage_seconds.get(label, 0.0) + elapsed
+        threshold = _SLOW_STAGE_THRESHOLDS_SECONDS.get(label, _DEFAULT_SLOW_STAGE_THRESHOLD_SECONDS)
+        if elapsed >= threshold:
+            try:
+                size = Path(path).stat().st_size
+            except OSError:
+                size = -1
+            logger.warning("Slow %s stage: %.1fs for %s (%d bytes)", label, elapsed, path, size)
 
     try:
         t0 = _stage_start()
