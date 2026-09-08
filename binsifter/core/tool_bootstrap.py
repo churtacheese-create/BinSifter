@@ -86,7 +86,7 @@ import urllib.request
 import venv
 import zipfile
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace as dataclass_replace
 from pathlib import Path
 
 from binsifter.core.config import (
@@ -848,6 +848,31 @@ def _gef_already_configured() -> bool:
     return "gef" in contents
 
 
+def _manual_fallback_instruction(field_name: str, search_root: Path) -> str:
+    """The "here's what to actually do about it" instruction appended to
+    every no_internet/failed ToolBootstrapResult's detail - added
+    2026-09-07 per a direct request: a bare technical error (a raw pip/
+    download/extract exception string) told an analyst WHAT broke but
+    never what to do about it, forcing a trip to the Logs page or source
+    just to find the exact command a real README already had.
+
+    Combines _MANUAL_INSTALL_HINTS' existing per-tool command/URL with a
+    concrete, always-true landing spot: `search_root` is already searched
+    automatically on every launch (via set_tool_paths_from_directory()'s
+    own AutoInstalledTools fallback, or - for Ghidra specifically, whose
+    resolution sits outside that helper - build_default_config()'s own
+    equivalent fallback check), so telling the user to drop/symlink the
+    result there works uniformly regardless of where their own install
+    command happens to put it, with no Settings change required at all.
+    """
+    hint = _MANUAL_INSTALL_HINTS.get(field_name, "install it manually.")
+    return (
+        f"{hint} Once installed, either point \"Path to tools\" in Settings at it, or place/symlink it "
+        f"anywhere under {search_root} - BinSifter searches that folder automatically on every launch, "
+        f"no Settings change needed."
+    )
+
+
 def run_tool_bootstrap(config: BinSifterConfig) -> list[ToolBootstrapResult]:
     """Checks each quick-launch tool; for anything not already resolvable,
     attempts an install (network permitting). Safe to call on every
@@ -923,10 +948,11 @@ def run_tool_bootstrap(config: BinSifterConfig) -> list[ToolBootstrapResult]:
             internet_checked = True
 
         if not internet_available:
-            hint = _MANUAL_INSTALL_HINTS.get(field_name, "install it manually and point \"Path to tools\" at it.")
+            search_root = dest_root / "ghidra" if field_name == "GhidraHeadlessExe" else dest_root
+            instruction = _manual_fallback_instruction(field_name, search_root)
             result = ToolBootstrapResult(
                 field_name, label, "no_internet",
-                detail=f"No internet connection - reconnect and relaunch Winnow, or {hint}",
+                detail=f"No internet connection - reconnect and relaunch Winnow, or {instruction}",
             )
             results.append(result)
             _log(result)
@@ -942,6 +968,18 @@ def run_tool_bootstrap(config: BinSifterConfig) -> list[ToolBootstrapResult]:
         except Exception as exc:  # noqa: BLE001 - absolute last resort; a per-installer try/except should already catch everything real
             logger.exception("Unexpected error auto-installing %s", label)
             result = ToolBootstrapResult(field_name, label, "failed", detail=f"Unexpected error: {exc}")
+        if result.status == "failed" and field_name != "GdbExe":
+            # GdbExe excluded deliberately: GEF (this branch's installer
+            # for that key) isn't a relocatable binary the "drop it under
+            # BinSifter's own folder" advice makes sense for - it's a
+            # ~/.gdbinit-sourced script tied to an existing real gdb on
+            # PATH, and GDB's own missing-from-PATH case is handled by its
+            # own dedicated, already-complete message earlier in this
+            # function instead.
+            search_root = dest_root / "ghidra" if field_name == "GhidraHeadlessExe" else dest_root
+            result = dataclass_replace(
+                result, detail=f"{result.detail} {_manual_fallback_instruction(field_name, search_root)}"
+            )
         results.append(result)
         _log(result)
 

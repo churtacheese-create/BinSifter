@@ -324,12 +324,24 @@ class MainWindow(QMainWindow):
         if installed:
             lines.append("Installed: " + ", ".join(r.tool_label for r in installed))
         if failed:
-            lines.append("Could not auto-install: " + ", ".join(r.tool_label for r in failed))
+            # REAL GAP FOUND AND FIXED 2026-09-07, per a direct request:
+            # this used to be just a bare list of tool labels - "Could not
+            # auto-install: Binwalk, GDB + GEF" - with the actual reason
+            # (a real pip/download/extract error, or tool_bootstrap.py's
+            # own manual-install guidance - see
+            # _manual_fallback_instruction()) only ever reaching the Logs
+            # page, never this popup. An analyst reading this popup alone
+            # had no way to tell "network hiccup, will retry next launch"
+            # apart from "this needs a real system dependency you have to
+            # install yourself" without a separate trip to the Logs page.
+            lines.append(
+                "Could not auto-install:\n"
+                + "\n".join(f"  - {r.tool_label}: {r.detail}" for r in failed)
+            )
         if no_internet:
             lines.append(
-                "No internet connection, so these couldn't be auto-installed. Reconnect and relaunch "
-                "Winnow to retry, or install them yourself:\n"
-                + "\n".join(f"  - {r.tool_label}" for r in no_internet)
+                "Could not auto-install (no internet connection):\n"
+                + "\n".join(f"  - {r.tool_label}: {r.detail}" for r in no_internet)
             )
         QMessageBox.information(self, "BinSifter - quick-launch tools", "\n\n".join(lines))
 
