@@ -117,6 +117,21 @@ vivisect_hidden = collect_submodules("vivisect")
 envi_hidden = collect_submodules("envi")
 capa_hidden = collect_submodules("capa")
 
+# vstruct is a THIRD top-level package in the vivisect stack (alongside
+# vivisect and envi, not under either) - REAL BUG FOUND 2026-09-08 from a
+# real user's scan of real malware: capa failed on EVERY Windows PE it
+# analyzed with "No module named 'vstruct.defs.windows.win_6_1_amd64'" /
+# "...win_5_1_i386.ntdll". vivisect loads these OS/arch-specific struct
+# definition modules by name at analysis time (a fresh PE picks the set
+# matching its declared Windows version + bitness), so PyInstaller's
+# static analysis never sees the import and vstruct.defs.* is left out of
+# the build entirely - the exact "works until you analyze a specific
+# file" failure mode the vivisect/envi collect_submodules() calls above
+# already exist to prevent, just missing the package that actually holds
+# the Windows defs. collect_submodules() pulls in every vstruct.defs.*
+# submodule regardless of which one a static scan finds reachable.
+vstruct_hidden = collect_submodules("vstruct")
+
 # ---------------------------------------------------------------------------
 # 2026-08-15, added after a real installer's footer status bar reported
 # "YARA: not installed", "Capa: not installed", "SSDEEP: not installed" on
@@ -160,7 +175,7 @@ a = Analysis(
     ],
     hiddenimports=[
         *mscerts_hidden, *speakeasy_hidden, *unicorn_hidden, *signify_hidden,
-        *vivisect_hidden, *envi_hidden, *capa_hidden,
+        *vivisect_hidden, *envi_hidden, *capa_hidden, *vstruct_hidden,
         # multiprocessing.Pool workers (engine.py's scan_directory()) need
         # their own entry point resolvable when frozen - PyInstaller's
         # multiprocessing support handles the spawn bootstrap itself, but
