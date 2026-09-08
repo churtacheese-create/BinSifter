@@ -163,8 +163,65 @@ RESULT_STALL_TIMEOUT_SECONDS = 1200
 STOP_GRACE_SECONDS = 5
 
 
+# Rough, deliberately conservative real-world memory footprint per scan
+# worker - REAL BUG FOUND AND FIXED 2026-09-08, from a real scan against
+# real casework: _default_worker_count() used to size purely off CPU
+# count, with no regard for available memory at all. Confirmed directly
+# via top/free on a real 4-core, 7.2GB VM mid-scan: 4 concurrent workers
+# (each holding ~850-920MB RSS - a real malware-analysis stack: pefile/
+# signify/yara/capa/vivisect, NSRL/ATT&CK/disposition data, etc.) pushed
+# the machine into sustained swapping - kswapd0 alone was consuming ~88%
+# of a full CPU core continuously, with under 130MB genuinely free and
+# 2.5GB+ already swapped out. Once that starts, ANY per-file stage that
+# happens to touch memory at the wrong moment pays a page-fault tax -
+# confirmed directly against the real scan's own per-file timing log
+# (see _SLOW_STAGE_THRESHOLDS_SECONDS's own history): imphash on a single
+# 51KB file took 169.2s, escalating over the course of the run (82.5s,
+# then 121.7s, then 169.2s) with zero correlation to file size - the
+# signature of worsening swap thrashing, not a per-file algorithmic cost
+# (a real, separate, smaller pefile inefficiency WAS also found and fixed
+# the same day - see imphash.py - but this is the dominant real cause).
+# 1.5GB is a deliberately generous per-worker budget (real observed
+# steady-state RSS was under 1GB) - capa/vivisect's own transient peak
+# usage during a single file's analysis can run well above its
+# steady-state average, and it's far better to run fewer workers at full
+# real throughput than more workers all fighting the kernel for pages.
+_ESTIMATED_MEMORY_PER_WORKER_BYTES = 1_500 * 1024 * 1024
+
+
+def _available_memory_bytes(meminfo_path: str = "/proc/meminfo") -> int | None:
+    """Linux-only (Winnow's only real deployment target - see
+    docs/winnow.md) - MemAvailable from /proc/meminfo is the kernel's own
+    best estimate of how much can actually be allocated right now without
+    swapping, deliberately not MemFree, which excludes reclaimable page
+    cache/buffers and would badly undercount real headroom (this project's
+    own NSRL mmap cache alone can legitimately hold a large chunk of RAM
+    as reclaimable buff/cache - see nsrl.py - that MemFree would wrongly
+    count against available capacity).
+
+    Returns None (not 0) on any failure - missing file, unexpected
+    format, a non-Linux dev/test environment - so _default_worker_count()
+    can cleanly fall back to its old CPU-only sizing instead of treating
+    "couldn't read this" the same as "confirmed zero memory available".
+    """
+    try:
+        with open(meminfo_path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                if line.startswith("MemAvailable:"):
+                    kib = int(line.split()[1])
+                    return kib * 1024
+    except (OSError, ValueError, IndexError):
+        pass
+    return None
+
+
 def _default_worker_count() -> int:
-    return max(1, min(MAX_SCAN_WORKERS, os.cpu_count() or 4))
+    cpu_based = max(1, min(MAX_SCAN_WORKERS, os.cpu_count() or 4))
+    available = _available_memory_bytes()
+    if available is None:
+        return cpu_based
+    memory_based = max(1, available // _ESTIMATED_MEMORY_PER_WORKER_BYTES)
+    return min(cpu_based, memory_based)
 
 
 # ================= Non-daemonic pool (required for capa's own subprocess) =====

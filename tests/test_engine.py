@@ -546,3 +546,75 @@ def test_archive_contents_scanned_through_real_worker_pool_with_source_archive_s
     # actual bug this test guards against.
     assert by_name["inner1.txt"].SourceArchive == str(archive_path)
     assert by_name["inner2.txt"].SourceArchive == str(archive_path)
+
+
+# ---------- memory-aware worker sizing ----------
+# REGRESSION for the real bug found and fixed 2026-09-08: _default_worker_
+# count() used to size purely off CPU count, with no regard for available
+# memory - see that function's own docstring for the real scan (4 workers
+# on a 4-core/7.2GB VM, sustained swapping, kswapd0 at ~88% CPU) that
+# exposed it.
+
+def test_available_memory_bytes_parses_real_meminfo_format(tmp_path):
+    meminfo = tmp_path / "meminfo"
+    meminfo.write_text(
+        "MemTotal:        7549020 kB\n"
+        "MemFree:          128220 kB\n"
+        "MemAvailable:    2949312 kB\n"
+        "Buffers:           12345 kB\n"
+    )
+    import binsifter.core.engine as engine_mod
+
+    assert engine_mod._available_memory_bytes(str(meminfo)) == 2949312 * 1024
+
+
+def test_available_memory_bytes_returns_none_for_missing_file(tmp_path):
+    import binsifter.core.engine as engine_mod
+
+    assert engine_mod._available_memory_bytes(str(tmp_path / "does_not_exist")) is None
+
+
+def test_available_memory_bytes_returns_none_when_field_absent(tmp_path):
+    """A malformed/unexpected /proc/meminfo (or a future kernel that
+    dropped the field) should degrade to "unknown", never raise and never
+    silently report a wrong number."""
+    meminfo = tmp_path / "meminfo"
+    meminfo.write_text("MemTotal:        7549020 kB\nMemFree:          128220 kB\n")
+    import binsifter.core.engine as engine_mod
+
+    assert engine_mod._available_memory_bytes(str(meminfo)) is None
+
+
+def test_default_worker_count_falls_back_to_cpu_only_when_memory_unknown(monkeypatch):
+    import binsifter.core.engine as engine_mod
+
+    monkeypatch.setattr(engine_mod.os, "cpu_count", lambda: 8)
+    monkeypatch.setattr(engine_mod, "_available_memory_bytes", lambda: None)
+    assert engine_mod._default_worker_count() == 8
+
+
+def test_default_worker_count_is_capped_by_available_memory(monkeypatch):
+    """The real scenario this whole fix exists for: plenty of CPU cores,
+    not enough memory to run that many workers safely."""
+    import binsifter.core.engine as engine_mod
+
+    monkeypatch.setattr(engine_mod.os, "cpu_count", lambda: 4)
+    # ~2.2GB available / 1.5GB-per-worker budget -> 1 worker, not 4.
+    monkeypatch.setattr(engine_mod, "_available_memory_bytes", lambda: int(2.2 * 1024**3))
+    assert engine_mod._default_worker_count() == 1
+
+
+def test_default_worker_count_never_exceeds_cpu_count_even_with_abundant_memory(monkeypatch):
+    import binsifter.core.engine as engine_mod
+
+    monkeypatch.setattr(engine_mod.os, "cpu_count", lambda: 2)
+    monkeypatch.setattr(engine_mod, "_available_memory_bytes", lambda: 64 * 1024**3)
+    assert engine_mod._default_worker_count() == 2
+
+
+def test_default_worker_count_never_returns_zero_on_a_severely_memory_starved_machine(monkeypatch):
+    import binsifter.core.engine as engine_mod
+
+    monkeypatch.setattr(engine_mod.os, "cpu_count", lambda: 4)
+    monkeypatch.setattr(engine_mod, "_available_memory_bytes", lambda: 1024)  # essentially none
+    assert engine_mod._default_worker_count() == 1
