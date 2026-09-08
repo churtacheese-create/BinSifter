@@ -179,7 +179,7 @@ def test_installer_exception_becomes_a_failed_result_not_a_raise(monkeypatch):
     monkeypatch.setitem(tb._INSTALLERS, "CutterExe", _broken_installer)
     # Every other installer should also just no-op/fail cleanly rather than
     # actually hit the network during this test.
-    for key in ("PeBearExe", "AnyaExe", "DieExe", "AngrExe", "BinwalkExe", "MalwoverviewExe"):
+    for key in ("PeBearExe", "AnyaExe", "DieExe", "AngrExe", "UnblobExe", "MalwoverviewExe"):
         monkeypatch.setitem(tb._INSTALLERS, key, lambda _d, k=key: tb.ToolBootstrapResult(k, k, "failed", detail="stubbed"))
     monkeypatch.setattr(tb, "_install_gef", lambda _d: tb.ToolBootstrapResult("GdbExe", "GDB + GEF", "failed", detail="stubbed"))
     monkeypatch.setattr(tb, "_install_ghidra", lambda _d: tb.ToolBootstrapResult("GhidraHeadlessExe", "Ghidra", "failed", detail="stubbed"))
@@ -461,21 +461,25 @@ def test_install_angr_reports_failed_when_both_pip_attempts_fail(monkeypatch, tm
     assert "could not find a version" in result.detail
 
 
-# ---------- Binwalk / Malwoverview (shared _install_pip_venv_tool) ----------
+# ---------- unblob / Malwoverview (shared _install_pip_venv_tool) ----------
 
-def test_install_binwalk_uses_private_venv_and_checks_for_console_script(monkeypatch, tmp_path):
+def test_install_unblob_uses_private_venv_and_checks_for_console_script(monkeypatch, tmp_path):
+    """REGRESSION for the real bug found 2026-09-07: PyPI's "binwalk"
+    package is a long-abandoned, broken stub (confirmed directly - missing
+    its own binwalk.core submodule entirely) - replaced with unblob, a
+    real, actively-maintained superset of binwalk's own functionality."""
     def _fake_pip_install(cmd, **kwargs):  # noqa: ARG001
         bin_dir = Path(cmd[0]).parent
-        (bin_dir / "binwalk").write_text("#!/bin/sh\n")
-        (bin_dir / "binwalk").chmod(0o755)
+        (bin_dir / "unblob").write_text("#!/bin/sh\n")
+        (bin_dir / "unblob").chmod(0o755)
         return subprocess_completed_process_stub()
 
     monkeypatch.setattr(tb, "_create_private_venv", _fake_create_private_venv)
     monkeypatch.setattr(tb.subprocess, "run", _fake_pip_install)
 
-    result = tb._install_binwalk(tmp_path)
+    result = tb._install_unblob(tmp_path)
     assert result.status == "installed"
-    assert result.path.endswith("/bin/binwalk")
+    assert result.path.endswith("/bin/unblob")
 
 
 def test_install_malwoverview_reports_failed_when_pip_install_fails(monkeypatch, tmp_path):

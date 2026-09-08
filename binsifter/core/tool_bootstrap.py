@@ -11,8 +11,9 @@ Lineup as of 2026-09-03 (revised same day, after a real user's first .deb
 install/scan log surfaced two real bugs and prompted a tool-lineup
 reconsideration - see git history for the original five-tool version):
 PE-bear, Anya, DIE, Cutter (replacing Rizin), Angr, GEF (layered onto
-whatever `gdb` find_tool_path() finds on PATH), Binwalk, Malwoverview, and
-Ghidra (previously manual-only, now auto-installed on request). Rizin
+whatever `gdb` find_tool_path() finds on PATH), unblob (replacing
+Binwalk, 2026-09-07 - see _install_unblob()'s own docstring), Malwoverview,
+and Ghidra (previously manual-only, now auto-installed on request). Rizin
 itself is gone from the auto-install list, not just relabeled: it's a
 terminal-native REPL with no window of its own, so launching it via a bare
 `subprocess.Popen` from a GUI app with no attached terminal produced no
@@ -131,10 +132,13 @@ _MANUAL_INSTALL_HINTS: dict[str, str] = {
         "\"sudo dnf install gdb\", \"sudo pacman -S gdb\") - GDB needs a real package "
         "manager and can't be installed by Winnow itself without root."
     ),
-    "BinwalkExe": (
-        "run: pipx install binwalk (or pip install binwalk in a virtualenv of your own; "
-        "your distro's binwalk package, e.g. \"sudo apt install binwalk\", also works and "
-        "additionally pulls in the extraction helper libraries binwalk itself doesn't ship)."
+    "UnblobExe": (
+        "run: pipx install unblob (or pip install unblob in a virtualenv of your own). "
+        "Full format coverage additionally needs a handful of system extraction tools "
+        "(p7zip-full, unar, e2fsprogs, zstd, lz4, and optionally sasquatch for squashfs) - "
+        "install these via your distro's package manager, e.g. "
+        "\"sudo apt install p7zip-full unar e2fsprogs zstd lz4\" - unblob itself still runs "
+        "and handles many formats without them, this only widens coverage."
     ),
     "MalwoverviewExe": (
         "run: pipx install malwoverview (or pip install malwoverview in a virtualenv of "
@@ -158,7 +162,7 @@ _TOOL_LABELS: dict[str, str] = {
     "CutterExe": "Cutter",
     "AngrExe": "Angr",
     "GdbExe": "GDB + GEF",
-    "BinwalkExe": "Binwalk",
+    "UnblobExe": "unblob",
     "MalwoverviewExe": "Malwoverview",
     "GhidraHeadlessExe": "Ghidra",
 }
@@ -602,7 +606,7 @@ def _install_angr(dest_root: Path) -> ToolBootstrapResult:
 def _install_pip_venv_tool(tool_key: str, package: str, console_script: str, dest_root: Path) -> ToolBootstrapResult:
     """Shared logic for any tool that's a plain PyPI package with a console-
     script entry point and no native/Rust build concerns (unlike angr) -
-    Binwalk and Malwoverview both fit this shape. Same private-virtualenv
+    unblob and Malwoverview both fit this shape. Same private-virtualenv
     approach as _install_angr, minus the wheel-first hardening that only
     angr's build chain needs.
     """
@@ -640,16 +644,37 @@ def _install_pip_venv_tool(tool_key: str, package: str, console_script: str, des
     return ToolBootstrapResult(tool_key, label, "installed", path=str(tool_exe), detail="Installed into a private virtualenv")
 
 
-def _install_binwalk(dest_root: Path) -> ToolBootstrapResult:
-    """Binwalk's PyPI package (by ReFirmLabs, the project's current
-    maintainers) ships a real `binwalk` console-script entry point - the
-    pip install here covers signature scanning/carving out of the box;
-    some extraction paths (e.g. squashfs) additionally want distro tools
-    like sasquatch that only a real package manager provides, same
-    "core works, some extras need your distro's package" caveat as
-    docs/winnow.md already carries for building Winnow itself from source.
+def _install_unblob(dest_root: Path) -> ToolBootstrapResult:
+    """Replaces Binwalk 2026-09-07 - REAL BUG FOUND from a real user's
+    launch report ("Binwalk... errored out"): PyPI's own "binwalk" package
+    is stuck at 2.1.0 (still Craig Heffner's original devttys0/binwalk,
+    not ReFirmLabs' current, actively-maintained project - this module's
+    own prior docstring claiming otherwise was simply wrong), and that
+    2.1.0 upload is a long-known, long-abandoned, genuinely broken stub -
+    confirmed directly, its own `binwalk/__init__.py` does
+    `from binwalk.core.module import ...`, but the installed package
+    contains no `binwalk/core` submodule at all, so even `import binwalk`
+    fails outright (ModuleNotFoundError). See
+    https://github.com/ReFirmLabs/binwalk/issues/892 - this is a
+    long-standing, widely-reported packaging gap, not something specific
+    to this machine. The current, maintained binwalk is a full Rust
+    rewrite (ReFirmLabs/binwalk, v3.x) with no prebuilt Linux binary
+    release and no `cargo`-free install path - not a fit for this
+    module's no-root, no-heavy-toolchain auto-install design.
+
+    unblob (ONEKEY, https://unblob.org/) is a real, actively-maintained
+    superset of binwalk's own functionality - 78+ archive/compression/
+    filesystem formats, recursive extraction, unknown-chunk carving - with
+    a real, working PyPI package and its own genuine `unblob` console
+    script. Same "core works, some extras need your distro's package"
+    caveat as the old binwalk entry (and the same one docs/winnow.md
+    already carries for building Winnow itself from source): unblob's
+    Python package alone covers a real, substantial set of formats; full
+    coverage additionally wants system extraction tools (p7zip-full, unar,
+    e2fsprogs, zstd, lz4, optionally sasquatch for squashfs) that only a
+    real package manager provides - see _MANUAL_INSTALL_HINTS["UnblobExe"].
     """
-    return _install_pip_venv_tool("BinwalkExe", "binwalk", "binwalk", dest_root)
+    return _install_pip_venv_tool("UnblobExe", "unblob", "unblob", dest_root)
 
 
 def _install_malwoverview(dest_root: Path) -> ToolBootstrapResult:
@@ -791,7 +816,7 @@ _INSTALLERS: dict[str, Callable[[Path], ToolBootstrapResult]] = {
     "DieExe": _install_die,
     "CutterExe": _install_cutter,
     "AngrExe": _install_angr,
-    "BinwalkExe": _install_binwalk,
+    "UnblobExe": _install_unblob,
     "MalwoverviewExe": _install_malwoverview,
     # GdbExe and GhidraHeadlessExe are deliberately absent here - both need
     # special-cased handling in run_tool_bootstrap() below (GdbExe because

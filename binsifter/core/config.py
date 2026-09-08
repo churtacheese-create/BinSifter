@@ -187,7 +187,16 @@ TOOL_FILE_NAMES: dict[str, tuple[str, ...]] = {
     # no separate "GefExe" to launch - GEF isn't a program, it's a gdb
     # extension.
     "GdbExe": ("gdb",),
-    "BinwalkExe": ("binwalk",),
+    # Binwalk replaced with unblob 2026-09-07 (same reasoning as the
+    # Rizin->Cutter swap above) - PyPI's own "binwalk" package (2.1.0) is a
+    # long-abandoned, broken stub missing its own binwalk.core submodule
+    # entirely (confirmed directly - see tool_bootstrap.py's
+    # _install_unblob() docstring), and the current, maintained binwalk is
+    # a full Rust rewrite with no clean pip-installable path. unblob (by
+    # ONEKEY) is a real, actively-maintained superset of binwalk's own
+    # functionality (78+ archive/filesystem/compression formats,
+    # recursive extraction) with a real, working PyPI package.
+    "UnblobExe": ("unblob",),
     "MalwoverviewExe": ("malwoverview", "malwoverview.py"),
 }
 
@@ -370,7 +379,7 @@ class BinSifterConfig:
     CutterExe: str = ""
     AngrExe: str = ""
     GdbExe: str = ""
-    BinwalkExe: str = ""
+    UnblobExe: str = ""
     MalwoverviewExe: str = ""
 
     # Fixed default locations next to the BinSifter install - not Settings

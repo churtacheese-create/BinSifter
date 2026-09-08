@@ -147,8 +147,8 @@ _QUICK_LAUNCH_TOOLS: tuple[tuple[str, str, bool, str | None, tuple[str, ...], bo
     ("PeBearExe", "Open in PE-bear", False, None, (), False),
     # REAL BUG FOUND AND FIXED 2026-09-07, from a real user's launch report
     # ("nothing worked" when Anya was selected): Anya is a terminal/stdout
-    # report tool, same as GDB/Binwalk/Malwoverview below - not a windowed
-    # GUI app. Confirmed directly by running Anya's own real binary: it
+    # report tool, same as GDB/unblob below - not a windowed GUI app.
+    # Confirmed directly by running Anya's own real binary: it
     # produces a full, correct, multi-section analysis report (hashes, PE
     # header, imports, entropy, packer/anti-analysis detection, extracted
     # strings) - entirely via stdout. needs_terminal=False routed that
@@ -166,9 +166,12 @@ _QUICK_LAUNCH_TOOLS: tuple[tuple[str, str, bool, str | None, tuple[str, ...], bo
     # GDB is launched bare (gdb <file>) - a real debugger session, meant to
     # be interacted with directly in the terminal that opens.
     ("GdbExe", "Open in GDB (with GEF)", False, None, (), True),
-    # Binwalk's plain invocation (binwalk <file>) prints its signature scan
-    # straight to stdout - needs a terminal to be seen at all, same as GDB.
-    ("BinwalkExe", "Scan with Binwalk", False, None, (), True),
+    # unblob replaced Binwalk 2026-09-07 - see tool_bootstrap.py's
+    # _install_unblob() docstring for why (PyPI's own "binwalk" package is
+    # a long-abandoned, broken stub). unblob's plain invocation
+    # (unblob <file>) prints its extraction report straight to stdout -
+    # needs a terminal to be seen at all, same as GDB.
+    ("UnblobExe", "Scan with unblob", False, None, (), True),
     # Malwoverview is NOT in this generic table (removed 2026-09-07, see
     # _launch_malwoverview() below) - its CLI has moved on to a subcommand
     # model (`malwoverview vt hash <hash>`) since the "-v 2 -f <path>" form
@@ -727,7 +730,7 @@ class ResultsPage(QWidget):
         )
         try:
             if needs_terminal:
-                # Terminal-native CLI tools (GDB, Binwalk) have no window of
+                # Terminal-native CLI tools (GDB, unblob) have no window of
                 # their own - a bare subprocess.Popen with no attached
                 # terminal produces no visible effect at all, the exact
                 # "PE-Bear nor Rizin would work when selected" bug a real
@@ -758,7 +761,7 @@ class ResultsPage(QWidget):
             QMessageBox.critical(self, "BinSifter", f"Could not launch: {exc}")
 
     def _launch_in_terminal(self, argv: list[str], cwd: str, exe_path: str) -> None:
-        """Shared by every terminal-native CLI tool (GDB, Binwalk,
+        """Shared by every terminal-native CLI tool (GDB, unblob,
         Malwoverview) - extracted 2026-09-07 from _launch_quick_tool() so
         _launch_malwoverview() (which needs its own hash-lookup argv
         construction, not the generic _QUICK_LAUNCH_TOOLS shape) can reuse

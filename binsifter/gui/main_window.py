@@ -180,7 +180,7 @@ class _ScanWorker(QObject):
 class _ToolBootstrapWorker(QObject):
     """Runs tool_bootstrap.run_tool_bootstrap() off the UI thread - added
     2026-09-03 per the project owner's direct request: on startup, missing
-    quick-launch tools (PE-bear/Anya/DIE/Cutter/Angr/GDB+GEF/Binwalk/
+    quick-launch tools (PE-bear/Anya/DIE/Cutter/Angr/GDB+GEF/unblob/
     Malwoverview/Ghidra) should be found or
     auto-installed, but this can mean real network downloads (Angr's pip
     install pulls a whole dependency chain) that must never block the
