@@ -59,11 +59,11 @@ from capa.features.common import FORMAT_AUTO, FORMAT_SC32, FORMAT_SC64, OS_AUTO
 
 from binsifter.core.subprocess_timeout import run_with_timeout
 
-# capa/vivisect analysis of a real, packed/obfuscated malware sample
-# genuinely takes minutes, and produces real results when it finishes -
-# REAL DATA 2026-09-09, from a real user's scan of real Malware Bazaar
-# samples: two live samples (a 641KB PE32+ EXE, a 346KB PE32 DLL) each
-# needed 200-240s of single-file analysis on a 4-core/7.4GB box and then
+# capa/vivisect analysis of a packed/obfuscated malware sample genuinely
+# takes minutes, and produces real results when it finishes. Measured
+# 2026-09-09 against real Malware Bazaar samples: two live samples (a
+# 641KB PE32+ EXE, a 346KB PE32 DLL) each needed 200-240s of single-file
+# analysis on a 4-core/7.4GB box and then
 # returned 256 and 246 capa detections respectively. Under a real
 # concurrent scan (several pool workers, other per-file stages running
 # alongside) they ran well past that and hit the old 90s cap on every

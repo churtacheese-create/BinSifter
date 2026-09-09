@@ -239,8 +239,8 @@ def build_index(source_path: str, cache_path: str) -> int:
     only reach this when cache_is_fresh() says the existing cache (if any)
     is missing or stale, not on every scan.
 
-    REAL BUG FOUND AND FIXED 2026-09-07, from a real user's scan against a
-    real, current NSRL export - not the 72-million-row set this module's
+    REAL BUG FOUND AND FIXED 2026-09-07, from a scan against a real,
+    current NSRL export - not the 72-million-row set this module's
     own docstring was written against, but a 432,866,778-row, 59.78GB
     NSRLFile.txt (NIST's "modern" full RDS set keeps growing release over
     release). The previous version of this function accumulated every

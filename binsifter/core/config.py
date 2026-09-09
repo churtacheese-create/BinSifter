@@ -172,8 +172,8 @@ TOOL_FILE_NAMES: dict[str, tuple[str, ...]] = {
     # Rizin replaced with Cutter 2026-09-03 (see tool_bootstrap.py) - Rizin
     # is a terminal-native REPL with no window of its own, so launching it
     # via a bare subprocess.Popen from a GUI app (no attached terminal)
-    # produced no visible effect at all; a real user's install log showed
-    # exactly this ("PE-Bear nor Rizin would work when selected"). Cutter is
+    # produced no visible effect at all; an install log showed exactly
+    # this ("PE-Bear nor Rizin would work when selected"). Cutter is
     # rizin's own official Qt GUI front-end - same analysis engine, but an
     # actual window a Popen launch can show.
     "CutterExe": ("Cutter", "cutter"),
@@ -282,9 +282,9 @@ def get_auto_installed_tools_dir() -> Path:
     do without root (everything here is a per-user download, never a
     system package).
 
-    REAL BUG FOUND AND FIXED 2026-09-07, from a real user's launch report
-    ("Angr, Binwalk, and Malwoverview opened terminal windows - but each
-    had errored out"): this used to be get_binsifter_data_root() /
+    REAL BUG FOUND AND FIXED 2026-09-07, from a launch report ("Angr,
+    Binwalk, and Malwoverview opened terminal windows - but each had
+    errored out"): this used to be get_binsifter_data_root() /
     "AutoInstalledTools" - and get_binsifter_data_root()'s Linux fallback
     is Path.home() / "BinSifter Winnow", a directory name with a SPACE in
     it. pip's own console-script generator writes a raw `#!<venv>/bin/

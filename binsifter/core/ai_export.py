@@ -1,8 +1,7 @@
 """AI-ready export - formats one file's already-extracted BinSifter findings
 into a compact Markdown document and a JSON object, for handing to whatever
-AI the analyst wants to use: paste the Markdown into a cloud chat interface
-(Claude.ai, ChatGPT, etc.), or feed the JSON to a script hitting a local
-model's API.
+AI the analyst wants to use: paste the Markdown into a cloud chat
+interface, or feed the JSON to a script hitting a local model's API.
 
 This module only FORMATS data that's already been computed - BinSifter
 never runs or calls out to any AI itself here, cloud or local. An earlier

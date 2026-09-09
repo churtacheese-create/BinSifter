@@ -133,8 +133,8 @@ logger = logging.getLogger(__name__)
 # each project's own docs, so their tuples stay empty.
 #
 # The 6th field was added the same day the lineup itself changed (Rizin ->
-# Cutter, plus GDB+GEF/Binwalk/Malwoverview added): a real user's install
-# log showed Rizin's menu entry doing nothing when clicked even though its
+# Cutter, plus GDB+GEF/Binwalk/Malwoverview added): an install log showed
+# Rizin's menu entry doing nothing when clicked even though its
 # path resolved correctly - Rizin is a terminal-native REPL with no window
 # of its own, so a bare subprocess.Popen (no attached terminal, since
 # Winnow itself is a GUI app) produced no visible effect at all. Cutter
@@ -145,7 +145,7 @@ logger = logging.getLogger(__name__)
 # _find_terminal_emulator()/_launch_in_terminal() below).
 _QUICK_LAUNCH_TOOLS: tuple[tuple[str, str, bool, str | None, tuple[str, ...], bool], ...] = (
     ("PeBearExe", "Open in PE-bear", False, None, (), False),
-    # REAL BUG FOUND AND FIXED 2026-09-07, from a real user's launch report
+    # REAL BUG FOUND AND FIXED 2026-09-07, from a launch report
     # ("nothing worked" when Anya was selected): Anya is a terminal/stdout
     # report tool, same as GDB/unblob below - not a windowed GUI app.
     # Confirmed directly by running Anya's own real binary: it
@@ -210,8 +210,8 @@ def _wrap_for_terminal_pause(argv: list[str]) -> list[str]:
     """Wraps `argv` in a small `sh -c` snippet that reports the exit status
     and waits for a keypress before the terminal's own process exits.
 
-    Added 2026-09-04 after a real user's terminal-launched GDB did nothing
-    visible when clicked - their system `gdb` turned out to be broken
+    Added 2026-09-04 after a terminal-launched GDB did nothing visible
+    when clicked - the system `gdb` turned out to be broken
     (crashes near-instantly with a `libpython`/`libexpat` symbol mismatch,
     a real problem with their machine, not something BinSifter's code
     caused or can fix), and only xterm's own `-hold` flag (see the old
@@ -235,8 +235,8 @@ def _is_appimage(path: str) -> bool:
     bytes (0x41 0x49 0x01/0x02, "AI" + type, at file offset 8), the same
     signature AppImage's own tooling and `file(1)` use, rather than
     guessing from the filename or which tool this is. Added 2026-09-04
-    after a real user's Cutter (freshly auto-installed as an AppImage,
-    confirmed via the bootstrap log) did nothing when clicked - the classic
+    after a freshly auto-installed Cutter AppImage (confirmed via the
+    bootstrap log) did nothing when clicked - the classic
     symptom of a missing libfuse2 on a modern distro (Ubuntu dropped it
     from the default image starting 22.04): an AppImage launched without
     FUSE available exits immediately with no window and no Python-level
@@ -743,7 +743,7 @@ class ResultsPage(QWidget):
             else:
                 # HARDENED 2026-09-03: cwd defaults to wherever Winnow itself
                 # was launched from, not the tool's own install directory -
-                # a real user's log showed PE-bear resolving to a real,
+                # a field log showed PE-bear resolving to a real,
                 # executable file (a manually-built Qt binary under
                 # ~/Desktop/pe-bear/build_qt6/bin/) that still did nothing
                 # when clicked, with no error ever surfacing anywhere (the
@@ -851,8 +851,8 @@ class ResultsPage(QWidget):
         2026-09-07 per a direct request. Ghidra's own `ghidraRun` script
         passes every argument straight through to its `ghidra.GhidraRun`
         Java entry point, which opens a project file given as an argument
-        directly - documented Ghidra behavior, not a guess, though not
-        independently GUI-verified end-to-end here (a full Ghidra GUI boot
+        directly - documented Ghidra behavior, though not independently
+        GUI-verified end-to-end here (a full Ghidra GUI boot
         under a scripted headless Xvfb session is impractical to verify
         the same rigorous way the rest of this project's real bugs were -
         see this project's own established precedent of being explicit
@@ -947,9 +947,9 @@ class ResultsPage(QWidget):
             QMessageBox.critical(self, "BinSifter", f"Could not launch Ghidra: {exc}")
 
     def _launch_malwoverview(self, target_path: str) -> None:
-        """REAL BUG FOUND AND FIXED 2026-09-07, from a real user's launch
-        report: malwoverview's CLI has moved on from the "-v 2 -f <path>"
-        form this quick-launch entry was originally written against (see
+        """REAL BUG FOUND AND FIXED 2026-09-07, from a launch report:
+        malwoverview's CLI has moved on from the "-v 2 -f <path>" form
+        this quick-launch entry was originally written against (see
         the removed _QUICK_LAUNCH_TOOLS row's own comment) to a subcommand
         model - `malwoverview vt hash <hash>` - confirmed directly against
         the real, currently-installed malwoverview's own --help output.

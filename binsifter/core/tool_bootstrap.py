@@ -7,7 +7,7 @@ case, a missing/failed tool must never block Winnow from loading or from
 running a scan - every function in this module is written to fail soft,
 never raise out to a caller running on the GUI thread.
 
-Lineup as of 2026-09-03 (revised same day, after a real user's first .deb
+Lineup as of 2026-09-03 (revised same day, after a first .deb
 install/scan log surfaced two real bugs and prompted a tool-lineup
 reconsideration - see git history for the original five-tool version):
 PE-bear, Anya, DIE, Cutter (replacing Rizin), Angr, GEF (layered onto
@@ -348,9 +348,9 @@ def _install_gef(dest_root: Path) -> ToolBootstrapResult:
     the next `gdb` launch picks it up automatically via the user's own
     gdbinit, the same as if the user had run GEF's installer by hand.
 
-    REAL BUG FOUND AND FIXED 2026-09-07, from a real user's launch report
-    ("Could not auto-install ... GDB + GEF") and confirmed directly by
-    fetching and reading the real, current script at _GEF_INSTALL_URL: it
+    REAL BUG FOUND AND FIXED 2026-09-07, from a launch report ("Could not
+    auto-install ... GDB + GEF") and confirmed directly by fetching and
+    reading the real, current script at _GEF_INSTALL_URL: it
     is a plain #!/usr/bin/env bash script (GEF's actual current one-liner
     installer is `bash -c "$(curl -fsSL https://gef.blah.cat/sh)"`), not a
     gdb-embedded Python script - it never invokes gdb at all itself, it
@@ -419,8 +419,8 @@ def _create_private_venv(venv_dir: Path) -> str:
     over the currently-running interpreter. Returns "" on success, or an
     error detail string on failure - never raises.
 
-    REAL BUG FOUND AND FIXED 2026-09-04, from a real user's packaged-app
-    log: the stdlib `venv` module's `venv.create()` always bases the new
+    REAL BUG FOUND AND FIXED 2026-09-04, from a packaged-app log: the
+    stdlib `venv` module's `venv.create()` always bases the new
     environment on `sys.executable` - the CURRENTLY RUNNING interpreter.
     That's a real python3 in this dev sandbox and under `pip install -e .`,
     but once Winnow is frozen by PyInstaller (installer/winnow.spec's whole
@@ -452,12 +452,12 @@ def _create_private_venv(venv_dir: Path) -> str:
     """
     system_python = shutil.which("python3") or shutil.which("python")
     if system_python:
-        # REAL BUG FOUND AND FIXED 2026-09-07, from a real user's Ubuntu
-        # 26.04 install: plain `python3 -m venv <dir>` tries to bootstrap
-        # pip into the new environment via the stdlib `ensurepip` module
-        # internally - but some real, current distros (confirmed directly
-        # against a real Ubuntu 26.04 machine this session, not a guess)
-        # ship a system python3 with NO ensurepip module at all
+        # REAL BUG FOUND AND FIXED 2026-09-07, from an Ubuntu 26.04
+        # install: plain `python3 -m venv <dir>` tries to bootstrap pip
+        # into the new environment via the stdlib `ensurepip` module
+        # internally - but some current distros (confirmed directly
+        # against a real Ubuntu 26.04 machine) ship a system python3 with
+        # NO ensurepip module at all
         # ("No module named ensurepip"), so that internal bootstrap step
         # fails and the whole `venv` invocation exits non-zero, even though
         # creating the venv's directory structure itself would have worked
@@ -555,8 +555,9 @@ def _install_angr(dest_root: Path) -> ToolBootstrapResult:
     # (angr.rustylib) - a bare `pip install angr` on a machine with no Rust
     # toolchain present can fall through to a source build of that
     # extension and fail with a long, generic Cargo/compiler error that
-    # gave a real user's log ("Angr could not be installed automatically")
-    # no useful detail at all. Try wheel-only first (--only-binary=:all:) -
+    # gave a field install log ("Angr could not be installed
+    # automatically") no useful detail at all. Try wheel-only first
+    # (--only-binary=:all:) -
     # if PyPI has a prebuilt wheel for this platform/Python version, this
     # succeeds fast with no compiler involved; if it doesn't, fall back to
     # a normal install (which may still build from source, exactly like
@@ -645,8 +646,8 @@ def _install_pip_venv_tool(tool_key: str, package: str, console_script: str, des
 
 
 def _install_unblob(dest_root: Path) -> ToolBootstrapResult:
-    """Replaces Binwalk 2026-09-07 - REAL BUG FOUND from a real user's
-    launch report ("Binwalk... errored out"): PyPI's own "binwalk" package
+    """Replaces Binwalk 2026-09-07 - REAL BUG FOUND from a launch report
+    ("Binwalk... errored out"): PyPI's own "binwalk" package
     is stuck at 2.1.0 (still Craig Heffner's original devttys0/binwalk,
     not ReFirmLabs' current, actively-maintained project - this module's
     own prior docstring claiming otherwise was simply wrong), and that

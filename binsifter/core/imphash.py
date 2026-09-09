@@ -23,9 +23,9 @@ import pefile
 logger = logging.getLogger(__name__)
 
 
-# REAL BUG FOUND AND FIXED 2026-09-07, from a real user's scan of real
-# casework: imphash averaged 9.08s/file (54.5% of ALL per-file CPU time
-# across the whole scan) - more expensive than SSDEEP, which has to hash
+# REAL BUG FOUND AND FIXED 2026-09-07, from a casework scan: imphash
+# averaged 9.08s/file (54.5% of ALL per-file CPU time across the whole
+# scan) - more expensive than SSDEEP, which has to hash
 # every byte of the file, while imphash only reads a small import table.
 # Confirmed directly against a real 23MB legitimate DLL (996 imported
 # functions, 53 DLLs) that a well-formed file's imphash costs ~0.06s
@@ -87,9 +87,9 @@ def _patch_pefile_section_lookup() -> None:
 _patch_pefile_section_lookup()
 
 
-# REAL BUG FOUND AND FIXED 2026-09-08, from a real user's scan of real
-# casework - and very likely the dominant part of the same "imphash
-# averaging 9.08s/file" the section-lookup patch above was written to
+# REAL BUG FOUND AND FIXED 2026-09-08, from a casework scan - and very
+# likely the dominant part of the same "imphash averaging 9.08s/file"
+# the section-lookup patch above was written to
 # chase (that patch is real and correct, but its own commit message
 # noted it couldn't reproduce the full number synthetically - this is
 # why). pefile.PE._close_data() ends with an UNCONDITIONAL gc.collect() -

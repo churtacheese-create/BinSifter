@@ -119,8 +119,8 @@ capa_hidden = collect_submodules("capa")
 
 # vstruct is a THIRD top-level package in the vivisect stack (alongside
 # vivisect and envi, not under either) - REAL BUG FOUND 2026-09-08 from a
-# real user's scan of real malware: capa failed on EVERY Windows PE it
-# analyzed with "No module named 'vstruct.defs.windows.win_6_1_amd64'" /
+# malware scan: capa failed on EVERY Windows PE it analyzed with
+# "No module named 'vstruct.defs.windows.win_6_1_amd64'" /
 # "...win_5_1_i386.ntdll". vivisect loads these OS/arch-specific struct
 # definition modules by name at analysis time (a fresh PE picks the set
 # matching its declared Windows version + bitness), so PyInstaller's
