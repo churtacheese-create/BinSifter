@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import logging
 import multiprocessing
+import os
 import pathlib
 import queue
 from dataclasses import dataclass
@@ -58,19 +59,66 @@ from capa.features.common import FORMAT_AUTO, FORMAT_SC32, FORMAT_SC64, OS_AUTO
 
 from binsifter.core.subprocess_timeout import run_with_timeout
 
-# Modern (2025-toolchain-built) Windows binaries - bash.exe, curl.exe,
-# notepad.exe among them - can get vivisect's aarch64 register-context
-# construction stuck for 30-90+ seconds inside envi's own code (a
-# third-party bug, not something in this module).
+# capa/vivisect analysis of a real, packed/obfuscated malware sample
+# genuinely takes minutes, and produces real results when it finishes -
+# REAL DATA 2026-09-09, from a real user's scan of real Malware Bazaar
+# samples: two live samples (a 641KB PE32+ EXE, a 346KB PE32 DLL) each
+# needed 200-240s of single-file analysis on a 4-core/7.4GB box and then
+# returned 256 and 246 capa detections respectively. Under a real
+# concurrent scan (several pool workers, other per-file stages running
+# alongside) they ran well past that and hit the old 90s cap on every
+# attempt - so capa, which the vstruct fix had just un-broken, still
+# produced nothing on exactly the files a triage analyst most wants it
+# on.
 #
-# 90s is a tuned tradeoff between total scan time and per-file completion
-# rate, found across several real 652-file scans: 120s let more files
-# finish but cost far more wall-clock time overall (most files timing out
-# at 120s look genuinely stuck, not one minute from finishing); 60s cut
-# scan time sharply but measurably dropped the completion rate, since some
-# files really do need the 60-120s window. 90s keeps most of the 60s
-# wall-clock win while clawing back some of the completion-rate loss.
-DEFAULT_TIMEOUT_SECONDS = 90
+# The old 90s value was tuned against a 652-file corpus of ordinary
+# Windows binaries (bash.exe/curl.exe/notepad.exe and the like), where
+# most files still analyzing at 120s really did look stuck. Two things
+# changed since: capa now runs ONLY on YARA-flagged files (engine.py's
+# YARA-hit gate), a much smaller and much more malware-heavy population
+# where finishing the analysis is worth real wall-clock; and the concrete
+# evidence above shows genuine completions living in the 200s+ range, not
+# "one minute from done or never".
+#
+# 300s default, overridable via BINSIFTER_CAPA_TIMEOUT_SECONDS for the two
+# ends of the tradeoff a fixed number can't serve at once - a batch scan
+# that would rather skip the slowest few files can lower it; a deep
+# single-engagement triage can raise it. Clamped to a sane band so a
+# fat-fingered value can't wedge a whole scan or defeat the hang-safety
+# net entirely. This IS still a real safety net, not just a slowness
+# allowance: vivisect can genuinely wedge on some input - e.g. modern
+# (2025-toolchain-built) Windows binaries such as bash.exe/curl.exe/
+# notepad.exe getting stuck for tens of seconds in envi's own aarch64
+# register-context construction, a third-party bug - and a file still
+# analyzing at the cutoff is named in the "Slow capa stage" warning
+# either way.
+_DEFAULT_TIMEOUT_SECONDS = 300
+_MIN_TIMEOUT_SECONDS = 30
+_MAX_TIMEOUT_SECONDS = 3600
+
+
+def _resolve_default_timeout() -> float:
+    raw = os.environ.get("BINSIFTER_CAPA_TIMEOUT_SECONDS", "").strip()
+    if not raw:
+        return float(_DEFAULT_TIMEOUT_SECONDS)
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning(
+            "Ignoring BINSIFTER_CAPA_TIMEOUT_SECONDS=%r (not a number) - using %ss",
+            raw, _DEFAULT_TIMEOUT_SECONDS,
+        )
+        return float(_DEFAULT_TIMEOUT_SECONDS)
+    clamped = max(_MIN_TIMEOUT_SECONDS, min(_MAX_TIMEOUT_SECONDS, value))
+    if clamped != value:
+        logger.warning(
+            "Clamped BINSIFTER_CAPA_TIMEOUT_SECONDS=%s to %ss (allowed range %s-%ss)",
+            value, clamped, _MIN_TIMEOUT_SECONDS, _MAX_TIMEOUT_SECONDS,
+        )
+    return clamped
+
+
+DEFAULT_TIMEOUT_SECONDS = _resolve_default_timeout()
 
 
 @dataclass
@@ -302,7 +350,11 @@ class PersistentCapaWorker:
             status, payload = self._result_queue.get(timeout=timeout_seconds)
         except queue.Empty:
             self._discard(force=True)
-            raise TimeoutError(f"capa analysis timed out after {timeout_seconds}s")
+            raise TimeoutError(
+                f"capa analysis timed out after {timeout_seconds:g}s - raise "
+                "BINSIFTER_CAPA_TIMEOUT_SECONDS if this file's analysis was still "
+                "progressing (real packed malware can legitimately need several minutes)"
+            )
 
         if status == "error":
             raise RuntimeError(f"capa analysis raised in worker process: {payload}")

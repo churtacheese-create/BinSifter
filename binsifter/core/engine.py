@@ -119,14 +119,21 @@ MAX_SCAN_WORKERS = 16
 # made authenticode average 61.8s/file - a 2s authenticode threshold would
 # have caught that on literally the first file, not 4+ hours in), and
 # below the point where a stage already has its own dedicated hang-safety
-# net (capa's own PersistentCapaWorker 90s timeout).
+# net (capa's own PersistentCapaWorker timeout, capa_scan.py's
+# DEFAULT_TIMEOUT_SECONDS).
 _SLOW_STAGE_THRESHOLDS_SECONDS: dict[str, float] = {
     "hash": 2.0,
     "authenticode": 2.0,
     "imphash": 2.0,
     "ssdeep": 20.0,
     "yara": 5.0,
-    "capa": 60.0,
+    # capa/vivisect analysis of real packed malware genuinely runs 200s+
+    # and still returns real detections (see capa_scan.py's own comment
+    # on the timeout bump from 90s to 300s) - a 60s threshold here fired
+    # on every such file, which is noise, not signal. 180s still gives a
+    # clear "this one is near capa's own cutoff" heads-up without crying
+    # wolf on ordinary malware analysis.
+    "capa": 180.0,
     "floss_iocs": 10.0,
 }
 _DEFAULT_SLOW_STAGE_THRESHOLD_SECONDS = 5.0
@@ -134,9 +141,10 @@ _DEFAULT_SLOW_STAGE_THRESHOLD_SECONDS = 5.0
 # Hard ceiling on how long scan_directory()'s result-draining loop will
 # wait with ZERO forward progress before giving up on the rest of the
 # batch, rather than blocking forever. capa is the only per-file stage with
-# its own hang-safety net (PersistentCapaWorker's 90s timeout, see
-# capa_scan.py) - hashing/authenticode/imphash/ssdeep/YARA/FLOSS all run
-# directly in the pool worker process with nothing bounding them.
+# its own hang-safety net (PersistentCapaWorker's timeout, see
+# capa_scan.py's DEFAULT_TIMEOUT_SECONDS) - hashing/authenticode/imphash/
+# ssdeep/YARA/FLOSS all run directly in the pool worker process with
+# nothing bounding them.
 #
 # Root cause of the hang this guards against: a large XP-era self-
 # extracting hotfix installer got stuck inside an untimed stage in one
@@ -1277,7 +1285,7 @@ def scan_directory(
                         "and was abandoned so the rest of the scan could finish. This "
                         "file likely hit a hang in a stage with no timeout protection "
                         "(hashing/authenticode/YARA/ssdeep/FLOSS all lack one - only "
-                        "capa has its own 90s cutoff)."
+                        "capa has its own cutoff)."
                     )
                     completed += 1
                     if progress_callback:
