@@ -84,7 +84,12 @@ Every entry here is optional - a missing file just means that tool's path stays 
 - angr - binary analysis/symbolic execution framework.
 - gdb - debugger (found on PATH only - BinSifter never installs GDB itself, since that needs your distro's own package manager; it does auto-install the GEF extension for whatever gdb it finds).
 - unblob - firmware/embedded-file signature scanner, carver, and recursive extractor (replaces Binwalk - PyPI's own "binwalk" package is a long-abandoned, broken stub; full format coverage additionally wants system extraction tools like p7zip-full/unar installed via your distro's package manager, see Settings/README).
-- malwoverview - VirusTotal hash/reputation lookup (sends the file's hash, never the sample itself, to VirusTotal - see its own docs before use).
+- malwoverview - VirusTotal hash/reputation lookup (sends the file's hash, never the sample itself, to VirusTotal - see its own docs before use). REQUIRES A FREE VIRUSTOTAL API KEY: malwoverview reads it from ~/.malwapi.conf, which BinSifter does not create for you. Make that file (chmod 600) with a section:
+
+      [VIRUSTOTAL]
+      VTAPI = your_virustotal_api_key
+
+  Get a key at virustotal.com (sign up, then Account -> API Key). Without it, the "Look up hash in Malwoverview" action opens a terminal that just prints an empty "AV Report:" and exits - malwoverview's own current build gives no hint that the key is what's missing.
 
 BinSifter tries a couple of common filename spellings for each of these (see core/config.py's TOOL_FILE_NAMES) since none of them ship one single canonical Linux binary name the way a Windows .exe usually has - if your install uses a different filename, rename or symlink it to match, or check the Logs page to see what BinSifter actually searched for.
 

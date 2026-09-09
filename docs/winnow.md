@@ -35,7 +35,14 @@ Right-click any row in Results for on-demand actions, driven by "Path to tools"/
 - **Cutter** and **Angr** - reverse-engineering/analysis framework and symbolic-execution framework, replacing Rowan's x64dbg/x32dbg (also Windows-only). Cutter is rizin's own official Qt GUI front-end.
 - **GDB**, paired with the **GEF** extension - live debugging, opened in a real terminal.
 - **unblob** - firmware/embedded-file signature scanning, carving, and recursive extraction (replaces Binwalk as of 2026-09-07 - see the auto-install section below for why), also opened in a terminal.
-- **Malwoverview** - looks up the selected file's hash against VirusTotal (sends only the hash, never the sample itself - see [malwoverview's own docs](https://github.com/alexandreborges/malwoverview) before relying on this for sensitive samples), opened in a terminal.
+- **Malwoverview** - looks up the selected file's hash against VirusTotal (sends only the hash, never the sample itself - see [malwoverview's own docs](https://github.com/alexandreborges/malwoverview) before relying on this for sensitive samples), opened in a terminal. **Needs a free VirusTotal API key** that BinSifter does not set up for you: create `~/.malwapi.conf` (`chmod 600`) containing
+
+  ```ini
+  [VIRUSTOTAL]
+  VTAPI = your_virustotal_api_key
+  ```
+
+  Get a key at [virustotal.com](https://www.virustotal.com/) (sign up, then Account -> API Key). Without it the action opens a terminal that just prints an empty `AV Report:` and exits - malwoverview's current build gives no indication that the missing key is the reason.
 - **Ghidra** headless analysis - same as Rowan, found via its Linux `analyzeHeadless` script (not the Windows `.bat`).
 - **Isolated Speakeasy code emulation** - asks for confirmation first, since emulating a live sample's code is execution-adjacent; output shows in a popup report window.
 - **Export for AI analysis** writes a Markdown+JSON pair of the file's already-extracted findings for you to hand to whatever AI tool you choose - no AI is called from BinSifter itself.
