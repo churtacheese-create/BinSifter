@@ -15,27 +15,30 @@ Rowan (PowerShell/WinForms) is Windows-only by nature of its toolkit. Winnow (Py
 
 ## Status
 
-**Started - Phases 1-5 complete.** The scaffold is in [`ingot/`](../ingot/):
+**Started - Phases 1-6 complete.** The scaffold is in [`ingot/`](../ingot/):
 a Cargo workspace with an `ingot-core` scan-engine crate and an
 `ingot-server` crate that runs the axum service and embeds the browser UI.
-Working today: recursive file enumeration, a single-pass MD5/SHA-1/SHA-256 +
-Shannon entropy read, NSRL known-good lookup (cached and memory-mapped,
-using the same on-disk cache format as Rowan/Winnow so caches are
-interchangeable), the offline known-bad blocklist, the PE import hash
-(imphash, reproduced byte-for-byte against pefile), an SSDEEP fuzzy hash
-(byte-for-byte against ppdeep), YARA matching on `yara-x` with severity
-scoring and MITRE ATT&CK technique enrichment, PE/ELF/shellcode
+Working today: recursive file enumeration, archive expansion (zip incl.
+WinZip AES / tar / gzip / 7z, nested, with a password round-trip over the
+API), a single-pass MD5/SHA-1/SHA-256 + Shannon entropy read, Authenticode
+signature verification (embedded PE signatures, pure-Rust, against the
+host's native trust store), NSRL known-good lookup (cached and
+memory-mapped, using the same on-disk cache format as Rowan/Winnow so
+caches are interchangeable), the offline known-bad blocklist, the PE import
+hash (imphash, reproduced byte-for-byte against pefile), an SSDEEP fuzzy
+hash (byte-for-byte against ppdeep), YARA matching on `yara-x` with
+severity scoring and MITRE ATT&CK technique enrichment, PE/ELF/shellcode
 classification, capa capability detection on YARA-flagged binaries with a
 FLOSS string + IOC-extraction fallback (Mandiant's official standalone
 binaries, downloaded per-user - no admin), post-scan SSDEEP + imphash
 clustering and a draft YARA rule per SSDEEP cluster, triage disposition
 tracking (persisted by SHA-1, editable in the Results grid), and the four
 37-column CSV reports - all wired into a live-progress web UI and, at every
-stage, cross-checked against the Python variant's output (capa detection
-count and text against a direct `capa -j` run, IOC extraction
-byte-for-byte, etc.).
+stage, cross-checked against the Python variant's output (or, for
+Authenticode, `Get-AuthenticodeSignature`). Catalog (`.cat`) signature
+verification is a known gap.
 
-Later phases, one detection stage at a time (each gated by tests and a real
-scan, the same way Winnow was ported): Authenticode + archive expansion,
-the OS-scoped quick-launch tool menu, then packaging. See
+Later phases, one stage at a time (each gated by tests and a real scan, the
+same way Winnow was ported): catalog (`.cat`) signature verification, the
+OS-scoped quick-launch tool menu, then packaging. See
 [`ingot/IMPLEMENTATION_PLAN.md`](../ingot/IMPLEMENTATION_PLAN.md).

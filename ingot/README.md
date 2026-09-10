@@ -11,10 +11,12 @@ and current status.
 
 ## Status
 
-**Phases 1-5 complete.** Working today: recursive file enumeration, a
-single-pass MD5/SHA-1/SHA-256 + Shannon entropy read, NSRL known-good
-lookup (cached, memory-mapped, format-shared with the other variants), the
-offline known-bad blocklist, the PE import hash (imphash, byte-identical to
+**Phases 1-6 complete.** Working today: recursive file enumeration, archive
+expansion (zip incl. WinZip AES / tar / gzip / 7z, nested, with a
+password round-trip), a single-pass MD5/SHA-1/SHA-256 + Shannon entropy
+read, Authenticode signature verification, NSRL known-good lookup (cached,
+memory-mapped, format-shared with the other variants), the offline
+known-bad blocklist, the PE import hash (imphash, byte-identical to
 pefile), an SSDEEP fuzzy hash (byte-identical to ppdeep), YARA matching on
 `yara-x` with severity scoring and MITRE ATT&CK technique enrichment,
 PE/ELF/shellcode classification, capa capability detection on YARA-flagged
@@ -26,8 +28,8 @@ grid), the 37-column CSV reports (all four filtered views), a live-progress
 browser UI, and the HTTP API behind it. Every stage is cross-checked
 against the Python (Winnow) variant's output.
 
-Not yet ported (later phases): Authenticode, archive expansion, and the
-OS-scoped quick-launch tool menu.
+Not yet ported (later phases): catalog (`.cat`) signature verification, and
+the OS-scoped quick-launch tool menu.
 
 ## Build & run
 

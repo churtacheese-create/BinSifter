@@ -28,14 +28,14 @@
       <!-- Scan -->
       <section class="view" data-view="scan" hidden>
         <h1>Scan</h1>
-        <p class="muted">Point Ingot at a directory of unknown files. It hashes every
-          file, scores entropy, computes the PE import hash and an SSDEEP fuzzy hash,
-          checks each against the NSRL known-good set and the optional known-bad
-          blocklist, runs YARA (with severity scoring and MITRE ATT&amp;CK enrichment),
-          runs capa on YARA-flagged binaries (with a FLOSS string + IOC fallback), then
-          clusters the batch by SSDEEP and imphash and drafts a YARA rule per cluster.
-          capa/FLOSS need their standalone binaries &mdash; install them on the Settings
-          page.</p>
+        <p class="muted">Point Ingot at a directory of unknown files. It expands any
+          archives it finds, then for every file: hashes it, scores entropy, verifies
+          the Authenticode signature, computes the PE import hash and an SSDEEP fuzzy
+          hash, checks the NSRL known-good set and the optional known-bad blocklist,
+          runs YARA (with severity scoring and MITRE ATT&amp;CK enrichment) and capa on
+          YARA-flagged binaries (with a FLOSS string + IOC fallback), then clusters the
+          batch by SSDEEP and imphash and drafts a YARA rule per cluster. capa/FLOSS
+          need their standalone binaries &mdash; install them on the Settings page.</p>
 
         <div class="field">
           <label for="scan-src">Source directory</label>
@@ -85,8 +85,10 @@
                 <th data-sort="yaraAttackTechniques">ATT&amp;CK</th>
                 <th data-sort="capaDetectionCount">capa</th>
                 <th data-sort="iocCount">IOCs</th>
+                <th data-sort="signatureStatus">Signature</th>
                 <th data-sort="nsrlMatch">NSRL</th>
                 <th data-sort="reputationStatus">Reputation</th>
+                <th data-sort="sourceArchive">Source</th>
                 <th data-sort="status">Status</th>
                 <th data-sort="disposition">Disposition</th>
               </tr>
@@ -132,7 +134,7 @@
             <input id="set-ghidra" name="ghidraDir" type="text" spellcheck="false" />
           </div>
           <div class="field">
-            <label for="set-catalog">Authenticode catalog directory <span class="pill">phase 6</span></label>
+            <label for="set-catalog">Authenticode catalog directory <span class="pill">not yet used</span></label>
             <input id="set-catalog" name="catalogDirectory" type="text" spellcheck="false" />
           </div>
           <div class="row">
@@ -173,14 +175,17 @@
           repository <code>LICENSE</code>.</p>
         <h2>Phase status</h2>
         <ul class="muted">
-          <li><strong>Working now:</strong> hashing + Shannon entropy, NSRL known-good,
-            known-bad blocklist, PE import hash, SSDEEP fuzzy hash, YARA matching with
-            severity scoring and MITRE ATT&CK enrichment, capa capability detection with
-            a FLOSS string + IOC-extraction fallback (standalone binaries, auto-installed
-            per-user), SSDEEP + imphash clustering, per-cluster draft YARA rules, triage
-            disposition tracking, 37-column CSV reports, live progress.</li>
-          <li><strong>Later:</strong> Authenticode + archive expansion, OS-scoped
-            quick-launch tools, packaging.</li>
+          <li><strong>Working now:</strong> archive expansion (zip incl. AES / tar /
+            gzip / 7z, nested, with a password round-trip), hashing + Shannon entropy,
+            Authenticode signature verification, NSRL known-good, known-bad blocklist,
+            PE import hash, SSDEEP fuzzy hash, YARA matching with severity scoring and
+            MITRE ATT&CK enrichment, capa with a FLOSS string + IOC-extraction fallback
+            (standalone binaries, installed per-user), SSDEEP + imphash clustering,
+            per-cluster draft YARA rules, triage disposition tracking, 37-column CSV
+            reports, live progress.</li>
+          <li><strong>Later:</strong> the OS-scoped quick-launch tool menu, then
+            packaging. (Catalog <code>.cat</code> signature verification is a known
+            gap.)</li>
         </ul>
       </section>
     </main>

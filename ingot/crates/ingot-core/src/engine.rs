@@ -1,21 +1,22 @@
 //! Scan orchestration - port of `binsifter.core.engine.scan_directory`.
 //!
-//! Per-file pipeline, in order: a single hash+entropy pass, prior-disposition
-//! lookup, NSRL known-good lookup, the offline known-bad blocklist, then -
-//! only for files NSRL did not vouch for - the PE import hash, YARA matching
-//! (with severity bucketing + MITRE ATT&CK enrichment), and, for files YARA
-//! flagged, PE/ELF/shellcode classification (capa-eligibility). Work runs on
-//! a bounded `rayon` thread pool (capped at 16, matching the Python
-//! variant's `MAX_SCAN_WORKERS`); with no GIL this is a plain data-parallel
-//! map rather than a process pool, with one reused `yara_x::Scanner` per
-//! worker thread.
+//! Archives found under the source directory are expanded in a serial
+//! pre-scan pass (before the worker pool) so their contents scan as
+//! ordinary files. Per file, in order: a single hash+entropy pass,
+//! prior-disposition lookup, Authenticode verification (unconditional),
+//! NSRL known-good lookup, the offline known-bad blocklist, then - only for
+//! files NSRL did not vouch for - the PE import hash, SSDEEP fuzzy hash,
+//! YARA matching (severity + MITRE ATT&CK), and, for files YARA flagged,
+//! PE/ELF/shellcode classification then capa or the FLOSS/IOC fallback.
+//! Post-scan: SSDEEP + imphash clustering and per-cluster draft YARA rules.
+//! Work runs on a bounded `rayon` pool (capped at 16); one reused
+//! `yara_x::Scanner` per worker thread.
 //!
-//! Gates match the other variants: NSRL-known files skip imphash / YARA /
-//! capa-eligibility; capa-eligibility (`file_type`) is only computed for a
-//! file with at least one YARA hit. Prior disposition is applied to every
-//! file regardless, before any gate.
+//! Gates match the other variants: NSRL-known files skip imphash / SSDEEP /
+//! YARA / capa; capa-eligibility is only computed for a file with a YARA
+//! hit. Disposition and Authenticode apply to every file, before any gate.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -26,7 +27,9 @@ use tracing::{error, info, warn};
 use walkdir::WalkDir;
 use yara_x::Scanner;
 
+use crate::archive;
 use crate::attack::{self, AttackDb};
+use crate::authenticode;
 use crate::blocklist;
 use crate::capa;
 use crate::config::IngotConfig;
@@ -121,6 +124,12 @@ fn process_one_file(
                 record.disposition = prior.clone();
             }
 
+            // Authenticode - unconditional, like entropy: "signed vs
+            // unsigned is meaningful regardless of hash reputation".
+            let auth = authenticode::check_signature(target);
+            record.signature_status = auth.status;
+            record.signer_name = auth.signer_name;
+
             record.nsrl_match = ctx.nsrl_index.contains(&h.sha1);
 
             if let Some(bl) = ctx.blocklist {
@@ -212,10 +221,65 @@ pub fn scan_directory<F>(config: &IngotConfig, on_progress: F) -> ScanResult
 where
     F: Fn(Progress) + Sync + Send,
 {
+    scan_directory_with(config, &HashMap::new(), on_progress)
+}
+
+/// Like [`scan_directory`], but `archive_passwords` (`archive path -> password`)
+/// is offered to any password-protected archive found under the source
+/// directory; anything without a supplied password is copied to
+/// `<report_dir>/password_protected/` for external cracking.
+pub fn scan_directory_with<F>(
+    config: &IngotConfig,
+    archive_passwords: &HashMap<String, String>,
+    on_progress: F,
+) -> ScanResult
+where
+    F: Fn(Progress) + Sync + Send,
+{
     info!("Enumerating files under {}...", config.src_dir);
-    let paths = enumerate_files(&config.src_dir);
+    let mut paths = enumerate_files(&config.src_dir);
+    info!("Found {} file(s) to scan.", paths.len());
+
+    // --- archive expansion (serial pre-scan pass) ----------------------
+    let mut source_archive_by_path: HashMap<String, String> = HashMap::new();
+    let archive_paths = archive::find_archives(&paths);
+    if !archive_paths.is_empty() && !config.report_directory.is_empty() {
+        let extraction_root = Path::new(&config.report_directory).join("extracted_archives");
+        info!("Expanding {} archive(s)...", archive_paths.len());
+        let p1 = archive::expand_archives(&archive_paths, &extraction_root);
+        paths.extend(p1.extracted_files.iter().cloned());
+        source_archive_by_path.extend(p1.source_archive_by_path);
+        info!(
+            "Archive expansion: {} file(s) extracted, {} archive(s) need a password.",
+            p1.extracted_files.len(),
+            p1.locked_archives.len()
+        );
+
+        if !p1.locked_archives.is_empty() {
+            let unresolved_dir = Path::new(&config.report_directory).join("password_protected");
+            let p2 = archive::resolve_locked_archives(
+                &p1.locked_archives,
+                archive_passwords,
+                &extraction_root,
+                &unresolved_dir,
+            );
+            paths.extend(p2.extracted_files.iter().cloned());
+            source_archive_by_path.extend(p2.source_archive_by_path);
+            if !p2.unresolved_archives.is_empty() {
+                info!(
+                    "{} password-protected archive(s) saved to {} for external cracking.",
+                    p2.unresolved_archives.len(),
+                    unresolved_dir.display()
+                );
+            }
+        }
+    } else if !archive_paths.is_empty() {
+        warn!(
+            "{} archive(s) found but no report directory is configured - archive expansion skipped.",
+            archive_paths.len()
+        );
+    }
     let total = paths.len();
-    info!("Found {total} file(s) to scan.");
 
     // --- NSRL index --------------------------------------------------------
     let nsrl_index = match nsrl::prepare_nsrl_index(&config.nsrl_path, &config.report_directory) {
@@ -349,16 +413,18 @@ where
             .collect()
     });
 
-    let mut floss_static_by_path: std::collections::HashMap<String, Vec<String>> =
-        std::collections::HashMap::new();
+    let mut floss_static_by_path: HashMap<String, Vec<String>> = HashMap::new();
     let mut records: Vec<FileRecord> = Vec::with_capacity(outcomes.len());
     for FileOutcome {
-        record,
+        mut record,
         floss_static_strings,
     } in outcomes
     {
         if let Some(s) = floss_static_strings {
             floss_static_by_path.insert(record.path.clone(), s);
+        }
+        if let Some(src) = source_archive_by_path.get(&record.path) {
+            record.source_archive = src.clone();
         }
         records.push(record);
     }

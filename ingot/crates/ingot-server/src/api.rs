@@ -149,7 +149,21 @@ pub async fn install_tool(State(state): State<AppState>, Path(tool): Path<String
 
 // -------------------------------------------------------------------- scan
 
-pub async fn start_scan(State(state): State<AppState>) -> Response {
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanRequest {
+    /// `archive path -> password` for any password-protected archives found
+    /// under the source directory. Anything not listed is copied to
+    /// `password_protected/` for external cracking.
+    #[serde(default)]
+    archive_passwords: std::collections::HashMap<String, String>,
+}
+
+pub async fn start_scan(
+    State(state): State<AppState>,
+    body: Option<Json<ScanRequest>>,
+) -> Response {
+    let req = body.map(|Json(b)| b).unwrap_or_default();
     {
         let current = state.inner.scan.read().unwrap();
         if let Some(session) = current.as_ref() {
@@ -187,10 +201,11 @@ pub async fn start_scan(State(state): State<AppState>) -> Response {
     *state.inner.scan.write().unwrap() = Some(session.clone());
     let id = session.id.clone();
 
+    let archive_passwords = req.archive_passwords;
     tokio::task::spawn_blocking(move || {
         let session_for_cb = session.clone();
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            engine::scan_directory(&config, |p: Progress| {
+            engine::scan_directory_with(&config, &archive_passwords, |p: Progress| {
                 session_for_cb.total.store(p.total, Ordering::SeqCst);
                 session_for_cb.done.store(p.done, Ordering::SeqCst);
                 let payload = json!({

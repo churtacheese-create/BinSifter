@@ -12,11 +12,14 @@
 //! [`file_type`], [`disposition`], [`yara_scan`] (with severity bucketing),
 //! [`attack`] (MITRE ATT&CK enrichment), [`yara_rule_gen`] (draft rules),
 //! [`capa`] + [`floss`] (shell-outs to the standalone binaries resolved /
-//! downloaded by [`tool_bootstrap`]), [`iocs`], and the
-//! [`engine::scan_directory`] orchestration. Authenticode / archives land
-//! in later phases.
+//! downloaded by [`tool_bootstrap`]), [`iocs`], [`authenticode`] (PE
+//! signature verification), [`archive`] (zip/tar/gzip/7z expansion), and
+//! the [`engine::scan_directory`] orchestration. The OS-scoped quick-launch
+//! tool menu lands in a later phase.
 
+pub mod archive;
 pub mod attack;
+pub mod authenticode;
 pub mod blocklist;
 pub mod capa;
 pub mod config;

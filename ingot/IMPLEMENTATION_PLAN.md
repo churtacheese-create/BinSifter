@@ -313,12 +313,56 @@ Known edge: a `capa` on `PATH` from `pip install flare-capa` resolves but
 lacks bundled rules/sigs and fails per-file with a graceful error - the
 Download button installs the standalone, which then wins (tools dir first).
 
+## Phase 6 - Authenticode + archive expansion - COMPLETE (2026-09-10)
+
+- `authenticode.rs` - embedded PE signature verification via the pure-Rust
+  `pe-sign` crate (CMS/PKCS#7 + Authenticode PE digest), port of
+  `authenticode.py`'s `SignatureStatus` / `SignerName`. Trust anchors are
+  the host's native root store (`rustls-native-certs`), falling back to
+  `pe-sign`'s bundled Mozilla set. Runs unconditionally per file (not
+  NSRL-gated). Digest check first -> `HashMismatch`; then chain/time/CMS ->
+  `Valid` / `NotTrusted`; `NotSigned` for a PE with no cert table;
+  `NotSupportedFileFormat` for a non-MZ file. `catch_unwind` around
+  `pe-sign` (it's a 0.1.x crate).
+- `archive.rs` - zip (incl. WinZip AES) / tar (+ `.tar.gz|tgz|tar.xz|txz|
+  tar.bz2|tbz2` via `flate2`/`lzma-rs`/`bzip2-rs`) / gzip / 7z
+  (`sevenz-rust2`), all pure-Rust. Port of `archive.py`: extension-based
+  `classify`, `needs_password`, recursive expansion (`MAX_NESTED_DEPTH=3`),
+  the two-pass `expand_archives` / `resolve_locked_archives` flow. Extracted
+  files become ordinary Results rows tagged with `SourceArchive`.
+- `engine.rs` - archives expand in a serial pre-scan pass before the pool;
+  `scan_directory_with(config, archive_passwords, on_progress)` threads a
+  password map through, wrapped by the unchanged `scan_directory`.
+- Server: `POST /api/scan` accepts `{ archivePasswords: {path: pw} }`;
+  unmatched locked archives are copied to `<report>/password_protected/`.
+- UI: Results grid gains Signature + Source columns; Dashboard gains
+  valid-signature / signature-problem / from-an-archive tiles. The
+  `catalog_directory` Setting is relabelled "not yet used".
+
+**Known gaps (documented in `authenticode.rs`):**
+* No catalog (`.cat`) verification - a catalog-signed Windows binary
+  (`notepad.exe`) reads as `NotSigned`. (Winnow's catalog path is itself
+  only synthetic-tested.)
+* Intermediates come only from the signature's own cert list (or one AIA
+  fetch), not the OS "CA" store - so many Windows *component* binaries read
+  `NotTrusted` where the OS says `Valid`. Third-party software that bundles
+  its full chain verifies correctly (checked: pwsh.exe, VS Code -> `Valid`).
+* `pe-sign` verifies RSA signer keys only; ECDSA-signed -> `UnknownError`
+  (checked: python.exe, node.exe).
+
+Validated: `cargo test --workspace` (78), clippy `-D warnings`, fmt clean.
+Authenticode cross-checked against `Get-AuthenticodeSignature`: tampered PE
+-> `HashMismatch` (match), unsigned -> `NotSigned` (match), pwsh/VS Code ->
+`Valid` (match); the gaps above account for the rest. Archive expansion
+end-to-end: zip/tar.gz/gzip extracted with correct `SourceArchive`, AES zip
+saved for cracking with no password then extracted with the right one,
+nested archives recursed, CSV `SourceArchive` column populated.
+
+Release binary ~29 -> ~32 MB (pe-sign pulls cms/x509/rsa + a http-only
+reqwest for AIA).
+
 ## Later phases (one stage per block, each gated)
 
-- **P6**: `authenticode.rs` (embedded + catalog `.cat` verification - crate
-  survey needed; `cryptography`-equivalent is `rasn`/`x509-parser` +
-  `cms`), archive expansion (`archive.rs` - zip incl. AES, tar, gzip, 7z),
-  password-protected-archive batch prompt over the API.
 - **P7**: quick-launch context menu in the Results grid, **OS-scoped at
   install time** - installer asks Windows vs Linux vs macOS and the UI loads
   that platform's tool set (Windows: PE-Studio / x64dbg / CFF Explorer /

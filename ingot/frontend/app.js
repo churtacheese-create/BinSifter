@@ -259,7 +259,10 @@ function renderResults() {
       (r.yaraMatches || "").toLowerCase().includes(q) ||
       (r.yaraSeverity || "").toLowerCase().includes(q) ||
       (r.yaraAttackTechniques || "").toLowerCase().includes(q) ||
-      (r.ssdeep || "").toLowerCase().includes(q)
+      (r.ssdeep || "").toLowerCase().includes(q) ||
+      (r.signerName || "").toLowerCase().includes(q) ||
+      (r.signatureStatus || "").toLowerCase().includes(q) ||
+      (r.sourceArchive || "").toLowerCase().includes(q)
     );
   });
 
@@ -322,6 +325,14 @@ function renderResults() {
       const iocCell = r.iocCount > 0
         ? `<span class="tag bad" title="${escapeHtml(r.extractedIocs || "")}">${r.iocCount}</span>`
         : "";
+      const sig = r.signatureStatus || "";
+      const sigClass = sig === "Valid" ? "good" : (sig === "HashMismatch" || sig === "NotTrusted") ? "bad" : "";
+      const sigCell = sig && sig !== "NotSupportedFileFormat"
+        ? `<span class="tag ${sigClass}" title="${escapeHtml(r.signerName || "")}">${sig}</span>`
+        : "";
+      const srcCell = r.sourceArchive
+        ? `<span class="muted mono" title="${escapeHtml(r.sourceArchive)}">${escapeHtml(r.sourceArchive.split(/[\\/]/).pop())}</span>`
+        : "";
       return `<tr>
         <td class="path" title="${escapeHtml(r.path)}">${escapeHtml(r.path)}</td>
         <td class="hash">${(r.sha1 || "").slice(0, 16)}</td>
@@ -333,8 +344,10 @@ function renderResults() {
         <td>${attackCell}</td>
         <td>${capaCell}</td>
         <td>${iocCell}</td>
+        <td>${sigCell}</td>
         <td>${nsrl}</td>
         <td>${rep}</td>
+        <td>${srcCell}</td>
         <td>${status}</td>
         <td>${sel}</td>
       </tr>`;
@@ -393,6 +406,9 @@ function renderDashboard() {
   ).size;
   const highSim = r.filter((x) => x.ssdeepHasHighSimilarity).length;
   const imphashClustered = r.filter((x) => x.imphashClusterId >= 0 && x.imphashClusterSize >= 2).length;
+  const signedValid = r.filter((x) => x.signatureStatus === "Valid").length;
+  const sigProblem = r.filter((x) => x.signatureStatus === "HashMismatch" || x.signatureStatus === "NotTrusted").length;
+  const fromArchive = r.filter((x) => x.sourceArchive).length;
   const tiles = [
     ["Files", r.length],
     ["Completed", completed],
@@ -414,6 +430,9 @@ function renderDashboard() {
     ["SSDEEP clusters", ssdeepClusters],
     ["Files ≥ 85% sim", highSim],
     ["Imphash clustered", imphashClustered],
+    ["Valid signature", signedValid],
+    ["Signature problem", sigProblem],
+    ["From an archive", fromArchive],
     ["Escalated", escalated],
   ];
   $("#tiles").innerHTML = tiles
