@@ -72,9 +72,25 @@ pub struct IngotConfig {
     pub report_directory: String,
     pub attack_data_path: String,
     pub blocklist_path: String,
+
+    // Derived - resolved from `<data_root>/tools/` or PATH, refreshed after
+    // a tools install. Never user-entered. Empty = not available.
+    pub capa_exe: String,
+    pub floss_exe: String,
 }
 
 impl IngotConfig {
+    /// Re-resolve the derived capa / FLOSS binary paths (call after a
+    /// download, or at startup).
+    pub fn refresh_tool_paths(&mut self) {
+        self.capa_exe = crate::tool_bootstrap::resolve_capa()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        self.floss_exe = crate::tool_bootstrap::resolve_floss()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default();
+    }
+
     pub fn settings_fields(&self) -> SettingsFields {
         SettingsFields {
             src_dir: self.src_dir.clone(),
@@ -132,11 +148,14 @@ pub fn build_default_config() -> IngotConfig {
         report_directory: reports_dir.to_string_lossy().into_owned(),
         attack_data_path: attack_path.to_string_lossy().into_owned(),
         blocklist_path: blocklist_path.to_string_lossy().into_owned(),
+        capa_exe: String::new(),
+        floss_exe: String::new(),
     };
 
     if let Some(cached) = load_settings_cache() {
         config.apply_settings(cached);
     }
+    config.refresh_tool_paths();
     config
 }
 
@@ -185,6 +204,8 @@ mod tests {
             report_directory: "r".into(),
             attack_data_path: "at".into(),
             blocklist_path: "bl".into(),
+            capa_exe: String::new(),
+            floss_exe: String::new(),
         };
         let f = c.settings_fields();
         let json = serde_json::to_string(&f).unwrap();

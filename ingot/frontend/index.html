@@ -32,8 +32,10 @@
           file, scores entropy, computes the PE import hash and an SSDEEP fuzzy hash,
           checks each against the NSRL known-good set and the optional known-bad
           blocklist, runs YARA (with severity scoring and MITRE ATT&amp;CK enrichment),
-          then clusters the batch by SSDEEP and imphash and drafts a YARA rule per
-          cluster. (capa and FLOSS land in a later phase.)</p>
+          runs capa on YARA-flagged binaries (with a FLOSS string + IOC fallback), then
+          clusters the batch by SSDEEP and imphash and drafts a YARA rule per cluster.
+          capa/FLOSS need their standalone binaries &mdash; install them on the Settings
+          page.</p>
 
         <div class="field">
           <label for="scan-src">Source directory</label>
@@ -81,6 +83,8 @@
                 <th data-sort="yaraHitCount">YARA</th>
                 <th data-sort="yaraSeverityScore">Severity</th>
                 <th data-sort="yaraAttackTechniques">ATT&amp;CK</th>
+                <th data-sort="capaDetectionCount">capa</th>
+                <th data-sort="iocCount">IOCs</th>
                 <th data-sort="nsrlMatch">NSRL</th>
                 <th data-sort="reputationStatus">Reputation</th>
                 <th data-sort="status">Status</th>
@@ -116,7 +120,7 @@
             <input id="set-yara" name="yaraRules" type="text" spellcheck="false" />
           </div>
           <div class="field">
-            <label for="set-capa">capa rules directory <span class="pill">phase 5</span></label>
+            <label for="set-capa">capa rules directory (optional &mdash; the bundled binary has its own rules)</label>
             <input id="set-capa" name="capaRules" type="text" spellcheck="false" />
           </div>
           <div class="field">
@@ -136,6 +140,13 @@
             <span id="settings-state" class="muted"></span>
           </div>
         </form>
+
+        <h2>External tools</h2>
+        <p class="muted">capa and FLOSS run as Mandiant's official standalone
+          binaries. Ingot can download them per-user (no admin needed) into its
+          tools directory; watch the Logs tab for progress.</p>
+        <div id="tools-status" class="kv"></div>
+
         <h2>Fixed locations</h2>
         <dl id="fixed-locations" class="kv"></dl>
       </section>
@@ -164,11 +175,12 @@
         <ul class="muted">
           <li><strong>Working now:</strong> hashing + Shannon entropy, NSRL known-good,
             known-bad blocklist, PE import hash, SSDEEP fuzzy hash, YARA matching with
-            severity scoring and MITRE ATT&CK enrichment, capa-eligibility
-            classification, SSDEEP + imphash clustering, per-cluster draft YARA rules,
-            triage disposition tracking, 37-column CSV reports, live progress.</li>
-          <li><strong>Later:</strong> capa + FLOSS, Authenticode + archive expansion,
-            OS-scoped quick-launch tools, packaging.</li>
+            severity scoring and MITRE ATT&CK enrichment, capa capability detection with
+            a FLOSS string + IOC-extraction fallback (standalone binaries, auto-installed
+            per-user), SSDEEP + imphash clustering, per-cluster draft YARA rules, triage
+            disposition tracking, 37-column CSV reports, live progress.</li>
+          <li><strong>Later:</strong> Authenticode + archive expansion, OS-scoped
+            quick-launch tools, packaging.</li>
         </ul>
       </section>
     </main>

@@ -269,11 +269,52 @@ than ppdeep's documented ~1.16 MB/s, so Ingot's fuzzy hashing is much
 faster than Winnow's (debug builds are ~3 MB/s, which is why the engine
 tests use small fixtures, not the 65 MB debug binary).
 
+## Phase 5 - capa + FLOSS + IOC extraction - COMPLETE (2026-09-10)
+
+- `tool_bootstrap.rs` - resolves `capa` / `floss` from `<data_root>/tools/`
+  then `PATH`; `install_capa()` / `install_floss()` fetch Mandiant's
+  standalone release zip for the host (GitHub API, exact `-<platform>.zip`
+  suffix match so `-linux.zip` never grabs `-linux-arm64`/`-linux-py312`),
+  extract it flat, `chmod +x` on unix. Plain per-user download, never
+  `sudo`. `ureq` (rustls) + `zip`.
+- `capa.rs` - shells out to the standalone `capa -j` (it bundles its own
+  rules + FLIRT sigs, so unlike Winnow's pip `flare-capa` no rules dir is
+  required; `capa_rules` in Settings passes `-r` to override). stdout goes
+  to a temp file so a full pipe can't deadlock the timeout wait; `-f sc32`
+  then `-f sc64` for shellcode. Output parsing mirrors
+  `capa_scan.py::_summarize`. Timeout 300s (`INGOT_CAPA_TIMEOUT_SECONDS`).
+- `floss.rs` - shells out to standalone `floss --json --quiet --only
+  static stack tight decoded`, port of `floss_scan.py`. Empty result on
+  any failure, never errors. Feeds `static_strings` into draft-rule
+  generation.
+- `iocs.rs` - pure-Rust port of `iocs.py`, all four regexes 1:1 including
+  the case-sensitivity quirks. **Byte-identical to `binsifter.core.iocs`**
+  across a 200-line sweep.
+- `engine.rs` - the YARA-hit gate now runs capa (if the binary resolves +
+  capa-eligible) or FLOSS + IOC extraction (if `PossibleFalseNegative`),
+  matching `engine.py`'s `if CapaRules and CapaEligible / elif
+  PossibleFalseNegative`. capa failure/timeout is noted on `record.error`
+  but the file still completes (engine.py does the same).
+- `config.rs` gains derived `capa_exe` / `floss_exe` (+ `refresh_tool_paths`).
+  Server: `GET /api/tools`, `POST /api/tools/install/{tool}` (background
+  download). Settings page shows status + a Download button; Results grid
+  gains capa / IOCs columns; Dashboard gains capa-hits / capa-detections /
+  files-with-IOCs tiles.
+
+Validated: `cargo test --workspace` (70), clippy `-D warnings`, fmt clean.
+Real scan: capa reported **16 detections, output text identical** to a
+direct `capa -j` run on the same PE; FLOSS invoked for a
+`PossibleFalseNegative` file and degraded gracefully; IOC extraction
+byte-identical to Winnow's; the install endpoint downloaded capa (34 MB)
+and refreshed config in ~3 s; CSV still 37 columns with `CAPAOutput`
+correctly absent. Release binary ~27 -> ~29 MB (ureq/rustls/zip).
+
+Known edge: a `capa` on `PATH` from `pip install flare-capa` resolves but
+lacks bundled rules/sigs and fails per-file with a graceful error - the
+Download button installs the standalone, which then wins (tools dir first).
+
 ## Later phases (one stage per block, each gated)
 
-- **P5**: `tool_bootstrap.rs` - per-user download of standalone capa + FLOSS
-  for the host OS; `capa.rs` / `floss.rs` shell-out integrations + IOC
-  extraction; the YARA-hit / capa-eligible gating from `engine.py`.
 - **P6**: `authenticode.rs` (embedded + catalog `.cat` verification - crate
   survey needed; `cryptography`-equivalent is `rasn`/`x509-parser` +
   `cms`), archive expansion (`archive.rs` - zip incl. AES, tar, gzip, 7z),

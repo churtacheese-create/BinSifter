@@ -16,7 +16,7 @@
 //! file regardless, before any gate.
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -28,11 +28,14 @@ use yara_x::Scanner;
 
 use crate::attack::{self, AttackDb};
 use crate::blocklist;
+use crate::capa;
 use crate::config::IngotConfig;
 use crate::disposition;
 use crate::file_type;
+use crate::floss;
 use crate::hashing;
 use crate::imphash;
+use crate::iocs;
 use crate::model::FileRecord;
 use crate::nsrl::{self, NsrlIndex};
 use crate::report::{self, ReportPaths};
@@ -84,14 +87,25 @@ struct FileScanCtx<'a> {
     blocklist: Option<&'a std::collections::HashSet<String>>,
     disposition_history: &'a BTreeMap<String, String>,
     attack_db: Option<&'a AttackDb>,
+    capa_bin: Option<&'a Path>,
+    floss_bin: Option<&'a Path>,
+    capa_rules_dir: Option<&'a Path>,
+}
+
+/// A `FileRecord` plus the per-file byproduct the post-scan draft-rule pass
+/// needs (FLOSS static strings for `PossibleFalseNegative` files).
+struct FileOutcome {
+    record: FileRecord,
+    floss_static_strings: Option<Vec<String>>,
 }
 
 fn process_one_file(
     path: &str,
     ctx: &FileScanCtx<'_>,
     yara_scanner: Option<&mut Scanner>,
-) -> FileRecord {
+) -> FileOutcome {
     let mut record = FileRecord::new(path);
+    let mut floss_static_strings: Option<Vec<String>> = None;
     let target = Path::new(path);
 
     match hashing::hash_and_score_file(target) {
@@ -133,12 +147,47 @@ fn process_one_file(
 
                 // capa-eligibility is only computed for a file YARA flagged,
                 // matching engine.py (capa never runs against an unflagged
-                // file). capa/FLOSS themselves land in a later phase.
+                // file).
                 if record.yara_hit_count > 0 {
                     let ft = file_type::classify(target, h.length);
                     record.capa_eligible = ft.capa_eligible;
                     record.possible_false_negative =
                         file_type::is_possible_false_negative(&ft, record.yara_hit_count, target);
+
+                    if let (Some(capa_bin), true) = (ctx.capa_bin, record.capa_eligible) {
+                        // Own try scope: a capa timeout/failure is common on
+                        // a real corpus and must not discard everything else
+                        // already learned about the file (engine.py does the
+                        // same).
+                        match capa::scan_file(
+                            capa_bin,
+                            target,
+                            ctx.capa_rules_dir,
+                            ft.is_shellcode,
+                            capa::timeout(),
+                        ) {
+                            Ok(cr) => {
+                                record.capa_detection_count = cr.detection_count;
+                                record.capa_output = (!cr.output.is_empty()).then_some(cr.output);
+                                record.capa_shellcode_format = cr.shellcode_format;
+                            }
+                            Err(e) => {
+                                record.error = Some(e.to_string());
+                                warn!("capa analysis failed for {path}: {e}");
+                            }
+                        }
+                    } else if record.possible_false_negative {
+                        if let Some(floss_bin) = ctx.floss_bin {
+                            let fr = floss::scan_file(floss_bin, target, floss::timeout());
+                            record.floss_string_count = fr.string_count;
+                            if !fr.static_strings.is_empty() {
+                                floss_static_strings = Some(fr.static_strings);
+                            }
+                            let ioc = iocs::extract_iocs(&fr.strings);
+                            record.ioc_count = ioc.count as i32;
+                            record.extracted_iocs = ioc.display;
+                        }
+                    }
                 }
             }
 
@@ -150,7 +199,10 @@ fn process_one_file(
             warn!("Error processing {path}: {e}");
         }
     }
-    record
+    FileOutcome {
+        record,
+        floss_static_strings,
+    }
 }
 
 /// Run the currently-implemented pipeline over every file under
@@ -232,6 +284,21 @@ where
         info!("No MITRE ATT&CK data configured - TTP mapping disabled for this scan.");
     }
 
+    // --- capa / FLOSS binaries (optional) ----------------------------
+    let capa_bin = (!config.capa_exe.is_empty()).then(|| PathBuf::from(&config.capa_exe));
+    let floss_bin = (!config.floss_exe.is_empty()).then(|| PathBuf::from(&config.floss_exe));
+    let capa_rules_dir = (!config.capa_rules.is_empty()).then(|| PathBuf::from(&config.capa_rules));
+    match &capa_bin {
+        Some(p) => info!("capa: {}", p.display()),
+        None => info!(
+            "capa binary not available - capa analysis disabled (install it on the Tools page)."
+        ),
+    }
+    match &floss_bin {
+        Some(p) => info!("FLOSS: {}", p.display()),
+        None => info!("FLOSS binary not available - the string-extraction fallback is disabled."),
+    }
+
     // --- parallel per-file pass ----------------------------------------
     let worker_count = default_worker_count().min(total.max(1));
     info!("Scanning {total} file(s) with {worker_count} worker thread(s)...");
@@ -250,28 +317,51 @@ where
         blocklist: blocklist_hashes.as_ref(),
         disposition_history: &disposition_history,
         attack_db: attack_db.as_ref(),
+        capa_bin: capa_bin.as_deref(),
+        floss_bin: floss_bin.as_deref(),
+        capa_rules_dir: capa_rules_dir.as_deref(),
     };
     let ctx_ref = &ctx;
     let yara_rules_ref = yara_rules.as_ref();
 
-    let mut records: Vec<FileRecord> = pool.install(|| {
+    let outcomes: Vec<FileOutcome> = pool.install(|| {
         paths
             .par_iter()
             .map_init(
                 || yara_rules_ref.map(Scanner::new),
                 |scanner, path| {
-                    let record = process_one_file(path, ctx_ref, scanner.as_mut());
+                    let FileOutcome {
+                        record,
+                        floss_static_strings,
+                    } = process_one_file(path, ctx_ref, scanner.as_mut());
                     let done = counter_ref.fetch_add(1, Ordering::SeqCst) + 1;
                     on_progress(Progress {
                         done,
                         total,
                         record: &record,
                     });
-                    record
+                    FileOutcome {
+                        record,
+                        floss_static_strings,
+                    }
                 },
             )
             .collect()
     });
+
+    let mut floss_static_by_path: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+    let mut records: Vec<FileRecord> = Vec::with_capacity(outcomes.len());
+    for FileOutcome {
+        record,
+        floss_static_strings,
+    } in outcomes
+    {
+        if let Some(s) = floss_static_strings {
+            floss_static_by_path.insert(record.path.clone(), s);
+        }
+        records.push(record);
+    }
 
     records.sort_by(|a, b| a.path.cmp(&b.path));
     let timestamp = Local::now().format("%Y-%m-%d_%H%M%S").to_string();
@@ -331,7 +421,7 @@ where
         if !by_cluster.is_empty() {
             match yara_rule_gen::generate_draft_rules(
                 &by_cluster,
-                &std::collections::HashMap::new(), // FLOSS strings land in Phase 5
+                &floss_static_by_path,
                 &config.report_directory,
                 ssdeep::CLUSTER_THRESHOLD,
                 &timestamp,
@@ -385,6 +475,8 @@ mod tests {
             report_directory: reports.to_string_lossy().into_owned(),
             attack_data_path: String::new(),
             blocklist_path: String::new(),
+            capa_exe: String::new(),
+            floss_exe: String::new(),
         }
     }
 

@@ -11,22 +11,23 @@ and current status.
 
 ## Status
 
-**Phases 1-4 complete.** Working today: recursive file enumeration, a
+**Phases 1-5 complete.** Working today: recursive file enumeration, a
 single-pass MD5/SHA-1/SHA-256 + Shannon entropy read, NSRL known-good
 lookup (cached, memory-mapped, format-shared with the other variants), the
 offline known-bad blocklist, the PE import hash (imphash, byte-identical to
 pefile), an SSDEEP fuzzy hash (byte-identical to ppdeep), YARA matching on
-`yara-x` with severity scoring and MITRE ATT&CK technique enrichment
-(cross-checked against Winnow's yara-python output), PE/ELF/shellcode
-classification and capa-eligibility for YARA-flagged files, post-scan
-SSDEEP + imphash clustering and a draft YARA rule per SSDEEP cluster
-(cross-checked against Winnow's own clustering), triage disposition
-tracking (persisted by SHA-1, editable in the Results grid), the 37-column
-CSV reports (all four filtered views), a live-progress browser UI, and the
-HTTP API behind it.
+`yara-x` with severity scoring and MITRE ATT&CK technique enrichment,
+PE/ELF/shellcode classification, capa capability detection on YARA-flagged
+binaries with a FLOSS string + IOC-extraction fallback (Mandiant's
+standalone binaries, downloaded per-user from the Settings page), post-scan
+SSDEEP + imphash clustering and a draft YARA rule per SSDEEP cluster,
+triage disposition tracking (persisted by SHA-1, editable in the Results
+grid), the 37-column CSV reports (all four filtered views), a live-progress
+browser UI, and the HTTP API behind it. Every stage is cross-checked
+against the Python (Winnow) variant's output.
 
-Not yet ported (later phases): capa, FLOSS, Authenticode, archive
-expansion, and the OS-scoped quick-launch tool menu.
+Not yet ported (later phases): Authenticode, archive expansion, and the
+OS-scoped quick-launch tool menu.
 
 ## Build & run
 
@@ -56,6 +57,10 @@ cache) lives under the per-user data directory
 | `crates/ingot-core` | scan engine library - no HTTP, no UI |
 | `crates/ingot-server` | axum HTTP service, embedded frontend, the `ingot` binary |
 | `frontend/` | the browser UI (plain HTML/CSS/JS, embedded at build time) |
+
+capa and FLOSS run as Mandiant's official standalone binaries; Ingot
+downloads them per-user into `<data-root>/tools/` from the Settings page
+(no admin needed), or picks up a `capa`/`floss` already on `PATH`.
 
 ## License
 

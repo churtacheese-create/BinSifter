@@ -73,9 +73,37 @@ async function loadSettings() {
     ]) {
       dl.insertAdjacentHTML("beforeend", `<dt>${k}</dt><dd>${v || "—"}</dd>`);
     }
+    await loadTools();
   } catch (e) {
     $("#settings-state").textContent = "could not load: " + e.message;
   }
+}
+
+async function loadTools() {
+  const el = $("#tools-status");
+  if (!el) return;
+  const t = await api("/api/tools");
+  el.innerHTML = "";
+  for (const name of ["capa", "floss"]) {
+    const info = t[name] || {};
+    const status = info.available
+      ? `<span class="tag good">installed</span> <span class="mono">${escapeHtml(info.path)}</span>`
+      : `<span class="tag err">not installed</span> <button data-install="${name}">Download</button>`;
+    el.insertAdjacentHTML("beforeend", `<dt>${name}</dt><dd>${status}</dd>`);
+  }
+  el.querySelectorAll("button[data-install]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      b.disabled = true;
+      b.textContent = "downloading… (see Logs)";
+      try {
+        await api(`/api/tools/install/${b.dataset.install}`, { method: "POST" });
+        setTimeout(loadTools, 8000);
+      } catch (e) {
+        b.textContent = "failed: " + e.message;
+        b.disabled = false;
+      }
+    })
+  );
 }
 
 $("#settings-form").addEventListener("submit", async (ev) => {
@@ -284,6 +312,16 @@ function renderResults() {
       } else if (r.imphashClusterId >= 0 && r.imphashClusterSize >= 2) {
         clusterCell = `<span class="muted">I#${r.imphashClusterId} ×${r.imphashClusterSize}</span>`;
       }
+      let capaCell = "";
+      if (r.capaDetectionCount > 0) {
+        const fmt = r.capaShellcodeFormat ? ` (${r.capaShellcodeFormat})` : "";
+        capaCell = `<span title="${escapeHtml(r.capaOutput || "")}">${r.capaDetectionCount}${fmt}</span>`;
+      } else if (r.error && r.error.startsWith("capa")) {
+        capaCell = `<span class="tag err" title="${escapeHtml(r.error)}">!</span>`;
+      }
+      const iocCell = r.iocCount > 0
+        ? `<span class="tag bad" title="${escapeHtml(r.extractedIocs || "")}">${r.iocCount}</span>`
+        : "";
       return `<tr>
         <td class="path" title="${escapeHtml(r.path)}">${escapeHtml(r.path)}</td>
         <td class="hash">${(r.sha1 || "").slice(0, 16)}</td>
@@ -293,6 +331,8 @@ function renderResults() {
         <td>${yaraCell}</td>
         <td>${sevCell}</td>
         <td>${attackCell}</td>
+        <td>${capaCell}</td>
+        <td>${iocCell}</td>
         <td>${nsrl}</td>
         <td>${rep}</td>
         <td>${status}</td>
@@ -344,6 +384,9 @@ function renderDashboard() {
   const yaraHits = r.filter((x) => x.yaraHitCount > 0).length;
   const sev = (s) => r.filter((x) => x.yaraHitCount > 0 && x.yaraSeverity === s).length;
   const capaEligible = r.filter((x) => x.capaEligible).length;
+  const capaHits = r.reduce((n, x) => n + (x.capaDetectionCount > 0 ? 1 : 0), 0);
+  const capaDetections = r.reduce((n, x) => n + (x.capaDetectionCount || 0), 0);
+  const withIocs = r.filter((x) => x.iocCount > 0).length;
   const withAttack = r.filter((x) => x.yaraAttackTechniques).length;
   const ssdeepClusters = new Set(
     r.filter((x) => x.ssdeepClusterId >= 0 && x.ssdeepClusterSize >= 2).map((x) => x.ssdeepClusterId)
@@ -364,6 +407,9 @@ function renderDashboard() {
     ["Medium", sev("Medium")],
     ["Low", sev("Low")],
     ["capa-eligible", capaEligible],
+    ["capa hits", capaHits],
+    ["capa detections", capaDetections],
+    ["Files with IOCs", withIocs],
     ["ATT&CK mapped", withAttack],
     ["SSDEEP clusters", ssdeepClusters],
     ["Files ≥ 85% sim", highSim],

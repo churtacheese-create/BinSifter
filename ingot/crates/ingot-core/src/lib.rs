@@ -11,22 +11,28 @@
 //! [`imphash`] (+ clustering), [`ssdeep`] (fuzzy hash + clustering),
 //! [`file_type`], [`disposition`], [`yara_scan`] (with severity bucketing),
 //! [`attack`] (MITRE ATT&CK enrichment), [`yara_rule_gen`] (draft rules),
-//! and the [`engine::scan_directory`] orchestration. capa / FLOSS /
-//! Authenticode / archives land in later phases.
+//! [`capa`] + [`floss`] (shell-outs to the standalone binaries resolved /
+//! downloaded by [`tool_bootstrap`]), [`iocs`], and the
+//! [`engine::scan_directory`] orchestration. Authenticode / archives land
+//! in later phases.
 
 pub mod attack;
 pub mod blocklist;
+pub mod capa;
 pub mod config;
 pub mod disposition;
 pub mod engine;
 pub mod file_type;
+pub mod floss;
 pub mod hashing;
 pub mod imphash;
 mod imphash_ordinals;
+pub mod iocs;
 pub mod model;
 pub mod nsrl;
 pub mod report;
 pub mod ssdeep;
+pub mod tool_bootstrap;
 pub mod yara_rule_gen;
 pub mod yara_scan;
 

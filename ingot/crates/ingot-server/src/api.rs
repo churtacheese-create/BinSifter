@@ -108,6 +108,45 @@ pub async fn put_config(
     Json(config.clone()).into_response()
 }
 
+// ------------------------------------------------------------------- tools
+
+/// capa / FLOSS binary status. `available` means Ingot found (or downloaded)
+/// the standalone binary; `path` is where.
+pub async fn get_tools(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let config = state.inner.config.read().unwrap();
+    Json(json!({
+        "capa":  { "available": !config.capa_exe.is_empty(),  "path": config.capa_exe },
+        "floss": { "available": !config.floss_exe.is_empty(), "path": config.floss_exe },
+    }))
+}
+
+/// Download the standalone capa or FLOSS binary into the per-user tools
+/// directory. Runs in the background; watch the Logs tab for progress.
+pub async fn install_tool(State(state): State<AppState>, Path(tool): Path<String>) -> Response {
+    let installer: fn() -> anyhow::Result<std::path::PathBuf> = match tool.as_str() {
+        "capa" => ingot_core::tool_bootstrap::install_capa,
+        "floss" => ingot_core::tool_bootstrap::install_floss,
+        _ => {
+            return (
+                StatusCode::BAD_REQUEST,
+                "unknown tool (want 'capa' or 'floss')",
+            )
+                .into_response()
+        }
+    };
+
+    let label = tool.clone();
+    tokio::task::spawn_blocking(move || match installer() {
+        Ok(path) => {
+            tracing::info!("{label} installed: {}", path.display());
+            state.inner.config.write().unwrap().refresh_tool_paths();
+        }
+        Err(e) => tracing::error!("{label} install failed: {e:#}"),
+    });
+
+    (StatusCode::ACCEPTED, Json(json!({ "started": tool }))).into_response()
+}
+
 // -------------------------------------------------------------------- scan
 
 pub async fn start_scan(State(state): State<AppState>) -> Response {
