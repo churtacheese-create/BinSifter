@@ -52,12 +52,15 @@ body {
   gap: 4px;
 }
 .brand {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
   padding: 4px 8px 16px;
-  font-weight: 600;
 }
-.brand-mark { color: var(--accent); font-size: 20px; }
-.brand-text small { color: var(--text-muted); font-weight: 500; }
+.brand-logo img { display: block; width: 150px; height: auto; }
+.brand-variant {
+  font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--text-muted); padding-left: 2px;
+}
+.about-logo img { display: block; width: 260px; max-width: 70%; height: auto; margin: 4px 0 14px; }
 .navlink {
   appearance: none;
   border: 0;
@@ -128,13 +131,26 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .badge.bad { color: var(--danger); border-color: var(--danger); }
 
 /* ---- progress ---- */
+#scan-progress { margin-top: 16px; max-width: 620px; }
+.progress-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 13px; }
+#scan-phase { font-weight: 600; }
 .progressbar {
   height: 10px; border-radius: 999px;
   background: var(--surface-2);
   overflow: hidden; margin: 8px 0;
   border: 1px solid var(--border);
+  position: relative;
 }
 #scan-bar { height: 100%; width: 0; background: var(--accent); transition: width .2s ease; }
+/* indeterminate sweep while a phase is running with no per-file count yet */
+.progressbar.indeterminate #scan-bar {
+  width: 35% !important;
+  animation: sweep 1.3s ease-in-out infinite;
+}
+@keyframes sweep {
+  0%   { margin-left: -35%; }
+  100% { margin-left: 100%; }
+}
 .progress-meta { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
 .progress-meta .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
 
@@ -167,9 +183,28 @@ select.dispo:disabled { opacity: .5; }
   border: 1px solid var(--border);
   border-radius: 9px;
   padding: 14px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
+.tile:hover { border-color: var(--accent); }
+.tile:disabled { cursor: default; opacity: .55; }
+.tile:disabled:hover { border-color: var(--border); }
 .tile .n { font-size: 26px; font-weight: 700; }
 .tile .l { color: var(--text-muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+
+/* ---- results facet chip (set by a Dashboard tile) ---- */
+#results-facet { margin-top: -4px; }
+.facet-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 999px; padding: 3px 6px 3px 12px; font-size: 13px;
+}
+.facet-chip button {
+  border: 0; background: transparent; color: var(--text-muted);
+  font-size: 15px; line-height: 1; padding: 2px 6px; border-radius: 999px; cursor: pointer;
+}
+.facet-chip button:hover { background: var(--border); color: var(--text); }
 
 /* ---- kv ---- */
 .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; font-size: 13px; }
@@ -241,8 +276,15 @@ ul#report-links a { color: var(--accent); }
   font-size: 12.5px;
 }
 
+/* ---- antivirus panel ---- */
+#av-status { margin-top: 10px; font-size: 13px; white-space: pre-wrap; line-height: 1.6; }
+#av-status .av-line { color: var(--text); }
+#av-status .av-line b { color: var(--accent); }
+
 @media (max-width: 720px) {
   #app { flex-direction: column; }
-  #sidebar { width: 100%; flex: none; flex-direction: row; flex-wrap: wrap; }
+  #sidebar { width: 100%; flex: none; flex-direction: row; flex-wrap: wrap; align-items: center; }
+  .brand { flex-direction: row; align-items: center; padding-bottom: 4px; }
+  .brand-logo img { width: 120px; }
   .sidebar-foot { margin: 0; }
 }

@@ -121,32 +121,91 @@ pub fn tools_for_os() -> &'static [ToolDef] {
     }
 }
 
-fn find_tool(names: &[&str], tools_dir: &str) -> Option<PathBuf> {
-    if !tools_dir.is_empty() {
-        // recursive search of the configured directory - first match by
-        // path order wins, matching the other variants' Find-ToolPath
-        let mut hits: Vec<PathBuf> = WalkDir::new(tools_dir)
-            .into_iter()
-            .filter_map(Result::ok)
-            .filter(|e| e.file_type().is_file())
-            .filter(|e| {
-                let fname = e.file_name().to_string_lossy();
-                let stem = Path::new(fname.as_ref())
-                    .file_stem()
-                    .map(|s| s.to_string_lossy().into_owned())
-                    .unwrap_or_default();
-                names
-                    .iter()
-                    .any(|n| fname.eq_ignore_ascii_case(n) || stem.eq_ignore_ascii_case(n))
-            })
-            .map(|e| e.into_path())
-            .collect();
-        hits.sort();
-        if let Some(p) = hits.into_iter().next() {
-            return Some(p);
+/// Would `path` plausibly be a launchable tool rather than a library / data
+/// file that merely shares a name? On Windows only real executables count
+/// (this is what stopped `x64dbg` resolving to `x64dbg.lib`); elsewhere an
+/// extensionless file is fine (most Linux tools and Ghidra's `analyzeHeadless`
+/// shell script) but obvious non-executables are rejected.
+fn looks_launchable(path: &Path) -> bool {
+    match path.extension().and_then(|e| e.to_str()) {
+        Some(ext) => {
+            let ext = ext.to_ascii_lowercase();
+            if cfg!(windows) {
+                matches!(ext.as_str(), "exe" | "bat" | "cmd" | "com")
+            } else {
+                !matches!(
+                    ext.as_str(),
+                    "lib"
+                        | "dll"
+                        | "so"
+                        | "dylib"
+                        | "a"
+                        | "o"
+                        | "txt"
+                        | "md"
+                        | "json"
+                        | "xml"
+                        | "ini"
+                        | "cfg"
+                        | "conf"
+                        | "yml"
+                        | "yaml"
+                        | "h"
+                        | "c"
+                        | "cpp"
+                        | "py"
+                        | "png"
+                        | "svg"
+                        | "html"
+                )
+            }
+        }
+        // no extension: a Unix binary/script, but never a Windows tool
+        None => !cfg!(windows),
+    }
+}
+
+/// Every launchable-looking file under `dir`, sorted for determinism.
+fn walk_candidates(dir: &str) -> Vec<PathBuf> {
+    if dir.is_empty() {
+        return Vec::new();
+    }
+    let mut hits: Vec<PathBuf> = WalkDir::new(dir)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|e| e.file_type().is_file())
+        .map(walkdir::DirEntry::into_path)
+        .filter(|p| looks_launchable(p))
+        .collect();
+    hits.sort();
+    hits
+}
+
+/// First candidate matching one of `names` (by file name or stem,
+/// case-insensitively). `names` are tried **in order** - the first name with
+/// any match wins - so `["analyzeHeadless.bat", "analyzeHeadless"]` prefers
+/// the `.bat` on Windows even though it sorts later on disk.
+fn match_candidate(names: &[&str], candidates: &[PathBuf]) -> Option<PathBuf> {
+    for name in names {
+        if let Some(hit) = candidates.iter().find(|p| {
+            let fname = p
+                .file_name()
+                .map(|s| s.to_string_lossy())
+                .unwrap_or_default();
+            let stem = p
+                .file_stem()
+                .map(|s| s.to_string_lossy())
+                .unwrap_or_default();
+            fname.eq_ignore_ascii_case(name) || stem.eq_ignore_ascii_case(name)
+        }) {
+            return Some(hit.clone());
         }
     }
-    // fall back to PATH
+    None
+}
+
+/// `PATH` lookup, tried in `names` order (with a `.exe` suffix as a fallback).
+fn path_env_lookup(names: &[&str]) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
     for name in names {
         for dir in std::env::split_paths(&path) {
@@ -158,6 +217,12 @@ fn find_tool(names: &[&str], tools_dir: &str) -> Option<PathBuf> {
         }
     }
     None
+}
+
+/// Resolve one tool: the configured directory (single recursive walk) first,
+/// then `PATH`.
+fn resolve_one(names: &[&str], tools_dir: &str) -> Option<PathBuf> {
+    match_candidate(names, &walk_candidates(tools_dir)).or_else(|| path_env_lookup(names))
 }
 
 #[derive(Serialize)]
@@ -172,12 +237,16 @@ pub struct ResolvedTool {
 }
 
 pub fn resolve_tools(tools_dir: &str) -> Vec<ResolvedTool> {
+    // one walk of the (possibly large) tools directory, shared across every
+    // tool - previously this walked the whole tree once per tool.
+    let candidates = walk_candidates(tools_dir);
     tools_for_os()
         .iter()
         .map(|t| ResolvedTool {
             id: t.id.to_string(),
             label: t.label.to_string(),
-            path: find_tool(t.filenames, tools_dir)
+            path: match_candidate(t.filenames, &candidates)
+                .or_else(|| path_env_lookup(t.filenames))
                 .map(|p| p.to_string_lossy().into_owned())
                 .unwrap_or_default(),
             needs_confirm: t.needs_confirm,
@@ -328,7 +397,7 @@ pub fn resolve_ghidra_headless(ghidra_dir: &str) -> Option<PathBuf> {
     } else {
         &["analyzeHeadless"]
     };
-    find_tool(names, ghidra_dir)
+    resolve_one(names, ghidra_dir)
 }
 
 /// Kick off `analyzeHeadless` for `target` into `<report_dir>/ghidra_projects/`.
@@ -402,6 +471,32 @@ mod tests {
                 assert!(!r.id.is_empty());
             }
         }
+    }
+
+    #[test]
+    fn launchable_filter_rejects_libraries() {
+        assert!(!looks_launchable(Path::new("x64dbg.lib")));
+        assert!(!looks_launchable(Path::new("some/dir/tool.dll")));
+        assert!(!looks_launchable(Path::new("readme.txt")));
+        if cfg!(windows) {
+            assert!(looks_launchable(Path::new("pestudio.exe")));
+            assert!(looks_launchable(Path::new("support/analyzeHeadless.bat")));
+            assert!(!looks_launchable(Path::new("support/analyzeHeadless"))); // unix script
+        } else {
+            assert!(looks_launchable(Path::new("cutter")));
+            assert!(looks_launchable(Path::new("support/analyzeHeadless")));
+        }
+    }
+
+    #[test]
+    fn match_candidate_honours_name_priority() {
+        let cands = [
+            PathBuf::from("/g/support/analyzeHeadless"),
+            PathBuf::from("/g/support/analyzeHeadless.bat"),
+        ];
+        // ".bat" is listed first -> wins even though it sorts later on disk
+        let hit = match_candidate(&["analyzeHeadless.bat", "analyzeHeadless"], &cands).unwrap();
+        assert_eq!(hit, PathBuf::from("/g/support/analyzeHeadless.bat"));
     }
 
     #[test]

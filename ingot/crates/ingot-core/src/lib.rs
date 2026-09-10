@@ -15,12 +15,14 @@
 //! downloaded by [`tool_bootstrap`]), [`iocs`], [`authenticode`] (PE
 //! signature verification), [`archive`] (zip/tar/gzip/7z expansion),
 //! [`tools`] (OS-scoped quick-launch tools + Ghidra headless),
-//! [`ai_export`], and the [`engine::scan_directory`] orchestration.
+//! [`ai_export`], [`av_detect`] (installed-AV detection + Defender
+//! exclusion), and the [`engine::scan_directory`] orchestration.
 
 pub mod ai_export;
 pub mod archive;
 pub mod attack;
 pub mod authenticode;
+pub mod av_detect;
 pub mod blocklist;
 pub mod capa;
 pub mod config;

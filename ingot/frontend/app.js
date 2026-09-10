@@ -8,6 +8,10 @@ const state = {
   sortKey: "path",
   sortDir: 1,
   scanEvents: null,
+  scanStart: 0,
+  scanTimer: null,
+  scanPoll: null,
+  facet: null,
 };
 
 // ---------------------------------------------------------------- navigation
@@ -120,6 +124,7 @@ $("#settings-form").addEventListener("submit", async (ev) => {
     });
     st.textContent = "saved";
     if (payload.srcDir) $("#scan-src").value = payload.srcDir;
+    loadLaunchTools(); // tools/ghidra dir may have changed - refresh the right-click menu
   } catch (e) {
     st.textContent = "error: " + e.message;
   }
@@ -152,7 +157,9 @@ $("#scan-start").addEventListener("click", async () => {
     state.records = [];
     $("#scan-progress").hidden = false;
     $("#scan-reports").hidden = true;
+    setPhase("Starting…");
     setProgress(0, 0, "");
+    startScanClock(Date.now());
     openScanStream();
     st.textContent = "running";
   } catch (e) {
@@ -161,27 +168,76 @@ $("#scan-start").addEventListener("click", async () => {
   }
 });
 
+function fmtDuration(ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return (h ? `${h}:${String(m).padStart(2, "0")}` : `${m}`) + `:${String(sec).padStart(2, "0")}`;
+}
+
+function startScanClock(startMs) {
+  state.scanStart = startMs;
+  clearInterval(state.scanTimer);
+  const tick = () => ($("#scan-elapsed").textContent = fmtDuration(Date.now() - state.scanStart));
+  tick();
+  state.scanTimer = setInterval(tick, 1000);
+}
+
+function stopScanClock() {
+  clearInterval(state.scanTimer);
+  state.scanTimer = null;
+  if (state.scanStart) $("#scan-elapsed").textContent = fmtDuration(Date.now() - state.scanStart);
+}
+
+function setPhase(text) {
+  $("#scan-phase").textContent = text || "";
+}
+
 function setProgress(done, total, current) {
   $("#scan-count").textContent = `${done} / ${total}`;
   $("#scan-current").textContent = current || "";
   const pct = total > 0 ? (done / total) * 100 : 0;
   $("#scan-bar").style.width = pct + "%";
+  // an indeterminate sweep while a phase runs with no per-file count yet
+  $(".progressbar").classList.toggle("indeterminate", total === 0 && state.scanTimer != null);
 }
 
 function openScanStream() {
   if (state.scanEvents) state.scanEvents.close();
   const es = new EventSource("/api/scan/current/events");
   state.scanEvents = es;
+  // Backstop: each scan gets a fresh event channel, so an early event can be
+  // missed in the gap between "scan started" and "stream connected". Poll the
+  // status a few times a minute to keep the phase/elapsed honest regardless.
+  clearInterval(state.scanPoll);
+  state.scanPoll = setInterval(async () => {
+    if (!state.scanEvents) { clearInterval(state.scanPoll); return; }
+    try {
+      const s = await api("/api/scan/current");
+      if (s.finished) return;
+      if (s.total === 0) { setPhase(s.phase); setProgress(state.records.length, 0, ""); }
+    } catch { /* transient */ }
+  }, 3000);
   es.onmessage = (ev) => {
     let msg;
     try { msg = JSON.parse(ev.data); } catch { return; }
-    if (msg.kind === "progress") {
+    if (msg.kind === "phase") {
+      setPhase(msg.phase);
+      setProgress(state.records.length, 0, "");
+    } else if (msg.kind === "progress") {
       upsertRecord(msg.record);
+      setPhase("Scanning files");
       setProgress(msg.done, msg.total, msg.record.path);
       if (!$(".view[data-view='results']").hidden) renderResults();
     } else if (msg.kind === "complete") {
+      clearInterval(state.scanPoll);
       setProgress(msg.done, msg.total, "");
-      $("#scan-state").textContent = msg.error ? "finished with error: " + msg.error : "finished";
+      stopScanClock();
+      setPhase(msg.error ? "Finished with an error" : "Finished");
+      $("#scan-state").textContent = msg.error
+        ? `finished with error: ${msg.error}`
+        : `finished in ${$("#scan-elapsed").textContent}`;
       $("#scan-start").disabled = false;
       es.close();
       state.scanEvents = null;
@@ -206,7 +262,16 @@ async function loadScanStatus() {
       renderResults();
       renderDashboard();
     }
-    if (s.finished && !s.error) {
+    if (!s.finished) {
+      // a scan is still running (page reload / reconnect) - reattach
+      $("#scan-start").disabled = true;
+      $("#scan-progress").hidden = false;
+      setPhase(s.phase || "Scanning files");
+      startScanClock(s.started ? Date.parse(s.started) : Date.now());
+      setProgress(s.done || 0, s.total || 0, "");
+      if (!state.scanEvents) openScanStream();
+    } else {
+      stopScanClock();
       $("#scan-start").disabled = false;
     }
   } catch { /* no scan yet */ }
@@ -245,11 +310,24 @@ $$("#results-table th").forEach((th) =>
   })
 );
 
+function setFacet(key) {
+  state.facet = key && DASHBOARD_FACETS[key] ? key : null;
+  const bar = $("#results-facet");
+  if (state.facet) {
+    $("#results-facet-label").textContent = `Showing: ${DASHBOARD_FACETS[state.facet].label}`;
+    bar.hidden = false;
+  } else {
+    bar.hidden = true;
+  }
+}
+
 function renderResults() {
   const q = $("#results-filter").value.toLowerCase().trim();
   const hideNsrl = $("#results-hide-nsrl").checked;
+  const facetFn = state.facet ? DASHBOARD_FACETS[state.facet].fn : null;
   let rows = state.records.filter((r) => {
     if (hideNsrl && r.nsrlMatch) return false;
+    if (facetFn && !facetFn(r)) return false;
     if (!q) return true;
     return (
       (r.path || "").toLowerCase().includes(q) ||
@@ -394,11 +472,19 @@ const ctx = $("#ctxmenu");
 document.addEventListener("click", () => (ctx.hidden = true));
 window.addEventListener("blur", () => (ctx.hidden = true));
 
-$("#results-table tbody").addEventListener("contextmenu", (ev) => {
+$("#results-table tbody").addEventListener("contextmenu", async (ev) => {
   const tr = ev.target.closest("tr[data-path]");
-  if (!tr || !launchTools) return;
+  if (!tr) return;
   ev.preventDefault();
   const path = tr.dataset.path;
+  if (!launchTools) {
+    ctx.innerHTML = `<button disabled>Finding tools…</button>`;
+    ctx.style.left = Math.min(ev.clientX, window.innerWidth - 240) + "px";
+    ctx.style.top = ev.clientY + "px";
+    ctx.hidden = false;
+    await loadLaunchTools();
+    if (!launchTools) { ctx.hidden = true; return; }
+  }
   const items = [];
   for (const t of launchTools.tools || []) {
     items.push({
@@ -471,60 +557,131 @@ async function aiExport(filePath) {
 $("#ai-close")?.addEventListener("click", () => $("#ai-modal").close());
 
 // ---------------------------------------------------------------- dashboard
+// Each entry: label, a per-file predicate `fn` (used both to count the tile
+// and to filter the Results grid when the tile is clicked), and optionally a
+// distinct `count` when the headline number isn't just fn's match count.
+const inSsdeepCluster = (x) => x.ssdeepClusterId >= 0 && x.ssdeepClusterSize >= 2;
+const inImphashCluster = (x) => x.imphashClusterId >= 0 && x.imphashClusterSize >= 2;
+const DASHBOARD_FACETS = {
+  all:        { label: "All files", fn: () => true },
+  completed:  { label: "Completed", fn: (x) => x.status === "Completed" },
+  errors:     { label: "Errored files", fn: (x) => x.status === "Error" },
+  nsrl:       { label: "NSRL known-good", fn: (x) => !!x.nsrlMatch },
+  knownBad:   { label: "Known-bad (blocklist)", fn: (x) => x.reputationStatus === "KnownBad" },
+  highEntropy:{ label: "Entropy ≥ 7.5", fn: (x) => x.entropy >= 7.5 },
+  imphash:    { label: "Has an imphash", fn: (x) => !!x.imphash },
+  yara:       { label: "YARA hits", fn: (x) => x.yaraHitCount > 0 },
+  sevCritical:{ label: "YARA severity: Critical", fn: (x) => x.yaraHitCount > 0 && x.yaraSeverity === "Critical" },
+  sevHigh:    { label: "YARA severity: High", fn: (x) => x.yaraHitCount > 0 && x.yaraSeverity === "High" },
+  sevMedium:  { label: "YARA severity: Medium", fn: (x) => x.yaraHitCount > 0 && x.yaraSeverity === "Medium" },
+  sevLow:     { label: "YARA severity: Low", fn: (x) => x.yaraHitCount > 0 && x.yaraSeverity === "Low" },
+  capaEligible:{ label: "capa-eligible", fn: (x) => !!x.capaEligible },
+  capaHits:   { label: "Files with capa detections", fn: (x) => x.capaDetectionCount > 0 },
+  capaDet:    { label: "Files with capa detections", fn: (x) => x.capaDetectionCount > 0,
+                count: (r) => r.reduce((n, x) => n + (x.capaDetectionCount || 0), 0) },
+  iocs:       { label: "Files with IOCs", fn: (x) => x.iocCount > 0 },
+  attack:     { label: "ATT&CK-mapped", fn: (x) => !!x.yaraAttackTechniques },
+  ssdeep:     { label: "In an SSDEEP cluster", fn: inSsdeepCluster,
+                count: (r) => new Set(r.filter(inSsdeepCluster).map((x) => x.ssdeepClusterId)).size },
+  highSim:    { label: "≥ 85% similar to another file", fn: (x) => !!x.ssdeepHasHighSimilarity },
+  imphashClustered: { label: "In an imphash cluster", fn: inImphashCluster },
+  sigValid:   { label: "Valid signature", fn: (x) => x.signatureStatus === "Valid" },
+  sigProblem: { label: "Signature problem", fn: (x) => x.signatureStatus === "HashMismatch" || x.signatureStatus === "NotTrusted" },
+  fromArchive:{ label: "Extracted from an archive", fn: (x) => !!x.sourceArchive },
+  escalated:  { label: "Disposition: Escalated", fn: (x) => x.disposition === "Escalated" },
+};
+
+// tile display order: [facet key, tile label]
+const DASHBOARD_TILES = [
+  ["all", "Files"], ["completed", "Completed"], ["errors", "Errors"],
+  ["nsrl", "NSRL known-good"], ["knownBad", "Known-bad"], ["highEntropy", "Entropy ≥ 7.5"],
+  ["imphash", "Have imphash"], ["yara", "YARA hits"],
+  ["sevCritical", "Critical"], ["sevHigh", "High"], ["sevMedium", "Medium"], ["sevLow", "Low"],
+  ["capaEligible", "capa-eligible"], ["capaHits", "capa hits"], ["capaDet", "capa detections"],
+  ["iocs", "Files with IOCs"], ["attack", "ATT&CK mapped"],
+  ["ssdeep", "SSDEEP clusters"], ["highSim", "Files ≥ 85% sim"], ["imphashClustered", "Imphash clustered"],
+  ["sigValid", "Valid signature"], ["sigProblem", "Signature problem"],
+  ["fromArchive", "From an archive"], ["escalated", "Escalated"],
+];
+
 function renderDashboard() {
   const r = state.records;
-  const completed = r.filter((x) => x.status === "Completed").length;
-  const errors = r.filter((x) => x.status === "Error").length;
-  const nsrl = r.filter((x) => x.nsrlMatch).length;
-  const knownBad = r.filter((x) => x.reputationStatus === "KnownBad").length;
-  const highEntropy = r.filter((x) => x.entropy >= 7.5).length;
-  const withImphash = r.filter((x) => x.imphash).length;
-  const escalated = r.filter((x) => x.disposition === "Escalated").length;
-  const yaraHits = r.filter((x) => x.yaraHitCount > 0).length;
-  const sev = (s) => r.filter((x) => x.yaraHitCount > 0 && x.yaraSeverity === s).length;
-  const capaEligible = r.filter((x) => x.capaEligible).length;
-  const capaHits = r.reduce((n, x) => n + (x.capaDetectionCount > 0 ? 1 : 0), 0);
-  const capaDetections = r.reduce((n, x) => n + (x.capaDetectionCount || 0), 0);
-  const withIocs = r.filter((x) => x.iocCount > 0).length;
-  const withAttack = r.filter((x) => x.yaraAttackTechniques).length;
-  const ssdeepClusters = new Set(
-    r.filter((x) => x.ssdeepClusterId >= 0 && x.ssdeepClusterSize >= 2).map((x) => x.ssdeepClusterId)
-  ).size;
-  const highSim = r.filter((x) => x.ssdeepHasHighSimilarity).length;
-  const imphashClustered = r.filter((x) => x.imphashClusterId >= 0 && x.imphashClusterSize >= 2).length;
-  const signedValid = r.filter((x) => x.signatureStatus === "Valid").length;
-  const sigProblem = r.filter((x) => x.signatureStatus === "HashMismatch" || x.signatureStatus === "NotTrusted").length;
-  const fromArchive = r.filter((x) => x.sourceArchive).length;
-  const tiles = [
-    ["Files", r.length],
-    ["Completed", completed],
-    ["Errors", errors],
-    ["NSRL known-good", nsrl],
-    ["Known-bad", knownBad],
-    ["Entropy ≥ 7.5", highEntropy],
-    ["Have imphash", withImphash],
-    ["YARA hits", yaraHits],
-    ["Critical", sev("Critical")],
-    ["High", sev("High")],
-    ["Medium", sev("Medium")],
-    ["Low", sev("Low")],
-    ["capa-eligible", capaEligible],
-    ["capa hits", capaHits],
-    ["capa detections", capaDetections],
-    ["Files with IOCs", withIocs],
-    ["ATT&CK mapped", withAttack],
-    ["SSDEEP clusters", ssdeepClusters],
-    ["Files ≥ 85% sim", highSim],
-    ["Imphash clustered", imphashClustered],
-    ["Valid signature", signedValid],
-    ["Signature problem", sigProblem],
-    ["From an archive", fromArchive],
-    ["Escalated", escalated],
-  ];
-  $("#tiles").innerHTML = tiles
-    .map(([l, n]) => `<div class="tile"><div class="n">${n}</div><div class="l">${l}</div></div>`)
-    .join("");
+  $("#tiles").innerHTML = DASHBOARD_TILES.map(([key, label]) => {
+    const f = DASHBOARD_FACETS[key];
+    const n = f.count ? f.count(r) : r.filter(f.fn).length;
+    return `<button class="tile" data-facet="${key}"${n ? "" : " disabled"}>
+      <div class="n">${n}</div><div class="l">${label}</div></button>`;
+  }).join("");
 }
+
+$("#tiles").addEventListener("click", (ev) => {
+  const tile = ev.target.closest("button.tile[data-facet]");
+  if (!tile || tile.disabled) return;
+  setFacet(tile.dataset.facet);
+  showView("results");
+  renderResults();
+});
+
+$("#results-facet-clear").addEventListener("click", () => {
+  setFacet(null);
+  renderResults();
+});
+
+// ---------------------------------------------------------------- antivirus
+$("#av-detect")?.addEventListener("click", async () => {
+  const btn = $("#av-detect");
+  const out = $("#av-status");
+  btn.disabled = true;
+  out.textContent = "Checking…";
+  try {
+    const r = await api("/api/av");
+    if (!r.products.length) {
+      out.textContent =
+        "No known antivirus/EDR product found. On Windows this can mean Security Center " +
+        "isn't available (e.g. Windows Server) or nothing is registered; on Linux it means " +
+        "nothing on Ingot's known-product list was detected.";
+    } else {
+      out.innerHTML =
+        `<div class="av-line"><b>Detected:</b> ${r.products.map((p) => escapeHtml(p.name)).join(", ")}</div>` +
+        r.products
+          .map((p) => `<div class="av-line">• ${escapeHtml(p.name)}: ${escapeHtml(p.guidance)}</div>`)
+          .join("");
+    }
+    const canAuto = r.defenderPresent && r.os === "windows";
+    $("#av-exclude").hidden = !canAuto;
+  } catch (e) {
+    out.textContent = "Detection failed: " + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$("#av-exclude")?.addEventListener("click", async () => {
+  const folder = $("#set-src").value.trim();
+  if (!folder) {
+    $("#av-status").textContent = "Set a source directory first, then Save settings.";
+    return;
+  }
+  if (!confirm(
+    `This prompts for administrator approval and adds this folder to Windows Defender's ` +
+    `scan exclusions:\n\n${folder}\n\nFiles there (including malware) will NOT be ` +
+    `automatically flagged by Defender. Continue?`
+  )) return;
+  const btn = $("#av-exclude");
+  btn.disabled = true;
+  $("#av-status").textContent = "Waiting for UAC elevation — check for a prompt on screen…";
+  try {
+    const r = await api("/api/av/exclude", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: folder }),
+    });
+    $("#av-status").textContent = "Added to Defender exclusions: " + r.excluded;
+  } catch (e) {
+    $("#av-status").textContent = e.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 // ---------------------------------------------------------------- logs
 function openLogStream() {

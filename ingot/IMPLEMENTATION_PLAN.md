@@ -460,6 +460,63 @@ packaging job carried (`installer/README.md`). Windows/macOS runner builds
 of the wasmtime/ring/pe-sign stack in particular are unverified until that
 run.
 
+## Post-test-scan fixes - 2026-09-10
+
+First real end-to-end run by the project owner (652 files, real NSRL / YARA
+sets) surfaced five gaps, all fixed together:
+
+1. **Branding** - the frontend had none. Added `BinSifter-Logo-Horizontal[-Dark].png`
+   + `BinSifter-WindowIcon.ico` to `frontend/`, a `<picture>` (light/dark via
+   `prefers-color-scheme`) in the sidebar and on the About page, and a favicon.
+   Release binary ~30.5 -> ~31.3 MB (the two logo PNGs).
+2. **No activity feedback during the long pre-scan stages** - `scan_directory_with`
+   gained an `on_phase(&str)` callback; the engine reports each stage
+   (Enumerating / Building NSRL index / Compiling YARA rules / Scanning /
+   Clustering / Writing reports). The server broadcasts these as a
+   `{kind:"phase"}` SSE event and stores the current phase on the session
+   snapshot; the Scan page shows the phase, a live elapsed-time clock, and an
+   indeterminate progress sweep until per-file counts start. A 3s status poll
+   backstops the SSE (each scan opens a fresh channel, so an early event can
+   be missed on connect).
+3. **Dashboard tiles weren't clickable** - every tile is now a button backed
+   by a `DASHBOARD_FACETS` predicate; clicking one jumps to Results filtered
+   to those files with a clearable chip. Zero-count tiles are disabled.
+4. **Right-click menu resolved nothing** - three bugs in `tools.rs`:
+   (a) `resolve_tools`/the frontend only fetched once at boot, so setting the
+   tools dir *after* page load left every entry "not installed" until a
+   reload - now re-fetched on settings save and lazily on first right-click;
+   (b) `find_tool` matched any file by stem, so `x64dbg`/`x32dbg` resolved to
+   `x64dbg.lib` and Ghidra to the extensionless Unix `analyzeHeadless` -
+   added `looks_launchable()` (Windows: `.exe/.bat/.cmd/.com` only) and made
+   name lists priority-ordered instead of merge-then-path-sort;
+   (c) the directory walk ran once per tool on the async runtime thread -
+   now one shared walk, off-thread via `spawn_blocking`.
+   Verified against the owner's `F:\Tools`: all 7 tools + Ghidra now resolve
+   to the right executable.
+5. **No AV detection / exclusion** - new `av_detect.rs` (port of
+   `binsifter.core.av_detect` + the removed-from-Winnow `defender.py`):
+   `detect_av_products()` (Windows `root/SecurityCenter2` WMI via powershell;
+   Linux systemd-unit / `/proc` / install-path signals), `guidance_for()`
+   (Linux-first then generic vendor table), and `add_defender_exclusion()`
+   (Windows only - spawns an elevated `Add-MpPreference` via
+   `Start-Process -Verb RunAs`, so UAC does the elevation and Ingot never
+   runs as admin). Endpoints `GET /api/av`, `POST /api/av/exclude`; Settings
+   grew an "Antivirus" section. Detection verified (finds Windows Defender);
+   `add_defender_exclusion` is **runtime-unverified** - it triggers a real
+   UAC prompt and a real Defender config change, so it needs the owner's own
+   test, same caveat `defender.py` always carried.
+
+Validated: `cargo test --workspace` (89), clippy `-D warnings`, fmt clean;
+`node --check frontend/app.js`; a live scan showed the phase/elapsed UI and
+the phase SSE events (`Scanning files` -> `Clustering...` -> `Writing
+reports` -> complete); `GET /api/av` returns Windows Defender in camelCase.
+
+**Separately observed, not fixed here:** scanning a directory of live
+Windows `System32` binaries stalled at 651/652 - one file hung a pipeline
+stage with no per-file timeout (hashing / authenticode / imphash have none).
+Winnow hit and fixed the same class of bug with stage timeouts; Ingot needs
+the same. Not triggered by a normal sample set; tracked as its own follow-up.
+
 ## Verification (Phase 1)
 
 1. `cargo test --workspace` - all green.

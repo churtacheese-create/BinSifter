@@ -40,6 +40,7 @@ struct Inner {
 struct ScanSession {
     id: String,
     started: String,
+    phase: Mutex<String>,
     total: AtomicUsize,
     done: AtomicUsize,
     finished: AtomicBool,
@@ -58,6 +59,7 @@ impl ScanSession {
         json!({
             "id": self.id,
             "started": self.started,
+            "phase": *self.phase.lock().unwrap(),
             "total": self.total.load(Ordering::SeqCst),
             "done": self.done.load(Ordering::SeqCst),
             "finished": self.finished.load(Ordering::SeqCst),
@@ -152,11 +154,20 @@ pub async fn install_tool(State(state): State<AppState>, Path(tool): Path<String
 /// The OS-scoped quick-launch tool set, each resolved (or not) against the
 /// configured tools directory / `PATH`, plus Ghidra-headless status.
 pub async fn get_launch_tools(State(state): State<AppState>) -> Json<serde_json::Value> {
-    let config = state.inner.config.read().unwrap();
-    let tools = ingot_core::tools::resolve_tools(&config.tools_dir);
-    let ghidra = ingot_core::tools::resolve_ghidra_headless(&config.ghidra_dir)
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_default();
+    let (tools_dir, ghidra_dir) = {
+        let c = state.inner.config.read().unwrap();
+        (c.tools_dir.clone(), c.ghidra_dir.clone())
+    };
+    // recursive directory walks - a large tools dir must not block the runtime
+    let (tools, ghidra) = tokio::task::spawn_blocking(move || {
+        let tools = ingot_core::tools::resolve_tools(&tools_dir);
+        let ghidra = ingot_core::tools::resolve_ghidra_headless(&ghidra_dir)
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        (tools, ghidra)
+    })
+    .await
+    .unwrap_or_else(|_| (Vec::new(), String::new()));
     Json(json!({
         "os": std::env::consts::OS,
         "tools": tools,
@@ -173,12 +184,14 @@ pub struct LaunchRequest {
 
 pub async fn launch(State(state): State<AppState>, Json(req): Json<LaunchRequest>) -> Response {
     let tools_dir = state.inner.config.read().unwrap().tools_dir.clone();
-    let resolved = ingot_core::tools::resolve_tools(&tools_dir);
-    let Some(tool) = resolved.into_iter().find(|t| t.id == req.tool_id) else {
-        return (StatusCode::BAD_REQUEST, "unknown tool for this OS").into_response();
-    };
     let target = std::path::PathBuf::from(&req.file_path);
+    let tool_id = req.tool_id.clone();
     match tokio::task::spawn_blocking(move || {
+        let resolved = ingot_core::tools::resolve_tools(&tools_dir);
+        let tool = resolved
+            .into_iter()
+            .find(|t| t.id == tool_id)
+            .ok_or_else(|| anyhow::anyhow!("unknown tool for this OS"))?;
         ingot_core::tools::launch_tool(&tool.id, &tool.path, &target)
     })
     .await
@@ -203,28 +216,24 @@ pub async fn launch_ghidra(
     State(state): State<AppState>,
     Json(req): Json<FileRequest>,
 ) -> Response {
-    let (headless, report_dir) = {
+    let (ghidra_dir, report_dir) = {
         let c = state.inner.config.read().unwrap();
-        (
-            ingot_core::tools::resolve_ghidra_headless(&c.ghidra_dir),
-            c.report_directory.clone(),
-        )
-    };
-    let Some(headless) = headless else {
-        return (
-            StatusCode::BAD_REQUEST,
-            "Ghidra not found - set its directory in Settings",
-        )
-            .into_response();
+        (c.ghidra_dir.clone(), c.report_directory.clone())
     };
     let sha1 = state.inner.scan.read().unwrap().as_ref().and_then(|s| {
         record_for_path(&s.records.lock().unwrap(), &req.file_path).and_then(|r| r.sha1.clone())
     });
 
     let target = std::path::PathBuf::from(&req.file_path);
-    let headless = headless.to_string_lossy().into_owned();
     match tokio::task::spawn_blocking(move || {
-        ingot_core::tools::launch_ghidra(&headless, &target, &report_dir, sha1.as_deref())
+        let headless = ingot_core::tools::resolve_ghidra_headless(&ghidra_dir)
+            .ok_or_else(|| anyhow::anyhow!("Ghidra not found - set its directory in Settings"))?;
+        ingot_core::tools::launch_ghidra(
+            &headless.to_string_lossy(),
+            &target,
+            &report_dir,
+            sha1.as_deref(),
+        )
     })
     .await
     {
@@ -259,6 +268,70 @@ pub async fn ai_export(State(state): State<AppState>, Json(req): Json<FileReques
             format!("could not write export: {e}"),
         )
             .into_response(),
+    }
+}
+
+// ------------------------------------------------------- antivirus / Defender
+
+/// Detect installed antivirus / EDR products and, for each, where its own
+/// scan-exclusion settings live. An empty list is a valid result.
+pub async fn get_av() -> Response {
+    match tokio::task::spawn_blocking(ingot_core::av_detect::detect_av_products).await {
+        Ok(Ok(products)) => {
+            let defender_present = products.iter().any(|p| p.is_defender);
+            Json(json!({
+                "os": std::env::consts::OS,
+                "products": products,
+                "defenderPresent": defender_present,
+            }))
+            .into_response()
+        }
+        Ok(Err(e)) => (StatusCode::BAD_REQUEST, format!("{e}")).into_response(),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "AV detection task failed",
+        )
+            .into_response(),
+    }
+}
+
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ExcludeRequest {
+    /// Folder to exclude. Defaults to the configured scan source directory.
+    #[serde(default)]
+    path: String,
+}
+
+/// Add a folder to Windows Defender's scan-exclusion list (Windows only).
+/// Spawns an elevated PowerShell - Windows' own UAC dialog does the
+/// elevation; Ingot never gains admin rights.
+pub async fn av_exclude(
+    State(state): State<AppState>,
+    body: Option<Json<ExcludeRequest>>,
+) -> Response {
+    let req = body.map(|Json(b)| b).unwrap_or_default();
+    let folder = if req.path.trim().is_empty() {
+        state.inner.config.read().unwrap().src_dir.clone()
+    } else {
+        req.path
+    };
+    if folder.trim().is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            "no folder to exclude - set a source directory first",
+        )
+            .into_response();
+    }
+    let folder_for_task = folder.clone();
+    match tokio::task::spawn_blocking(move || {
+        ingot_core::av_detect::add_defender_exclusion(std::path::Path::new(&folder_for_task))
+    })
+    .await
+    {
+        Ok(Ok(())) => Json(json!({ "excluded": folder })).into_response(),
+        Ok(Err(e)) => (StatusCode::BAD_REQUEST, format!("{e}")).into_response(),
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "exclusion task failed").into_response(),
     }
 }
 
@@ -304,6 +377,7 @@ pub async fn start_scan(
     let session = Arc::new(ScanSession {
         id: uuid::Uuid::new_v4().to_string(),
         started: chrono::Local::now().to_rfc3339(),
+        phase: Mutex::new("Starting".to_string()),
         total: AtomicUsize::new(0),
         done: AtomicUsize::new(0),
         finished: AtomicBool::new(false),
@@ -319,18 +393,29 @@ pub async fn start_scan(
     let archive_passwords = req.archive_passwords;
     tokio::task::spawn_blocking(move || {
         let session_for_cb = session.clone();
+        let session_for_phase = session.clone();
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            engine::scan_directory_with(&config, &archive_passwords, |p: Progress| {
-                session_for_cb.total.store(p.total, Ordering::SeqCst);
-                session_for_cb.done.store(p.done, Ordering::SeqCst);
-                let payload = json!({
-                    "kind": "progress",
-                    "done": p.done,
-                    "total": p.total,
-                    "record": p.record,
-                });
-                let _ = session_for_cb.events.send(payload.to_string());
-            })
+            engine::scan_directory_with(
+                &config,
+                &archive_passwords,
+                |p: Progress| {
+                    session_for_cb.total.store(p.total, Ordering::SeqCst);
+                    session_for_cb.done.store(p.done, Ordering::SeqCst);
+                    let payload = json!({
+                        "kind": "progress",
+                        "done": p.done,
+                        "total": p.total,
+                        "record": p.record,
+                    });
+                    let _ = session_for_cb.events.send(payload.to_string());
+                },
+                |phase: &str| {
+                    *session_for_phase.phase.lock().unwrap() = phase.to_string();
+                    let _ = session_for_phase
+                        .events
+                        .send(json!({ "kind": "phase", "phase": phase }).to_string());
+                },
+            )
         }));
 
         match result {

@@ -4,14 +4,18 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>BinSifter Ingot</title>
+  <link rel="icon" href="/BinSifter-WindowIcon.ico" sizes="any" />
   <link rel="stylesheet" href="/app.css" />
 </head>
 <body>
   <div id="app">
     <nav id="sidebar">
       <div class="brand">
-        <span class="brand-mark">◆</span>
-        <span class="brand-text">BinSifter<br /><small>Ingot</small></span>
+        <picture class="brand-logo">
+          <source srcset="/BinSifter-Logo-Horizontal-Dark.png" media="(prefers-color-scheme: dark)" />
+          <img src="/BinSifter-Logo-Horizontal.png" alt="BinSifter" />
+        </picture>
+        <span class="brand-variant">Ingot</span>
       </div>
       <button class="navlink" data-view="scan" aria-current="true">Scan</button>
       <button class="navlink" data-view="results">Results</button>
@@ -54,6 +58,10 @@
         </div>
 
         <div id="scan-progress" hidden>
+          <div class="progress-head">
+            <span id="scan-phase">Starting…</span>
+            <span id="scan-elapsed" class="muted mono">0:00</span>
+          </div>
           <div class="progressbar"><div id="scan-bar"></div></div>
           <div class="progress-meta">
             <span id="scan-count">0 / 0</span>
@@ -74,6 +82,12 @@
           <input id="results-filter" type="search" placeholder="Filter by path, hash, status…" />
           <label class="check"><input type="checkbox" id="results-hide-nsrl" /> Hide NSRL-known</label>
           <span id="results-count" class="muted"></span>
+        </div>
+        <div id="results-facet" class="row" hidden>
+          <span class="facet-chip">
+            <span id="results-facet-label"></span>
+            <button id="results-facet-clear" title="Clear filter" aria-label="Clear filter">×</button>
+          </span>
         </div>
         <div class="tablewrap">
           <table id="results-table">
@@ -105,7 +119,7 @@
       <!-- Dashboard -->
       <section class="view" data-view="dashboard" hidden>
         <h1>Dashboard</h1>
-        <p class="muted">Aggregates for the most recent scan.</p>
+        <p class="muted">Aggregates for the most recent scan. Click a tile to see those files in Results.</p>
         <div id="tiles" class="tiles"></div>
       </section>
 
@@ -153,6 +167,19 @@
           tools directory; watch the Logs tab for progress.</p>
         <div id="tools-status" class="kv"></div>
 
+        <h2>Antivirus</h2>
+        <p class="muted">Real-time protection can quarantine a sample mid-scan.
+          This detects the antivirus/EDR product(s) installed here and points you
+          at each vendor's own exclusion settings. On Windows, if Microsoft
+          Defender is active, Ingot can add the scan folder to its exclusions for
+          you (prompts for administrator approval &mdash; Ingot itself never runs
+          elevated).</p>
+        <div class="row">
+          <button id="av-detect">Detect installed antivirus</button>
+          <button id="av-exclude" hidden>Add scan folder to Defender exclusions…</button>
+        </div>
+        <div id="av-status" class="muted"></div>
+
         <h2>Fixed locations</h2>
         <dl id="fixed-locations" class="kv"></dl>
       </section>
@@ -170,6 +197,10 @@
       <!-- About -->
       <section class="view" data-view="about" hidden>
         <h1>About</h1>
+        <picture class="about-logo">
+          <source srcset="/BinSifter-Logo-Horizontal-Dark.png" media="(prefers-color-scheme: dark)" />
+          <img src="/BinSifter-Logo-Horizontal.png" alt="BinSifter Ingot" />
+        </picture>
         <p><strong id="about-version">BinSifter Ingot</strong></p>
         <p class="muted">The Rust variant of BinSifter: a local backend service plus this
           browser UI, built to run on any Linux, macOS, or Windows machine without a
@@ -186,14 +217,14 @@
             MITRE ATT&CK enrichment, capa with a FLOSS string + IOC-extraction fallback
             (standalone binaries, installed per-user), SSDEEP + imphash clustering,
             per-cluster draft YARA rules, triage disposition tracking, 37-column CSV
-            reports, live progress, an OS-scoped quick-launch tool menu on the Results
-            grid (right-click), Ghidra headless analysis, and Markdown/JSON export for
-            AI analysis. Because the service knows which OS it is running on, no
-            install-time OS question is needed &mdash; the menu is scoped automatically.</li>
-          <li><strong>Later:</strong> packaging (per-OS single-binary releases).
-            (Catalog <code>.cat</code> signature verification, SSDEEP cluster history,
-            and Speakeasy emulation &mdash; which has no standalone binary &mdash; are
-            known gaps.)</li>
+            reports, live progress with elapsed time and per-phase status, an
+            OS-scoped quick-launch tool menu on the Results grid (right-click),
+            Ghidra headless analysis, Markdown/JSON export for AI analysis,
+            clickable Dashboard tiles that filter the Results grid, and
+            antivirus/EDR detection with a Windows Defender scan-exclusion helper.</li>
+          <li><strong>Known gaps:</strong> catalog <code>.cat</code> signature
+            verification, SSDEEP cluster history, and Speakeasy emulation (no
+            standalone binary) &mdash; none are in the other variants either.</li>
         </ul>
       </section>
     </main>

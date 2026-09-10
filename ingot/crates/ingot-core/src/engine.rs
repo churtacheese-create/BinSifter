@@ -221,21 +221,27 @@ pub fn scan_directory<F>(config: &IngotConfig, on_progress: F) -> ScanResult
 where
     F: Fn(Progress) + Sync + Send,
 {
-    scan_directory_with(config, &HashMap::new(), on_progress)
+    scan_directory_with(config, &HashMap::new(), on_progress, |_| {})
 }
 
 /// Like [`scan_directory`], but `archive_passwords` (`archive path -> password`)
 /// is offered to any password-protected archive found under the source
 /// directory; anything without a supplied password is copied to
-/// `<report_dir>/password_protected/` for external cracking.
-pub fn scan_directory_with<F>(
+/// `<report_dir>/password_protected/` for external cracking. `on_phase` is
+/// called at each pipeline-stage boundary (enumerate / NSRL index / YARA
+/// compile / per-file scan / clustering / reports) so a UI can show what the
+/// scan is doing during the long stages that have no per-file progress.
+pub fn scan_directory_with<F, P>(
     config: &IngotConfig,
     archive_passwords: &HashMap<String, String>,
     on_progress: F,
+    on_phase: P,
 ) -> ScanResult
 where
     F: Fn(Progress) + Sync + Send,
+    P: Fn(&str) + Sync + Send,
 {
+    on_phase("Enumerating files");
     info!("Enumerating files under {}...", config.src_dir);
     let mut paths = enumerate_files(&config.src_dir);
     info!("Found {} file(s) to scan.", paths.len());
@@ -245,6 +251,7 @@ where
     let archive_paths = archive::find_archives(&paths);
     if !archive_paths.is_empty() && !config.report_directory.is_empty() {
         let extraction_root = Path::new(&config.report_directory).join("extracted_archives");
+        on_phase("Expanding archives");
         info!("Expanding {} archive(s)...", archive_paths.len());
         let p1 = archive::expand_archives(&archive_paths, &extraction_root);
         paths.extend(p1.extracted_files.iter().cloned());
@@ -282,6 +289,9 @@ where
     let total = paths.len();
 
     // --- NSRL index --------------------------------------------------------
+    if !config.nsrl_path.is_empty() {
+        on_phase("Building NSRL known-good index (first run can take a while)");
+    }
     let nsrl_index = match nsrl::prepare_nsrl_index(&config.nsrl_path, &config.report_directory) {
         Some(cache_path) => {
             let idx = nsrl::open_index(&cache_path);
@@ -325,6 +335,7 @@ where
     // borrowing this ruleset. A compile failure disables YARA for the scan
     // (logged at ERROR) rather than aborting - the Logs tab surfaces it.
     let yara_rules = if !config.yara_rules.is_empty() {
+        on_phase("Compiling YARA rules");
         info!("Compiling YARA rules from {}...", config.yara_rules);
         match yara_scan::compile_rules(Path::new(&config.yara_rules)) {
             Ok(rules) => Some(rules),
@@ -365,6 +376,7 @@ where
 
     // --- parallel per-file pass ----------------------------------------
     let worker_count = default_worker_count().min(total.max(1));
+    on_phase("Scanning files");
     info!("Scanning {total} file(s) with {worker_count} worker thread(s)...");
 
     let counter = Arc::new(AtomicUsize::new(0));
@@ -431,6 +443,7 @@ where
 
     records.sort_by(|a, b| a.path.cmp(&b.path));
     let timestamp = Local::now().format("%Y-%m-%d_%H%M%S").to_string();
+    on_phase("Clustering and drafting rules");
 
     // --- post-scan clustering (single-threaded, over the whole batch) ----
     // Iterated in ascending path order so cluster numbering is reproducible
@@ -506,6 +519,7 @@ where
     let report_paths = if config.report_directory.is_empty() {
         None
     } else {
+        on_phase("Writing reports");
         match report::write_all_reports(&records, &config.report_directory, &timestamp) {
             Ok(p) => {
                 info!("Reports written to {}", config.report_directory);

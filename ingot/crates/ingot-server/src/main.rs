@@ -101,6 +101,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/launch", post(api::launch))
         .route("/api/ghidra", post(api::launch_ghidra))
         .route("/api/ai-export", post(api::ai_export))
+        .route("/api/av", get(api::get_av))
+        .route("/api/av/exclude", post(api::av_exclude))
         .route("/api/scan", post(api::start_scan))
         .route("/api/scan/current", get(api::scan_status))
         .route("/api/scan/current/events", get(api::scan_events))
