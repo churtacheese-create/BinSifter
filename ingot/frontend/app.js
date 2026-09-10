@@ -333,7 +333,7 @@ function renderResults() {
       const srcCell = r.sourceArchive
         ? `<span class="muted mono" title="${escapeHtml(r.sourceArchive)}">${escapeHtml(r.sourceArchive.split(/[\\/]/).pop())}</span>`
         : "";
-      return `<tr>
+      return `<tr data-path="${escapeHtml(r.path)}">
         <td class="path" title="${escapeHtml(r.path)}">${escapeHtml(r.path)}</td>
         <td class="hash">${(r.sha1 || "").slice(0, 16)}</td>
         <td>${fmtEntropy(r.entropy)}</td>
@@ -383,6 +383,92 @@ function escapeHtml(s) {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])
   );
 }
+
+// ------------------------------------------------ quick-launch context menu
+let launchTools = null;
+async function loadLaunchTools() {
+  try { launchTools = await api("/api/launch-tools"); } catch { launchTools = null; }
+}
+
+const ctx = $("#ctxmenu");
+document.addEventListener("click", () => (ctx.hidden = true));
+window.addEventListener("blur", () => (ctx.hidden = true));
+
+$("#results-table tbody").addEventListener("contextmenu", (ev) => {
+  const tr = ev.target.closest("tr[data-path]");
+  if (!tr || !launchTools) return;
+  ev.preventDefault();
+  const path = tr.dataset.path;
+  const items = [];
+  for (const t of launchTools.tools || []) {
+    items.push({
+      label: t.path ? t.label : `${t.label} (not installed)`,
+      disabled: !t.path,
+      run: () => runLaunch(t, path),
+    });
+  }
+  if (launchTools.ghidra?.available) {
+    items.push({ label: "Ghidra headless analysis", run: () => ghidraLaunch(path) });
+  }
+  items.push({ sep: true });
+  items.push({ label: "Export for AI analysis…", run: () => aiExport(path) });
+
+  ctx.innerHTML = items
+    .map((it, i) =>
+      it.sep
+        ? `<div class="ctx-sep"></div>`
+        : `<button data-i="${i}"${it.disabled ? " disabled" : ""}>${escapeHtml(it.label)}</button>`
+    )
+    .join("");
+  ctx.querySelectorAll("button[data-i]").forEach((b) =>
+    b.addEventListener("click", () => {
+      ctx.hidden = true;
+      items[+b.dataset.i].run();
+    })
+  );
+  const mx = Math.min(ev.clientX, window.innerWidth - 240);
+  const my = Math.min(ev.clientY, window.innerHeight - ctx.scrollHeight - 10);
+  ctx.style.left = mx + "px";
+  ctx.style.top = my + "px";
+  ctx.hidden = false;
+});
+
+async function runLaunch(tool, filePath) {
+  if (tool.needsConfirm &&
+      !confirm(`${tool.label} runs the selected binary. Only do this in an isolated analysis environment. Continue?`)) {
+    return;
+  }
+  try {
+    await api("/api/launch", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ toolId: tool.id, filePath }),
+    });
+  } catch (e) { alert("Launch failed: " + e.message); }
+}
+
+async function ghidraLaunch(filePath) {
+  try {
+    await api("/api/ghidra", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ filePath }),
+    });
+    alert("Ghidra headless analysis started — it runs for a few minutes. See the Logs tab.");
+  } catch (e) { alert("Ghidra launch failed: " + e.message); }
+}
+
+async function aiExport(filePath) {
+  try {
+    const r = await api("/api/ai-export", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ filePath }),
+    });
+    $("#ai-modal-body").textContent = r.markdown;
+    $("#ai-modal-paths").textContent = `Saved: ${r.markdownPath}  •  ${r.jsonPath}`;
+    $("#ai-modal").showModal();
+    $("#ai-copy").onclick = () => navigator.clipboard.writeText(r.markdown);
+  } catch (e) { alert("Export failed: " + e.message); }
+}
+$("#ai-close")?.addEventListener("click", () => $("#ai-modal").close());
 
 // ---------------------------------------------------------------- dashboard
 function renderDashboard() {
@@ -460,3 +546,4 @@ loadSettings();
 openLogStream();
 loadScanStatus();
 loadReports();
+loadLaunchTools();

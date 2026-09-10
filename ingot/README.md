@@ -11,7 +11,7 @@ and current status.
 
 ## Status
 
-**Phases 1-6 complete.** Working today: recursive file enumeration, archive
+**Phases 1-7 complete.** Working today: recursive file enumeration, archive
 expansion (zip incl. WinZip AES / tar / gzip / 7z, nested, with a
 password round-trip), a single-pass MD5/SHA-1/SHA-256 + Shannon entropy
 read, Authenticode signature verification, NSRL known-good lookup (cached,
@@ -24,12 +24,17 @@ binaries with a FLOSS string + IOC-extraction fallback (Mandiant's
 standalone binaries, downloaded per-user from the Settings page), post-scan
 SSDEEP + imphash clustering and a draft YARA rule per SSDEEP cluster,
 triage disposition tracking (persisted by SHA-1, editable in the Results
-grid), the 37-column CSV reports (all four filtered views), a live-progress
-browser UI, and the HTTP API behind it. Every stage is cross-checked
-against the Python (Winnow) variant's output.
+grid), the 37-column CSV reports (all four filtered views), a right-click
+quick-launch menu on the Results grid scoped to the OS Ingot is running on
+(PE Studio / x64dbg / DIE / … on Windows; PE-bear / Cutter / angr / … on
+Linux; DIE / Cutter / radare2 on macOS), Ghidra headless analysis, a
+Markdown/JSON "export for AI analysis", a live-progress browser UI, and the
+HTTP API behind it. Every stage is cross-checked against the Python (Winnow)
+variant's output.
 
-Not yet ported (later phases): catalog (`.cat`) signature verification, and
-the OS-scoped quick-launch tool menu.
+Not yet ported: catalog (`.cat`) signature verification, SSDEEP cluster
+history, and Speakeasy emulation (no standalone binary). Next up is
+packaging (per-OS single-binary releases).
 
 ## Build & run
 

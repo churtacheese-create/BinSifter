@@ -1,6 +1,6 @@
 # BinSifter Ingot
 
-Ingot is BinSifter's planned third variant, and the one actually intended to be cross-platform - not started yet.
+Ingot is BinSifter's third variant, and the one actually intended to be cross-platform - under active development.
 
 ## Why Ingot exists
 
@@ -15,7 +15,7 @@ Rowan (PowerShell/WinForms) is Windows-only by nature of its toolkit. Winnow (Py
 
 ## Status
 
-**Started - Phases 1-6 complete.** The scaffold is in [`ingot/`](../ingot/):
+**Started - Phases 1-7 complete.** The scaffold is in [`ingot/`](../ingot/):
 a Cargo workspace with an `ingot-core` scan-engine crate and an
 `ingot-server` crate that runs the axum service and embeds the browser UI.
 Working today: recursive file enumeration, archive expansion (zip incl.
@@ -32,13 +32,17 @@ classification, capa capability detection on YARA-flagged binaries with a
 FLOSS string + IOC-extraction fallback (Mandiant's official standalone
 binaries, downloaded per-user - no admin), post-scan SSDEEP + imphash
 clustering and a draft YARA rule per SSDEEP cluster, triage disposition
-tracking (persisted by SHA-1, editable in the Results grid), and the four
-37-column CSV reports - all wired into a live-progress web UI and, at every
-stage, cross-checked against the Python variant's output (or, for
-Authenticode, `Get-AuthenticodeSignature`). Catalog (`.cat`) signature
-verification is a known gap.
+tracking (persisted by SHA-1, editable in the Results grid), the four
+37-column CSV reports, a right-click quick-launch tool menu on the Results
+grid scoped automatically to whichever OS Ingot is running on (the service
+knows its own platform, so there's no install-time question), Ghidra
+headless analysis, and a Markdown/JSON "export for AI analysis" - all wired
+into a live-progress web UI and, at every stage, cross-checked against the
+Python variant's output (or, for Authenticode, `Get-AuthenticodeSignature`).
 
 Later phases, one stage at a time (each gated by tests and a real scan, the
-same way Winnow was ported): catalog (`.cat`) signature verification, the
-OS-scoped quick-launch tool menu, then packaging. See
+same way Winnow was ported): packaging (per-OS single-binary releases via a
+GitHub Actions matrix). Known gaps carried forward: catalog (`.cat`)
+signature verification, SSDEEP cluster history, and Speakeasy emulation
+(no standalone binary). See
 [`ingot/IMPLEMENTATION_PLAN.md`](../ingot/IMPLEMENTATION_PLAN.md).

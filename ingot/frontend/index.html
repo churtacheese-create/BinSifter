@@ -36,6 +36,10 @@
           YARA-flagged binaries (with a FLOSS string + IOC fallback), then clusters the
           batch by SSDEEP and imphash and drafts a YARA rule per cluster. capa/FLOSS
           need their standalone binaries &mdash; install them on the Settings page.</p>
+        <p class="muted">On the Results grid, right-click any file for a quick-launch menu
+          of analysis tools found in your tools directory (the set is scoped to the OS
+          Ingot is running on), plus Ghidra headless analysis and &ldquo;Export for AI
+          analysis&rdquo;.</p>
 
         <div class="field">
           <label for="scan-src">Source directory</label>
@@ -126,11 +130,11 @@
             <input id="set-capa" name="capaRules" type="text" spellcheck="false" />
           </div>
           <div class="field">
-            <label for="set-tools">Tools directory <span class="pill">phase 7</span></label>
+            <label for="set-tools">Tools directory <span class="muted">(for the Results right-click menu)</span></label>
             <input id="set-tools" name="toolsDir" type="text" spellcheck="false" />
           </div>
           <div class="field">
-            <label for="set-ghidra">Ghidra directory <span class="pill">phase 7</span></label>
+            <label for="set-ghidra">Ghidra directory <span class="muted">(for headless analysis)</span></label>
             <input id="set-ghidra" name="ghidraDir" type="text" spellcheck="false" />
           </div>
           <div class="field">
@@ -182,14 +186,31 @@
             MITRE ATT&CK enrichment, capa with a FLOSS string + IOC-extraction fallback
             (standalone binaries, installed per-user), SSDEEP + imphash clustering,
             per-cluster draft YARA rules, triage disposition tracking, 37-column CSV
-            reports, live progress.</li>
-          <li><strong>Later:</strong> the OS-scoped quick-launch tool menu, then
-            packaging. (Catalog <code>.cat</code> signature verification is a known
-            gap.)</li>
+            reports, live progress, an OS-scoped quick-launch tool menu on the Results
+            grid (right-click), Ghidra headless analysis, and Markdown/JSON export for
+            AI analysis. Because the service knows which OS it is running on, no
+            install-time OS question is needed &mdash; the menu is scoped automatically.</li>
+          <li><strong>Later:</strong> packaging (per-OS single-binary releases).
+            (Catalog <code>.cat</code> signature verification, SSDEEP cluster history,
+            and Speakeasy emulation &mdash; which has no standalone binary &mdash; are
+            known gaps.)</li>
         </ul>
       </section>
     </main>
   </div>
+
+  <div id="ctxmenu" hidden></div>
+
+  <dialog id="ai-modal">
+    <div class="modal-head">
+      <strong>Export for AI analysis</strong>
+      <button id="ai-copy" class="primary">Copy Markdown</button>
+      <button id="ai-close">Close</button>
+    </div>
+    <p id="ai-modal-paths" class="muted mono"></p>
+    <pre id="ai-modal-body" class="mono"></pre>
+  </dialog>
+
   <script src="/app.js"></script>
 </body>
 </html>

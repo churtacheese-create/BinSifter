@@ -147,6 +147,121 @@ pub async fn install_tool(State(state): State<AppState>, Path(tool): Path<String
     (StatusCode::ACCEPTED, Json(json!({ "started": tool }))).into_response()
 }
 
+// ------------------------------------------------ quick-launch tools + Ghidra
+
+/// The OS-scoped quick-launch tool set, each resolved (or not) against the
+/// configured tools directory / `PATH`, plus Ghidra-headless status.
+pub async fn get_launch_tools(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let config = state.inner.config.read().unwrap();
+    let tools = ingot_core::tools::resolve_tools(&config.tools_dir);
+    let ghidra = ingot_core::tools::resolve_ghidra_headless(&config.ghidra_dir)
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    Json(json!({
+        "os": std::env::consts::OS,
+        "tools": tools,
+        "ghidra": { "available": !ghidra.is_empty(), "path": ghidra },
+    }))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LaunchRequest {
+    tool_id: String,
+    file_path: String,
+}
+
+pub async fn launch(State(state): State<AppState>, Json(req): Json<LaunchRequest>) -> Response {
+    let tools_dir = state.inner.config.read().unwrap().tools_dir.clone();
+    let resolved = ingot_core::tools::resolve_tools(&tools_dir);
+    let Some(tool) = resolved.into_iter().find(|t| t.id == req.tool_id) else {
+        return (StatusCode::BAD_REQUEST, "unknown tool for this OS").into_response();
+    };
+    let target = std::path::PathBuf::from(&req.file_path);
+    match tokio::task::spawn_blocking(move || {
+        ingot_core::tools::launch_tool(&tool.id, &tool.path, &target)
+    })
+    .await
+    {
+        Ok(Ok(())) => Json(json!({ "launched": req.tool_id })).into_response(),
+        Ok(Err(e)) => (StatusCode::BAD_REQUEST, format!("{e}")).into_response(),
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "launch task failed").into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileRequest {
+    file_path: String,
+}
+
+fn record_for_path<'a>(records: &'a [FileRecord], path: &str) -> Option<&'a FileRecord> {
+    records.iter().find(|r| r.path == path)
+}
+
+pub async fn launch_ghidra(
+    State(state): State<AppState>,
+    Json(req): Json<FileRequest>,
+) -> Response {
+    let (headless, report_dir) = {
+        let c = state.inner.config.read().unwrap();
+        (
+            ingot_core::tools::resolve_ghidra_headless(&c.ghidra_dir),
+            c.report_directory.clone(),
+        )
+    };
+    let Some(headless) = headless else {
+        return (
+            StatusCode::BAD_REQUEST,
+            "Ghidra not found - set its directory in Settings",
+        )
+            .into_response();
+    };
+    let sha1 = state.inner.scan.read().unwrap().as_ref().and_then(|s| {
+        record_for_path(&s.records.lock().unwrap(), &req.file_path).and_then(|r| r.sha1.clone())
+    });
+
+    let target = std::path::PathBuf::from(&req.file_path);
+    let headless = headless.to_string_lossy().into_owned();
+    match tokio::task::spawn_blocking(move || {
+        ingot_core::tools::launch_ghidra(&headless, &target, &report_dir, sha1.as_deref())
+    })
+    .await
+    {
+        Ok(Ok(gpr)) => Json(json!({ "started": true, "project": gpr })).into_response(),
+        Ok(Err(e)) => (StatusCode::BAD_REQUEST, format!("{e}")).into_response(),
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "ghidra task failed").into_response(),
+    }
+}
+
+pub async fn ai_export(State(state): State<AppState>, Json(req): Json<FileRequest>) -> Response {
+    let guard = state.inner.scan.read().unwrap();
+    let Some(session) = guard.as_ref() else {
+        return (StatusCode::NOT_FOUND, "no scan has been run yet").into_response();
+    };
+    let records = session.records.lock().unwrap();
+    let Some(record) = record_for_path(&records, &req.file_path) else {
+        return (StatusCode::NOT_FOUND, "file not found in the current scan").into_response();
+    };
+
+    let markdown = ingot_core::ai_export::build_markdown(record);
+    let report_dir = state.inner.config.read().unwrap().report_directory.clone();
+    let out_dir = std::path::Path::new(&report_dir).join("ai_exports");
+    match ingot_core::ai_export::export_file(record, &out_dir) {
+        Ok((md, js)) => Json(json!({
+            "markdown": markdown,
+            "markdownPath": md,
+            "jsonPath": js,
+        }))
+        .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("could not write export: {e}"),
+        )
+            .into_response(),
+    }
+}
+
 // -------------------------------------------------------------------- scan
 
 #[derive(Deserialize, Default)]

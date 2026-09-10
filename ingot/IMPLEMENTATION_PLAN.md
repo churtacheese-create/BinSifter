@@ -361,15 +361,61 @@ nested archives recursed, CSV `SourceArchive` column populated.
 Release binary ~29 -> ~32 MB (pe-sign pulls cms/x509/rsa + a http-only
 reqwest for AIA).
 
+## Phase 7 - quick-launch tool menu + Ghidra + AI export - COMPLETE (2026-09-10)
+
+- `tools.rs` - the OS-scoped quick-launch tool set (port of
+  `gui/pages/results.py::_QUICK_LAUNCH_TOOLS` + its launch helpers).
+  `tools_for_os()` returns the Windows set (PE Studio / DIE / CFF Explorer /
+  Resource Hacker / x64dbg / x32dbg / Sigcheck), the Linux set (PE-bear /
+  Anya / DIE / Cutter / angr / GDB / unblob), or the macOS set (DIE / Cutter /
+  radare2) at runtime from `std::env::consts::OS` - **no install-time OS
+  question is needed** (the plan's original P7 sketch assumed a desktop
+  installer; the service knows its own OS). `find_tool` resolves each by a
+  case-insensitive recursive walk of the configured tools directory, then
+  `PATH` (with a `.exe` fallback on Windows). `launch_tool` spawns GUI tools
+  detached with null stdio; terminal tools (`needs_terminal`) are wrapped per
+  OS (`cmd /k` / `osascript` Terminal / `x-terminal-emulator … ; read _`);
+  `needs_confirm` tools (debuggers) get a frontend confirm. Linux AppImages
+  are detected by magic and run with `--appimage-extract-and-run`.
+- `resolve_ghidra_headless` / `launch_ghidra` - port of `_launch_ghidra`:
+  finds `analyzeHeadless[.bat]` under the configured Ghidra directory and
+  spawns `<headless> <report>/ghidra_projects BinSifter_<sha1> -import
+  <target> -overwrite -analysisTimeoutPerFile 300` detached.
+- `ai_export.rs` - port of `binsifter.core.ai_export`. `build_markdown`
+  output is **near-byte-identical to Winnow's** (cross-checked: same section
+  order/titles, `ssdeep / imphash clustering` header, same disclaimer; the
+  only diff is the "BinSifter Ingot" byline vs "BinSifter"). `build_json`
+  and the on-disk `_meta`/`findings` keys are camelCase to match the rest of
+  Ingot's JSON API rather than Winnow's PascalCase dataclass keys.
+  `export_file` writes `BinSifter_<sha1>.{md,json}` (Winnow's naming) into
+  `<report>/ai_exports/`. Entropy is rounded to 3 dp for display
+  (consistent with the CSV and Results grid; Winnow prints full precision).
+- Server: `GET /api/launch-tools` (resolved tool set + Ghidra status),
+  `POST /api/launch` `{toolId, filePath}`, `POST /api/ghidra` `{filePath}`,
+  `POST /api/ai-export` `{filePath}` (returns markdown + written paths).
+  Ghidra/AI-export look the file up in the current scan session for its
+  SHA-1 / record.
+- UI: Results rows carry `data-path`; right-click opens `#ctxmenu` built
+  from `/api/launch-tools` (missing tools greyed out), plus Ghidra (when
+  found) and "Export for AI analysis…", which opens a `<dialog>` with the
+  rendered Markdown and a Copy button. About page "working now" list
+  updated; the install-time OS question note is dropped.
+
+**Known gaps (carried forward):** Speakeasy (no standalone binary, deferred
+since P0); `SsdeepPreviouslySeen` cluster history (not in Winnow either).
+
+Validated: `cargo test --workspace` (84), clippy `-D warnings`, fmt clean.
+Runtime: `GET /api/launch-tools` returns the Windows set; a real scan then
+`POST /api/ai-export` produced Markdown byte-matching Winnow's
+`binsifter.core.ai_export.build_markdown` on the same record (byline aside)
+and wrote both files under `Reports/ai_exports/`; `POST /api/launch`
+launched a resolved tool and returned the right 400s for an unknown id and
+a not-installed tool; `POST /api/ghidra` returned the expected 400 with no
+Ghidra configured. Release binary ~32 -> 30.5 MB (no new heavy deps; the
+figure moves with toolchain/deps between measurements).
+
 ## Later phases (one stage per block, each gated)
 
-- **P7**: quick-launch context menu in the Results grid, **OS-scoped at
-  install time** - installer asks Windows vs Linux vs macOS and the UI loads
-  that platform's tool set (Windows: PE-Studio / x64dbg / CFF Explorer /
-  Resource Hacker / Sigcheck; Linux: PE-bear / Anya / Cutter / angr / GDB+GEF
-  / unblob / malwoverview; macOS: TBD). Ghidra headless + Speakeasy +
-  "export for AI analysis" are cross-platform. Tools launched via the OS
-  from the local service (it's `127.0.0.1`, single-user).
 - **P8**: packaging - single binary per OS (GitHub Actions matrix), optional
   installers, `docs/ingot.md` rewrite, README status bump.
 
