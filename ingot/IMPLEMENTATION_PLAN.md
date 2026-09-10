@@ -170,11 +170,37 @@ Original checklist:
     `prefers-color-scheme`.
 11. **Validation** (see below). Then stop - Phase 1 is a hard gate.
 
+## Phase 2 - file-type / imphash / disposition - COMPLETE (2026-09-10)
+
+- `file_type.rs` - PE/ELF/shellcode magic + capa-eligibility +
+  `PossibleFalseNegative`, byte-for-byte port of `file_type.py`. Tested,
+  **not yet wired into the scan** - the other variants only compute
+  capa-eligibility behind a YARA-hit gate, so it plugs in with YARA (P3).
+- `imphash.rs` - reproduces pefile's `get_imphash()` exactly, via `goblin`
+  for PE parsing plus a generated copy of `ordlookup`'s ordinal tables
+  (`imphash_ordinals.rs`, from oleaut32/ws2_32/wsock32). Verified
+  **byte-identical to pefile across 35 real PEs** (20 by-name, 15
+  by-ordinal). Wired into the scan behind the NSRL-known-good gate.
+- `disposition.rs` - `.bsifter-disposition-history.txt` read/write
+  (`sha1|disposition`, case-insensitive key), port of `disposition.py`.
+  Prior dispositions are loaded once per scan and applied to every file.
+- `PUT /api/disposition` `{sha1, disposition}` - persists to history and
+  updates matching in-memory scan rows; Results grid gained an Imphash
+  column and a per-row disposition `<select>`; Dashboard gained
+  "Have imphash" / "Escalated" tiles.
+
+Validated: `cargo test --workspace` (33), clippy `-D warnings`, fmt all
+clean; a real scan showed imphashes matching pefile, NSRL-known PEs
+correctly skipping imphash, the disposition endpoint persisting and a
+rescan picking the value back up, and the CSV `Imphash`/`Disposition`
+columns populated. Release build still one binary with assets embedded.
+
+A dev-only pefile venv was used for validation (scratch dir, since
+removed); `crates/ingot-core/examples/imphash.rs` prints Ingot's imphash
+for given paths for future diffing.
+
 ## Later phases (one stage per block, each gated)
 
-- **P2**: `file_type.rs` (PE/ELF/shellcode magic + capa-eligibility),
-  `imphash.rs` (via `goblin`), `disposition` read/write + Results-grid
-  disposition editing.
 - **P3**: `yara.rs` on `yara-x` + MITRE ATT&CK enrichment (`attack.rs`,
   reads `AttackData/enterprise-attack.json`) + YARA severity buckets.
 - **P4**: `ssdeep.rs` fuzzy hashing + post-scan SSDEEP clustering +

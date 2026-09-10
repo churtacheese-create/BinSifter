@@ -99,6 +99,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/scan/current", get(api::scan_status))
         .route("/api/scan/current/events", get(api::scan_events))
         .route("/api/scan/current/report/{kind}", get(api::scan_report))
+        .route("/api/disposition", axum::routing::put(api::set_disposition))
         .route("/api/reports", get(api::list_reports))
         .route("/api/logs/events", get(api::log_events))
         .route("/", get(assets::index))

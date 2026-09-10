@@ -15,7 +15,7 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use futures_util::stream::Stream;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::sync::broadcast;
 use tokio_stream::wrappers::BroadcastStream;
@@ -24,7 +24,7 @@ use tokio_stream::StreamExt;
 use ingot_core::config::{self, IngotConfig, SettingsFields};
 use ingot_core::engine::{self, Progress};
 use ingot_core::report::ReportPaths;
-use ingot_core::{FileRecord, PRODUCT_NAME, VERSION};
+use ingot_core::{disposition, FileRecord, PRODUCT_NAME, VERSION};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -261,6 +261,58 @@ pub async fn scan_report(State(state): State<AppState>, Path(kind): Path<String>
         }
         Err(e) => (StatusCode::NOT_FOUND, format!("could not read report: {e}")).into_response(),
     }
+}
+
+// ------------------------------------------------------------- disposition
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DispositionUpdate {
+    sha1: String,
+    disposition: String,
+}
+
+/// Set one file's triage disposition. Persists it to the report directory's
+/// disposition history (keyed by SHA-1, so it survives rescans) and updates
+/// any matching rows in the current scan's in-memory results.
+pub async fn set_disposition(
+    State(state): State<AppState>,
+    Json(update): Json<DispositionUpdate>,
+) -> Response {
+    if !disposition::is_valid_disposition(&update.disposition) {
+        return (
+            StatusCode::BAD_REQUEST,
+            format!("unknown disposition: {}", update.disposition),
+        )
+            .into_response();
+    }
+    if update.sha1.trim().is_empty() {
+        return (StatusCode::BAD_REQUEST, "sha1 is required").into_response();
+    }
+
+    let report_dir = state.inner.config.read().unwrap().report_directory.clone();
+    if let Err(e) =
+        disposition::save_disposition_entry(&report_dir, &update.sha1, &update.disposition)
+    {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("could not persist disposition: {e}"),
+        )
+            .into_response();
+    }
+
+    let mut updated = 0usize;
+    if let Some(session) = state.inner.scan.read().unwrap().as_ref() {
+        let needle = update.sha1.to_ascii_lowercase();
+        for record in session.records.lock().unwrap().iter_mut() {
+            if record.sha1.as_deref().map(str::to_ascii_lowercase) == Some(needle.clone()) {
+                record.disposition = update.disposition.clone();
+                updated += 1;
+            }
+        }
+    }
+
+    Json(json!({ "ok": true, "rowsUpdated": updated })).into_response()
 }
 
 // ----------------------------------------------------------------- reports

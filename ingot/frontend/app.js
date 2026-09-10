@@ -241,6 +241,7 @@ function renderResults() {
   });
 
   $("#results-count").textContent = `${rows.length} of ${state.records.length}`;
+  const DISPOSITIONS = ["Untriaged", "Benign", "Suspicious", "Escalated"];
   const tbody = $("#results-table tbody");
   tbody.innerHTML = rows
     .slice(0, 2000)
@@ -254,16 +255,48 @@ function renderResults() {
         r.status === "Error"
           ? `<span class="tag err">Error</span>`
           : r.status || "";
+      const dispo = r.disposition || "Untriaged";
+      const opts = DISPOSITIONS.map(
+        (d) => `<option${d === dispo ? " selected" : ""}>${d}</option>`
+      ).join("");
+      const sel = r.sha1
+        ? `<select class="dispo" data-sha1="${r.sha1}">${opts}</select>`
+        : `<span class="muted">${dispo}</span>`;
       return `<tr>
         <td class="path" title="${escapeHtml(r.path)}">${escapeHtml(r.path)}</td>
         <td class="hash">${(r.sha1 || "").slice(0, 16)}</td>
         <td>${fmtEntropy(r.entropy)}</td>
+        <td class="hash">${r.imphash || ""}</td>
         <td>${nsrl}</td>
         <td>${rep}</td>
         <td>${status}</td>
+        <td>${sel}</td>
       </tr>`;
     })
     .join("");
+
+  $$("#results-table select.dispo").forEach((sel) =>
+    sel.addEventListener("change", async () => {
+      const sha1 = sel.dataset.sha1;
+      const disposition = sel.value;
+      sel.disabled = true;
+      try {
+        await api("/api/disposition", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ sha1, disposition }),
+        });
+        state.records.forEach((r) => {
+          if (r.sha1 === sha1) r.disposition = disposition;
+        });
+      } catch (e) {
+        sel.value = state.records.find((r) => r.sha1 === sha1)?.disposition || "Untriaged";
+        alert("Could not save disposition: " + e.message);
+      } finally {
+        sel.disabled = false;
+      }
+    })
+  );
 }
 
 function escapeHtml(s) {
@@ -280,6 +313,8 @@ function renderDashboard() {
   const nsrl = r.filter((x) => x.nsrlMatch).length;
   const knownBad = r.filter((x) => x.reputationStatus === "KnownBad").length;
   const highEntropy = r.filter((x) => x.entropy >= 7.5).length;
+  const withImphash = r.filter((x) => x.imphash).length;
+  const escalated = r.filter((x) => x.disposition === "Escalated").length;
   const tiles = [
     ["Files", r.length],
     ["Completed", completed],
@@ -287,6 +322,8 @@ function renderDashboard() {
     ["NSRL known-good", nsrl],
     ["Known-bad", knownBad],
     ["Entropy ≥ 7.5", highEntropy],
+    ["Have imphash", withImphash],
+    ["Escalated", escalated],
   ];
   $("#tiles").innerHTML = tiles
     .map(([l, n]) => `<div class="tile"><div class="n">${n}</div><div class="l">${l}</div></div>`)

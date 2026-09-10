@@ -144,8 +144,17 @@ table { border-collapse: collapse; width: 100%; font-size: 13px; }
 th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
 th { position: sticky; top: 0; background: var(--surface); cursor: pointer; user-select: none; }
 tbody tr:hover { background: var(--surface-2); }
-td.path { font-family: var(--mono); max-width: 460px; overflow: hidden; text-overflow: ellipsis; }
+td.path { font-family: var(--mono); max-width: 380px; overflow: hidden; text-overflow: ellipsis; }
 td.hash { font-family: var(--mono); color: var(--text-muted); }
+select.dispo {
+  font: inherit;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 6px;
+}
+select.dispo:disabled { opacity: .5; }
 .tag { border-radius: 5px; padding: 1px 6px; font-size: 12px; border: 1px solid var(--border); }
 .tag.good { color: var(--ok); border-color: var(--ok); }
 .tag.bad { color: var(--danger); border-color: var(--danger); }

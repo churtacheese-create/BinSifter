@@ -1,16 +1,18 @@
 //! Scan orchestration - port of `binsifter.core.engine.scan_directory`.
 //!
-//! Phase 1 wires the stages that need no external engine: recursive file
-//! enumeration, a single hash+entropy pass, NSRL known-good lookup, and the
-//! offline known-bad blocklist. Per-file work runs on a bounded `rayon`
+//! Wires the stages that need no external engine: recursive file
+//! enumeration, a single hash+entropy pass, prior-disposition lookup, NSRL
+//! known-good lookup, the offline known-bad blocklist, and (for non-NSRL
+//! files) the PE import hash. Per-file work runs on a bounded `rayon`
 //! thread pool (capped at 16, matching the Python variant's
 //! `MAX_SCAN_WORKERS`); with no GIL this is a plain data-parallel map rather
 //! than a process pool.
 //!
-//! Later phases slot in here, gated behind the same NSRL-known-good check
-//! the other variants use (a file NSRL vouches for skips imphash / ssdeep /
-//! YARA / capa / FLOSS entirely).
+//! The NSRL-known-good gate matches the other variants: a file NSRL vouches
+//! for skips imphash (and later ssdeep / YARA / capa / FLOSS) entirely.
+//! Prior disposition is applied to every file regardless, before the gate.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -22,7 +24,9 @@ use walkdir::WalkDir;
 
 use crate::blocklist;
 use crate::config::IngotConfig;
+use crate::disposition;
 use crate::hashing;
+use crate::imphash;
 use crate::model::FileRecord;
 use crate::nsrl::{self, NsrlIndex};
 use crate::report::{self, ReportPaths};
@@ -70,6 +74,7 @@ fn process_one_file(
     path: &str,
     nsrl_index: &NsrlIndex,
     blocklist: Option<&std::collections::HashSet<String>>,
+    disposition_history: &BTreeMap<String, String>,
 ) -> FileRecord {
     let mut record = FileRecord::new(path);
 
@@ -80,6 +85,12 @@ fn process_one_file(
             record.sha256 = Some(h.sha256.clone());
             record.entropy = h.entropy;
 
+            // Prior analyst disposition, keyed by SHA-1 - applied to every
+            // file, before the NSRL gate (same as the other variants).
+            if let Some(prior) = disposition_history.get(&h.sha1.to_ascii_lowercase()) {
+                record.disposition = prior.clone();
+            }
+
             record.nsrl_match = nsrl_index.contains(&h.sha1);
 
             if let Some(bl) = blocklist {
@@ -88,8 +99,11 @@ fn process_one_file(
                 record.reputation_source = source;
             }
 
-            // NSRL-known-good gate: imphash / ssdeep / YARA / capa / FLOSS
-            // (Phase 2+) all skip here when `record.nsrl_match` is true.
+            // NSRL-known-good gate: a file NSRL vouches for skips imphash
+            // (and later ssdeep / YARA / capa / FLOSS).
+            if !record.nsrl_match {
+                record.imphash = imphash::compute_imphash(Path::new(path));
+            }
 
             record.status = "Completed".to_string();
         }
@@ -144,6 +158,15 @@ where
             None
         };
 
+    // --- prior triage dispositions (by SHA-1, persisted across scans) ----
+    let disposition_history = disposition::load_disposition_history(&config.report_directory);
+    if !disposition_history.is_empty() {
+        info!(
+            "Loaded {} prior disposition(s) from history.",
+            disposition_history.len()
+        );
+    }
+
     // --- parallel per-file pass ----------------------------------------
     let worker_count = default_worker_count().min(total.max(1));
     info!("Scanning {total} file(s) with {worker_count} worker thread(s)...");
@@ -158,13 +181,14 @@ where
     let on_progress = &on_progress;
     let nsrl_ref = &nsrl_index;
     let bl_ref = blocklist_hashes.as_ref();
+    let dispo_ref = &disposition_history;
     let counter_ref = &counter;
 
     let mut records: Vec<FileRecord> = pool.install(|| {
         paths
             .par_iter()
             .map(|path| {
-                let record = process_one_file(path, nsrl_ref, bl_ref);
+                let record = process_one_file(path, nsrl_ref, bl_ref, dispo_ref);
                 let done = counter_ref.fetch_add(1, Ordering::SeqCst) + 1;
                 on_progress(Progress {
                     done,
@@ -287,5 +311,65 @@ mod tests {
         std::fs::create_dir_all(&src).unwrap();
         let result = scan_directory(&cfg_for(&src, &reports), |_| {});
         assert!(result.records.is_empty());
+    }
+
+    #[test]
+    fn prior_disposition_is_applied_and_imphash_gated_by_nsrl() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("src");
+        let reports = dir.path().join("reports");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::create_dir_all(&reports).unwrap();
+
+        // a real PE, and a plain file
+        let pe_src =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/debug/ingot.exe");
+        let have_pe = pe_src.is_file();
+        if have_pe {
+            std::fs::copy(&pe_src, src.join("sample.exe")).unwrap();
+        }
+        std::fs::write(src.join("plain.txt"), b"abc").unwrap();
+
+        // seed a prior disposition for "abc" (its SHA-1)
+        let abc_sha1 = "a9993e364706816aba3e25717850c26c9cd0d89d";
+        crate::disposition::save_disposition_entry(
+            reports.to_str().unwrap(),
+            abc_sha1,
+            "Escalated",
+        )
+        .unwrap();
+
+        let mut config = cfg_for(&src, &reports);
+        // NSRL vouches for "abc" -> imphash-style stages must skip it
+        let nsrl_src = dir.path().join("nsrl.txt");
+        std::fs::write(&nsrl_src, format!("{abc_sha1}\n")).unwrap();
+        config.nsrl_path = nsrl_src.to_string_lossy().into_owned();
+
+        let result = scan_directory(&config, |_| {});
+
+        let plain = result
+            .records
+            .iter()
+            .find(|r| r.path.ends_with("plain.txt"))
+            .unwrap();
+        assert_eq!(
+            plain.disposition, "Escalated",
+            "prior disposition not applied"
+        );
+        assert!(plain.nsrl_match);
+        assert_eq!(plain.imphash, None, "NSRL-known file must skip imphash");
+
+        if have_pe {
+            let pe = result
+                .records
+                .iter()
+                .find(|r| r.path.ends_with("sample.exe"))
+                .unwrap();
+            assert!(!pe.nsrl_match);
+            let mine = pe.imphash.clone().expect("PE should have an imphash");
+            let direct = crate::imphash::compute_imphash(&src.join("sample.exe")).unwrap();
+            assert_eq!(mine, direct);
+            assert_eq!(mine.len(), 32);
+        }
     }
 }
