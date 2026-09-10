@@ -1,0 +1,79 @@
+name: Ingot CI
+
+# Added 2026-09-10 (Ingot Phase 8). The Rust variant had no CI until now -
+# this runs the exact gate the port is developed against (fmt / clippy with
+# warnings denied / the full test suite) on every push to main and every PR
+# that touches ingot/. clippy + tests run on both Linux and Windows because
+# tools.rs / archive.rs / authenticode.rs have real per-OS branches.
+#
+# The release matrix (macOS, per-target binaries, GitHub Release) lives in
+# ingot-release.yml and is triggered by ingot-v* tags, not by this file.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ingot/**"
+      - ".github/workflows/ingot-ci.yml"
+  pull_request:
+    paths:
+      - "ingot/**"
+      - ".github/workflows/ingot-ci.yml"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: cargo fmt --check
+        working-directory: ingot
+        run: cargo fmt --check
+
+  test:
+    name: test & clippy (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ingot
+      - name: cargo clippy
+        working-directory: ingot
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: cargo test
+        working-directory: ingot
+        run: cargo test --workspace --locked
+
+  msrv:
+    # Keeps ingot/Cargo.toml's rust-version honest. The floor is set by
+    # yara-x + its bundled wasmtime/cranelift and moves up as they update -
+    # when this job fails after a `cargo update`, bump rust-version to match
+    # (the error names the crate and the version it needs).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.93.0"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ingot
+      - name: cargo check on the declared MSRV
+        working-directory: ingot
+        run: cargo check --workspace --locked

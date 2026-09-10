@@ -19,17 +19,18 @@ and a real scan before the next is started** - not a big-bang rewrite.
 | NSRL cache format | Reuse Winnow/Rowan's exact on-disk format (`BSNL` magic, version 1) so caches are interchangeable between variants |
 | Repo location | New top-level `ingot/` Cargo workspace |
 
-## Prerequisite (blocker)
+## Prerequisite
 
-Rust is **not installed** on this machine. Nothing can be built or tested
-until it is. Install via rustup (recommended) - from the repo the user runs:
+Rust is installed on the dev machine (rustup). If setting up fresh:
 
 ```
 winget install --id Rustlang.Rustup -e --source winget
 ```
 
-then restart the shell so `~/.cargo/bin` is on PATH. `rustc --version` should
-report 1.80+.
+then restart the shell so `~/.cargo/bin` is on PATH. The workspace MSRV is
+**1.93** (`rust-version` in `ingot/Cargo.toml`) - `yara-x` and its bundled
+`wasmtime`/`cranelift` set the floor and raise it over time, so this tracks
+upward with dependency updates rather than staying pinned low.
 
 ## Target architecture
 
@@ -414,10 +415,50 @@ a not-installed tool; `POST /api/ghidra` returned the expected 400 with no
 Ghidra configured. Release binary ~32 -> 30.5 MB (no new heavy deps; the
 figure moves with toolchain/deps between measurements).
 
-## Later phases (one stage per block, each gated)
+## Phase 8 - packaging + CI - COMPLETE (2026-09-10)
 
-- **P8**: packaging - single binary per OS (GitHub Actions matrix), optional
-  installers, `docs/ingot.md` rewrite, README status bump.
+The phased port is finished; this phase makes it shippable and adds the CI
+that was missing for the Rust code.
+
+- `.github/workflows/ingot-ci.yml` - runs on every push to `main` and every
+  PR that touches `ingot/`. Jobs: `fmt` (`cargo fmt --check`), `test` (both
+  `ubuntu-latest` and `windows-latest`: `cargo clippy --workspace
+  --all-targets --locked -- -D warnings` then `cargo test --workspace
+  --locked`), and `msrv` (`cargo check` on the exact declared MSRV). Windows
+  is in the matrix because `tools.rs` / `archive.rs` / `authenticode.rs`
+  carry real `cfg`/`std::env::consts::OS` branches.
+- `.github/workflows/ingot-release.yml` - `ingot-v*` tag (or
+  `workflow_dispatch`) builds the `ingot` binary on GitHub's **native**
+  runners for four targets - `x86_64-unknown-linux-gnu` (ubuntu-latest),
+  `x86_64-pc-windows-msvc` (windows-latest), `aarch64-apple-darwin`
+  (macos-latest), `x86_64-apple-darwin` (macos-13) - no cross-compilation.
+  Each is packaged as `ingot-<version>-<target>.{tar.gz,zip}` containing the
+  binary + `LICENSE` + `README.md`. A tag push additionally publishes a
+  GitHub Release with all four archives and a `SHA256SUMS` file.
+  `workflow_dispatch` builds + uploads artifacts only (no Release) - run
+  that first. **Deliberately no `.deb`/`.msi`/`.pkg`**: Ingot is one
+  self-contained binary with no runtime deps to install (capa/FLOSS
+  download per-user, the frontend and YARA engine are in the binary), so an
+  installer would be untested surface for no gain. Independent of
+  `release-installers.yml` (Rowan/Winnow, `v*` tags, BinSifter's 2.x line).
+- **MSRV corrected**: `ingot/Cargo.toml` `rust-version` was a stale `1.80`;
+  the real floor is **1.93** (`yara-x` 1.20 + `wasmtime` 45 / `cranelift`
+  0.132 require it - `cranelift` needs edition 2024, i.e. Cargo ≥ 1.85, and
+  the wasmtime/yara-x crates declare `rust-version = 1.93`). Verified: a
+  full `cargo +1.93.0 check` + `cargo +1.93.0 test --workspace` pass. This
+  floor tracks upward with those deps by design; the `msrv` CI job pins it
+  so the declared value stays honest.
+
+Locally verified: both workflow YAMLs parse; `cargo build --release
+--locked --target x86_64-pc-windows-msvc -p ingot-server` succeeds and the
+packaging shell script produces the expected archive layout; MSRV 1.93.0
+builds and tests clean; `cargo test --workspace` (84), clippy `-D
+warnings`, `cargo fmt --check` all green. **Not yet run on GitHub** - the
+first `workflow_dispatch` run of `ingot-release.yml` (all four targets
+green) is the real gate for this phase, same caveat the Winnow Linux
+packaging job carried (`installer/README.md`). Windows/macOS runner builds
+of the wasmtime/ring/pe-sign stack in particular are unverified until that
+run.
 
 ## Verification (Phase 1)
 
@@ -434,8 +475,9 @@ figure moves with toolchain/deps between measurements).
      (allowing for path + timestamp differences only).
 5. Browser: open `http://127.0.0.1:8477`, run a scan, watch live progress,
    filter the Results table, view Dashboard tiles, edit + persist Settings.
-6. Cross-platform smoke: `cargo build` on Windows now; Linux/macOS via CI in P8
-   (note any `cfg!` OS branches as they're added).
+6. Cross-platform smoke: `cargo build` on Windows now; Linux/macOS + Windows
+   clippy/test via `ingot-ci.yml`, per-target release builds via
+   `ingot-release.yml` (P8).
 
 ## Non-goals for now
 

@@ -1,0 +1,147 @@
+name: Ingot release
+
+# Added 2026-09-10 (Ingot Phase 8 - packaging). Builds the single
+# self-contained `ingot` binary for the four mainstream desktop/server
+# targets on GitHub's own native runners (no cross-compilation), packages
+# each as an archive, and - for a real tag push - publishes a GitHub
+# Release with all of them plus a SHA256SUMS file attached.
+#
+# Ingot has no runtime dependencies to bundle: capa/FLOSS are downloaded
+# per-user on first use, the frontend is embedded via rust-embed, and the
+# YARA engine (yara-x) is pure Rust and already in the binary. So an
+# archive of the binary + LICENSE + README is the whole package - there is
+# deliberately no .deb/.msi/.pkg here (a single-binary tool doesn't need
+# an installer, and an untested one would be worse than none).
+#
+# Versioning is independent of BinSifter's (Rowan/Winnow) 2.x line - Ingot
+# is 0.x and released on its own `ingot-v*` tags, handled here, separate
+# from release-installers.yml's `v*` tags.
+#
+# Two ways to trigger:
+#   1. workflow_dispatch ("Run workflow" button, or
+#      `gh workflow run ingot-release.yml`) - builds and uploads every
+#      target's archive as a downloadable Actions artifact, no Release.
+#      Use this first to confirm all four targets build clean.
+#   2. Pushing a tag matching `ingot-v*` (e.g.
+#      `git tag ingot-v0.1.0 && git push origin ingot-v0.1.0`) - builds
+#      every target AND publishes a GitHub Release for that tag.
+
+on:
+  push:
+    tags:
+      - "ingot-v*"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write # the release job creates the GitHub Release + uploads assets
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+          - target: aarch64-apple-darwin
+            os: macos-latest # Apple-silicon runner
+          - target: x86_64-apple-darwin
+            os: macos-13 # last Intel runner image; if it's retired, build
+            # this target from macos-latest with `--target x86_64-apple-darwin`
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: ingot
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ingot
+          key: ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }} -p ingot-server
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE:-branch}" = "tag" ]; then
+            version="${GITHUB_REF_NAME#ingot-v}"
+          else
+            version="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)-dev"
+          fi
+          name="ingot-${version}-${{ matrix.target }}"
+          stage="dist/${name}"
+          mkdir -p "${stage}"
+          cp ../LICENSE README.md "${stage}/"
+          cd dist
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cp "../target/${{ matrix.target }}/release/ingot.exe" "${name}/"
+            7z a -bso0 "${name}.zip" "${name}"
+          else
+            cp "../target/${{ matrix.target }}/release/ingot" "${name}/"
+            tar czf "${name}.tar.gz" "${name}"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ingot-${{ matrix.target }}
+          path: |
+            ingot/dist/*.tar.gz
+            ingot/dist/*.zip
+          if-no-files-found: error
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Stage assets + checksums
+        run: |
+          set -euo pipefail
+          mkdir staged
+          find artifacts -type f \( -name '*.tar.gz' -o -name '*.zip' \) \
+            -exec cp {} staged/ \;
+          cd staged
+          sha256sum * > SHA256SUMS
+          echo "Release assets:"
+          cat SHA256SUMS
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#ingot-v}"
+          gh release create "${GITHUB_REF_NAME}" staged/* \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "Ingot ${version}" \
+            --notes "BinSifter Ingot ${version} - the Rust variant: a local backend service plus an embedded browser UI, one self-contained binary per platform.
+
+          Download the archive for your platform, extract it, and run \`ingot\` (\`ingot.exe\` on Windows). It binds to \`127.0.0.1:8477\` and opens the UI in your browser (\`--no-open\` to skip, \`--port N\` to change). Verify a download against \`SHA256SUMS\`.
+
+          | Archive | Platform |
+          | --- | --- |
+          | \`ingot-${version}-x86_64-unknown-linux-gnu.tar.gz\` | Linux, x86-64 |
+          | \`ingot-${version}-x86_64-pc-windows-msvc.zip\` | Windows, x86-64 |
+          | \`ingot-${version}-aarch64-apple-darwin.tar.gz\` | macOS, Apple silicon |
+          | \`ingot-${version}-x86_64-apple-darwin.tar.gz\` | macOS, Intel |
+
+          capa and FLOSS are downloaded per-user from the Settings page on first use (no admin needed); everything else - the YARA engine, archive handling, Authenticode parsing - is already in the binary. See the repo README for NSRL / YARA-rule / blocklist configuration.
+
+          Ingot is source-available under the PolyForm Strict License 1.0.0."

@@ -5,7 +5,9 @@ members = ["crates/ingot-core", "crates/ingot-server"]
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.80"
+# MSRV floor is set by yara-x + its bundled wasmtime/cranelift, which chase a
+# recent toolchain; bump this as those deps do (CI's `msrv` job pins it).
+rust-version = "1.93"
 license = "LicenseRef-PolyForm-Strict-1.0.0"
 repository = "https://github.com/churtacheese-create/BinSifter"
 

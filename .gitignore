@@ -37,6 +37,7 @@ desktop.ini
 
 # Ingot (Rust variant) build output
 ingot/target/
+ingot/dist/
 target/
 
 # Future Python rewrite artifacts

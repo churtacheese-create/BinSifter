@@ -246,7 +246,7 @@ jobs:
             "artifacts/BinSifter-Rowan-Msi/BinSifter-Rowan.msi" \
             "artifacts/BinSifter-Rowan-Portable/BinSifter-Rowan-Portable.zip" \
             --title "BinSifter ${{ github.ref_name }}" \
-            --notes "Rowan (Windows) and Winnow (Linux) are both full releases as of 2.0.0 - see below for each. Ingot (a planned cross-platform variant, a backend service with a web UI) hasn't started yet.
+            --notes "Rowan (Windows) and Winnow (Linux) are both full releases as of 2.0.0 - see below for each. Ingot (the cross-platform variant: a backend service with a web UI) is released separately on its own \`ingot-v*\` tags - see the \`ingot-release.yml\` workflow and the Ingot releases.
 
           **BinSifter-Rowan-Setup.exe** - PowerShell 7 + WinForms variant, standard installer. Needs PowerShell 7 (pwsh.exe) already installed; it will tell you if it's missing.
           **BinSifter-Rowan.msi** - same Rowan variant, packaged as an MSI for managed/enterprise deployment instead of the standard installer.

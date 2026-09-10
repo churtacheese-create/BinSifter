@@ -11,7 +11,8 @@ and current status.
 
 ## Status
 
-**Phases 1-7 complete.** Working today: recursive file enumeration, archive
+**Phases 1-8 complete - the phased port is finished.** Working today:
+recursive file enumeration, archive
 expansion (zip incl. WinZip AES / tar / gzip / 7z, nested, with a
 password round-trip), a single-pass MD5/SHA-1/SHA-256 + Shannon entropy
 read, Authenticode signature verification, NSRL known-good lookup (cached,
@@ -32,13 +33,15 @@ Markdown/JSON "export for AI analysis", a live-progress browser UI, and the
 HTTP API behind it. Every stage is cross-checked against the Python (Winnow)
 variant's output.
 
-Not yet ported: catalog (`.cat`) signature verification, SSDEEP cluster
-history, and Speakeasy emulation (no standalone binary). Next up is
-packaging (per-OS single-binary releases).
+Known gaps: catalog (`.cat`) signature verification, SSDEEP cluster history,
+and Speakeasy emulation (no standalone binary) - none are in the Python
+variant either.
 
 ## Build & run
 
-Needs a Rust toolchain (1.80+; install from <https://rustup.rs>).
+Needs a Rust toolchain (1.93+; install from <https://rustup.rs>). The MSRV
+floor comes from `yara-x` and its bundled `wasmtime`/`cranelift` and moves
+up as those update.
 
 ```sh
 cd ingot
@@ -49,6 +52,20 @@ cargo test --workspace    # unit + integration tests
 ```
 
 The UI defaults to <http://127.0.0.1:8477>.
+
+## Releases
+
+Tagged builds (`ingot-v*`) publish a GitHub Release with a self-contained
+`ingot` binary for Linux x86-64, Windows x86-64, and macOS (Apple silicon
+and Intel), each as `ingot-<version>-<target>.{tar.gz,zip}` alongside a
+`SHA256SUMS` file - see
+[`../.github/workflows/ingot-release.yml`](../.github/workflows/ingot-release.yml).
+Extract and run `ingot`; nothing else to install. There is no OS installer
+(`.deb`/`.msi`/`.pkg`) - it's a single binary with no runtime dependencies.
+
+CI ([`ingot-ci.yml`](../.github/workflows/ingot-ci.yml)) runs `fmt`,
+`clippy -D warnings`, and the test suite on Linux and Windows for every push
+to `main` and every PR touching `ingot/`.
 
 Runtime data (the `Reports/` directory, the settings cache, and the NSRL
 cache) lives under the per-user data directory
