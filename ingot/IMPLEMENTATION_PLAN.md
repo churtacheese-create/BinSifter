@@ -506,16 +506,30 @@ sets) surfaced five gaps, all fixed together:
    UAC prompt and a real Defender config change, so it needs the owner's own
    test, same caveat `defender.py` always carried.
 
-Validated: `cargo test --workspace` (89), clippy `-D warnings`, fmt clean;
+6. **Scan stall on a wedged file** - during the same testing, a `System32`
+   scan hung at 651/652: one file wedged an in-process stage (hashing /
+   Authenticode / imphash / SSDEEP have no timeout of their own), and rayon's
+   `.collect()` never returned. Fixed: the per-file pipeline is split into
+   `scan_core` (the in-process read/parse stages) and the rest. `scan_core`
+   now runs via `with_deadline()` - a throwaway thread with an
+   `mpsc::recv_timeout` - under a per-file deadline (`per_file_timeout()`,
+   default 180 s, `INGOT_FILE_TIMEOUT_SECONDS`). A file that blows the
+   deadline is recorded `status = "Error"` / `error = "timed out after Ns"`
+   and the scan moves on (the stuck thread is abandoned - unkillable in Rust,
+   but idle and rare). YARA gets `Scanner::set_timeout(deadline)` (yara-x
+   native); capa/FLOSS keep their own subprocess timeouts and run outside the
+   deadline (their legitimate runtime is minutes). Cost: YARA/capa moved off
+   `scan_core` onto the rayon worker, so the per-thread `Scanner` reuse is
+   kept.
+
+Validated: `cargo test --workspace` (91 - `with_deadline_abandons_a_hung_worker`,
+`per_file_timeout_env_is_clamped` added), clippy `-D warnings`, fmt clean;
 `node --check frontend/app.js`; a live scan showed the phase/elapsed UI and
 the phase SSE events (`Scanning files` -> `Clustering...` -> `Writing
-reports` -> complete); `GET /api/av` returns Windows Defender in camelCase.
-
-**Separately observed, not fixed here:** scanning a directory of live
-Windows `System32` binaries stalled at 651/652 - one file hung a pipeline
-stage with no per-file timeout (hashing / authenticode / imphash have none).
-Winnow hit and fixed the same class of bug with stage timeouts; Ingot needs
-the same. Not triggered by a normal sample set; tracked as its own follow-up.
+reports` -> complete); `GET /api/av` returns Windows Defender in camelCase;
+a 10 GB file scanned with `INGOT_FILE_TIMEOUT_SECONDS=25` timed out at 25 s
+as an errored record and the scan **completed** instead of hanging; the
+652-file `System32` scan that previously stalled now finishes.
 
 ## Verification (Phase 1)
 

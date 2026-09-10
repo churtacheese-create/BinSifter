@@ -16,10 +16,11 @@
 //! YARA / capa; capa-eligibility is only computed for a file with a YARA
 //! hit. Disposition and Authenticode apply to every file, before any gate.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{mpsc, Arc};
+use std::time::Duration;
 
 use chrono::Local;
 use rayon::prelude::*;
@@ -28,7 +29,7 @@ use walkdir::WalkDir;
 use yara_x::Scanner;
 
 use crate::archive;
-use crate::attack::{self, AttackDb};
+use crate::attack;
 use crate::authenticode;
 use crate::blocklist;
 use crate::capa;
@@ -85,14 +86,29 @@ pub fn enumerate_files(src_dir: &str) -> Vec<String> {
     files
 }
 
-struct FileScanCtx<'a> {
-    nsrl_index: &'a NsrlIndex,
-    blocklist: Option<&'a std::collections::HashSet<String>>,
-    disposition_history: &'a BTreeMap<String, String>,
-    attack_db: Option<&'a AttackDb>,
-    capa_bin: Option<&'a Path>,
-    floss_bin: Option<&'a Path>,
-    capa_rules_dir: Option<&'a Path>,
+/// Per-file deadline for the in-process read/parse stages (hash + entropy,
+/// Authenticode, imphash, SSDEEP). Default 180 s, overridable via
+/// `INGOT_FILE_TIMEOUT_SECONDS`, clamped to a sane band. capa / FLOSS have
+/// their own (longer) subprocess timeouts and run outside this deadline.
+fn per_file_timeout() -> Duration {
+    Duration::from_secs(resolve_file_timeout_secs(
+        std::env::var("INGOT_FILE_TIMEOUT_SECONDS").ok().as_deref(),
+    ))
+}
+
+fn resolve_file_timeout_secs(raw: Option<&str>) -> u64 {
+    raw.and_then(|v| v.trim().parse::<u64>().ok())
+        .map(|v| v.clamp(20, 3600))
+        .unwrap_or(180)
+}
+
+/// The shared, `Send` inputs `scan_core` needs - small enough to hand to a
+/// per-file watchdog thread cheaply (`Arc` clones only).
+#[derive(Clone)]
+struct CoreCtx {
+    nsrl_index: Arc<NsrlIndex>,
+    blocklist: Option<Arc<HashSet<String>>>,
+    disposition_history: Arc<BTreeMap<String, String>>,
 }
 
 /// A `FileRecord` plus the per-file byproduct the post-scan draft-rule pass
@@ -102,115 +118,120 @@ struct FileOutcome {
     floss_static_strings: Option<Vec<String>>,
 }
 
-fn process_one_file(
-    path: &str,
-    ctx: &FileScanCtx<'_>,
-    yara_scanner: Option<&mut Scanner>,
-) -> FileOutcome {
+/// Output of [`scan_core`] - the record so far, the file length (for
+/// `file_type::classify`), and whether the NSRL gate lets YARA/capa proceed.
+struct CoreOutcome {
+    record: FileRecord,
+    length: u64,
+    proceed: bool,
+}
+
+/// The in-process read/parse stages: hash + entropy, prior disposition,
+/// Authenticode, NSRL, blocklist, and (for a non-NSRL file) imphash + SSDEEP.
+/// Any of these can wedge on an unreadable/pathological file with no timeout
+/// of its own, so this is the part [`scan_core_guarded`] runs under a deadline.
+fn scan_core(path: &str, ctx: &CoreCtx) -> CoreOutcome {
     let mut record = FileRecord::new(path);
-    let mut floss_static_strings: Option<Vec<String>> = None;
     let target = Path::new(path);
 
-    match hashing::hash_and_score_file(target) {
-        Ok(h) => {
-            record.md5 = Some(h.md5.clone());
-            record.sha1 = Some(h.sha1.clone());
-            record.sha256 = Some(h.sha256.clone());
-            record.entropy = h.entropy;
-
-            // Prior analyst disposition, keyed by SHA-1 - applied to every
-            // file, before the NSRL gate (same as the other variants).
-            if let Some(prior) = ctx.disposition_history.get(&h.sha1.to_ascii_lowercase()) {
-                record.disposition = prior.clone();
-            }
-
-            // Authenticode - unconditional, like entropy: "signed vs
-            // unsigned is meaningful regardless of hash reputation".
-            let auth = authenticode::check_signature(target);
-            record.signature_status = auth.status;
-            record.signer_name = auth.signer_name;
-
-            record.nsrl_match = ctx.nsrl_index.contains(&h.sha1);
-
-            if let Some(bl) = ctx.blocklist {
-                let (status, source) = blocklist::check_reputation(&h.md5, &h.sha1, &h.sha256, bl);
-                record.reputation_status = status;
-                record.reputation_source = source;
-            }
-
-            // NSRL-known-good gate: a file NSRL vouches for skips imphash,
-            // ssdeep, YARA and capa-eligibility (and later capa / FLOSS).
-            if !record.nsrl_match {
-                record.imphash = imphash::compute_imphash(target);
-                record.ssdeep = ssdeep::compute_ssdeep_hash(target);
-
-                if let Some(scanner) = yara_scanner {
-                    let yr = yara_scan::scan_file(scanner, target, ctx.attack_db);
-                    record.yara_matches =
-                        (!yr.rule_names.is_empty()).then(|| yr.rule_names.join("; "));
-                    record.yara_hit_count = yr.hit_count as i32;
-                    record.yara_severity = yr.severity;
-                    record.yara_severity_score = yr.severity_score;
-                    record.yara_attack_techniques = yr.attack_techniques;
-                }
-
-                // capa-eligibility is only computed for a file YARA flagged,
-                // matching engine.py (capa never runs against an unflagged
-                // file).
-                if record.yara_hit_count > 0 {
-                    let ft = file_type::classify(target, h.length);
-                    record.capa_eligible = ft.capa_eligible;
-                    record.possible_false_negative =
-                        file_type::is_possible_false_negative(&ft, record.yara_hit_count, target);
-
-                    if let (Some(capa_bin), true) = (ctx.capa_bin, record.capa_eligible) {
-                        // Own try scope: a capa timeout/failure is common on
-                        // a real corpus and must not discard everything else
-                        // already learned about the file (engine.py does the
-                        // same).
-                        match capa::scan_file(
-                            capa_bin,
-                            target,
-                            ctx.capa_rules_dir,
-                            ft.is_shellcode,
-                            capa::timeout(),
-                        ) {
-                            Ok(cr) => {
-                                record.capa_detection_count = cr.detection_count;
-                                record.capa_output = (!cr.output.is_empty()).then_some(cr.output);
-                                record.capa_shellcode_format = cr.shellcode_format;
-                            }
-                            Err(e) => {
-                                record.error = Some(e.to_string());
-                                warn!("capa analysis failed for {path}: {e}");
-                            }
-                        }
-                    } else if record.possible_false_negative {
-                        if let Some(floss_bin) = ctx.floss_bin {
-                            let fr = floss::scan_file(floss_bin, target, floss::timeout());
-                            record.floss_string_count = fr.string_count;
-                            if !fr.static_strings.is_empty() {
-                                floss_static_strings = Some(fr.static_strings);
-                            }
-                            let ioc = iocs::extract_iocs(&fr.strings);
-                            record.ioc_count = ioc.count as i32;
-                            record.extracted_iocs = ioc.display;
-                        }
-                    }
-                }
-            }
-
-            record.status = "Completed".to_string();
-        }
+    let h = match hashing::hash_and_score_file(target) {
+        Ok(h) => h,
         Err(e) => {
             record.status = "Error".to_string();
             record.error = Some(e.to_string());
             warn!("Error processing {path}: {e}");
+            return CoreOutcome {
+                record,
+                length: 0,
+                proceed: false,
+            };
         }
+    };
+    record.md5 = Some(h.md5.clone());
+    record.sha1 = Some(h.sha1.clone());
+    record.sha256 = Some(h.sha256.clone());
+    record.entropy = h.entropy;
+
+    // Prior analyst disposition, keyed by SHA-1 - applied to every file,
+    // before the NSRL gate (same as the other variants).
+    if let Some(prior) = ctx.disposition_history.get(&h.sha1.to_ascii_lowercase()) {
+        record.disposition = prior.clone();
     }
-    FileOutcome {
+
+    // Authenticode - unconditional, like entropy: "signed vs unsigned is
+    // meaningful regardless of hash reputation".
+    let auth = authenticode::check_signature(target);
+    record.signature_status = auth.status;
+    record.signer_name = auth.signer_name;
+
+    record.nsrl_match = ctx.nsrl_index.contains(&h.sha1);
+
+    if let Some(bl) = ctx.blocklist.as_deref() {
+        let (status, source) = blocklist::check_reputation(&h.md5, &h.sha1, &h.sha256, bl);
+        record.reputation_status = status;
+        record.reputation_source = source;
+    }
+
+    // NSRL-known-good gate: a file NSRL vouches for skips imphash, ssdeep,
+    // YARA and capa-eligibility (and later capa / FLOSS).
+    if !record.nsrl_match {
+        record.imphash = imphash::compute_imphash(target);
+        record.ssdeep = ssdeep::compute_ssdeep_hash(target);
+    }
+
+    record.status = "Completed".to_string();
+    let proceed = !record.nsrl_match;
+    CoreOutcome {
         record,
-        floss_static_strings,
+        length: h.length,
+        proceed,
+    }
+}
+
+/// Run `work` on a throwaway thread; return its result, or `None` if
+/// `deadline` elapses first. A timed-out thread is abandoned - it's left to
+/// finish or die with the process (a thread can't be force-killed in Rust),
+/// which is fine: a genuine hang here is rare and the leaked thread sits idle.
+fn with_deadline<T, F>(deadline: Duration, work: F) -> Option<T>
+where
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
+{
+    let (tx, rx) = mpsc::sync_channel::<T>(1);
+    std::thread::Builder::new()
+        .name("ingot-file".into())
+        .spawn(move || {
+            let _ = tx.send(work());
+        })
+        .expect("spawn per-file worker");
+    rx.recv_timeout(deadline).ok()
+}
+
+/// Run [`scan_core`] with a hard deadline. A file that wedges a read/parse
+/// stage (a locked file, a pathological PE that hangs `pe-sign`, ...) is
+/// recorded as an error and the scan moves on.
+fn scan_core_guarded(path: &str, ctx: &CoreCtx, deadline: Duration) -> CoreOutcome {
+    let ctx = ctx.clone();
+    let owned_path = path.to_string();
+    match with_deadline(deadline, move || scan_core(&owned_path, &ctx)) {
+        Some(out) => out,
+        None => {
+            warn!(
+                "File exceeded the {}s per-file deadline in an early stage, skipping: {path}",
+                deadline.as_secs()
+            );
+            let mut record = FileRecord::new(path);
+            record.status = "Error".to_string();
+            record.error = Some(format!(
+                "timed out after {}s (hash / signature / imphash / ssdeep)",
+                deadline.as_secs()
+            ));
+            CoreOutcome {
+                record,
+                length: 0,
+                proceed: false,
+            }
+        }
     }
 }
 
@@ -386,30 +407,100 @@ where
         .build()
         .expect("rayon pool");
 
+    let file_deadline = per_file_timeout();
+    let core_ctx = CoreCtx {
+        nsrl_index: Arc::new(nsrl_index),
+        blocklist: blocklist_hashes.map(Arc::new),
+        disposition_history: Arc::new(disposition_history),
+    };
+
     let on_progress = &on_progress;
     let counter_ref = &counter;
-    let ctx = FileScanCtx {
-        nsrl_index: &nsrl_index,
-        blocklist: blocklist_hashes.as_ref(),
-        disposition_history: &disposition_history,
-        attack_db: attack_db.as_ref(),
-        capa_bin: capa_bin.as_deref(),
-        floss_bin: floss_bin.as_deref(),
-        capa_rules_dir: capa_rules_dir.as_deref(),
-    };
-    let ctx_ref = &ctx;
+    let core_ctx_ref = &core_ctx;
+    let attack_db_ref = attack_db.as_ref();
+    let capa_bin_ref = capa_bin.as_deref();
+    let floss_bin_ref = floss_bin.as_deref();
+    let capa_rules_ref = capa_rules_dir.as_deref();
     let yara_rules_ref = yara_rules.as_ref();
 
     let outcomes: Vec<FileOutcome> = pool.install(|| {
         paths
             .par_iter()
             .map_init(
-                || yara_rules_ref.map(Scanner::new),
+                || {
+                    yara_rules_ref.map(|r| {
+                        let mut s = Scanner::new(r);
+                        s.set_timeout(file_deadline);
+                        s
+                    })
+                },
                 |scanner, path| {
-                    let FileOutcome {
-                        record,
-                        floss_static_strings,
-                    } = process_one_file(path, ctx_ref, scanner.as_mut());
+                    let target = Path::new(path);
+                    let CoreOutcome {
+                        mut record,
+                        length,
+                        proceed,
+                    } = scan_core_guarded(path, core_ctx_ref, file_deadline);
+                    let mut floss_static_strings: Option<Vec<String>> = None;
+
+                    if proceed {
+                        if let Some(scanner) = scanner.as_mut() {
+                            let yr = yara_scan::scan_file(scanner, target, attack_db_ref);
+                            record.yara_matches =
+                                (!yr.rule_names.is_empty()).then(|| yr.rule_names.join("; "));
+                            record.yara_hit_count = yr.hit_count as i32;
+                            record.yara_severity = yr.severity;
+                            record.yara_severity_score = yr.severity_score;
+                            record.yara_attack_techniques = yr.attack_techniques;
+                        }
+
+                        // capa-eligibility is only computed for a YARA-flagged
+                        // file, matching engine.py. capa / FLOSS run here (not
+                        // inside the per-file deadline) - they self-limit via
+                        // their own subprocess timeouts.
+                        if record.yara_hit_count > 0 {
+                            let ft = file_type::classify(target, length);
+                            record.capa_eligible = ft.capa_eligible;
+                            record.possible_false_negative = file_type::is_possible_false_negative(
+                                &ft,
+                                record.yara_hit_count,
+                                target,
+                            );
+
+                            if let (Some(capa_bin), true) = (capa_bin_ref, record.capa_eligible) {
+                                match capa::scan_file(
+                                    capa_bin,
+                                    target,
+                                    capa_rules_ref,
+                                    ft.is_shellcode,
+                                    capa::timeout(),
+                                ) {
+                                    Ok(cr) => {
+                                        record.capa_detection_count = cr.detection_count;
+                                        record.capa_output =
+                                            (!cr.output.is_empty()).then_some(cr.output);
+                                        record.capa_shellcode_format = cr.shellcode_format;
+                                    }
+                                    Err(e) => {
+                                        record.error = Some(e.to_string());
+                                        warn!("capa analysis failed for {path}: {e}");
+                                    }
+                                }
+                            } else if record.possible_false_negative {
+                                if let Some(floss_bin) = floss_bin_ref {
+                                    let fr = floss::scan_file(floss_bin, target, floss::timeout());
+                                    record.floss_string_count = fr.string_count;
+                                    if !fr.static_strings.is_empty() {
+                                        floss_static_strings = Some(fr.static_strings);
+                                    }
+                                    let ioc = iocs::extract_iocs(&fr.strings);
+                                    record.ioc_count = ioc.count as i32;
+                                    record.extracted_iocs = ioc.display;
+                                }
+                            }
+                        }
+                    }
+
                     let done = counter_ref.fetch_add(1, Ordering::SeqCst) + 1;
                     on_progress(Progress {
                         done,
@@ -558,6 +649,33 @@ mod tests {
             capa_exe: String::new(),
             floss_exe: String::new(),
         }
+    }
+
+    #[test]
+    fn with_deadline_abandons_a_hung_worker() {
+        // a worker that never returns in time -> None, and we don't block
+        let start = std::time::Instant::now();
+        let slow: Option<u32> = with_deadline(Duration::from_millis(50), || {
+            std::thread::sleep(Duration::from_secs(30));
+            42
+        });
+        assert_eq!(slow, None);
+        assert!(
+            start.elapsed() < Duration::from_secs(5),
+            "must not wait for the hung worker"
+        );
+
+        // a worker that finishes in time -> its value
+        assert_eq!(with_deadline(Duration::from_secs(5), || 7u32), Some(7));
+    }
+
+    #[test]
+    fn per_file_timeout_env_is_clamped() {
+        assert_eq!(resolve_file_timeout_secs(None), 180);
+        assert_eq!(resolve_file_timeout_secs(Some("300")), 300);
+        assert_eq!(resolve_file_timeout_secs(Some("1")), 20); // clamped up
+        assert_eq!(resolve_file_timeout_secs(Some("999999")), 3600); // clamped down
+        assert_eq!(resolve_file_timeout_secs(Some("nonsense")), 180);
     }
 
     #[test]
