@@ -19,7 +19,7 @@ BinSifter ships as multiple independently-developed variants, each with its own 
 | --- | --- | --- |
 | **[Rowan](docs/rowan.md)** | PowerShell 7 + WinForms (Windows-only) | **Released.** Proven original, run against real casework, installers available (standard, MSI, portable) |
 | **[Winnow](docs/winnow.md)** | Python + PySide6 (Linux-only) | **Released.** Full GUI and scan engine, run against real malware samples end-to-end, packages available for Debian/Ubuntu, Fedora/RHEL, and Arch |
-| **[Ingot](docs/ingot.md)** | Rust (planned as a backend service + web UI - the actual cross-platform variant) | Planned, not yet started |
+| **[Ingot](docs/ingot.md)** | Rust backend service + web UI (the actual cross-platform variant) | **In progress.** Phase 1 done: hashing/entropy, NSRL, blocklist, 37-column CSV reports, and a live web UI, built and validated. Detection stages (YARA, capa, clustering, etc.) porting one at a time. |
 
 If you're on Windows, use Rowan. If you're on Linux, use Winnow. Ingot, once built, will be the one variant meant to run anywhere via a browser instead of a desktop GUI toolkit.
 
@@ -48,7 +48,7 @@ See each variant's own page for full requirements and install steps:
 
 - **[Rowan](docs/rowan.md)** - Windows, PowerShell 7+. Four install formats (standard installer, MSI, portable zip, or run the script directly).
 - **[Winnow](docs/winnow.md)** - Linux (Debian/Ubuntu, Fedora/RHEL, Arch, and derivatives). Packaged as `.deb`/`.rpm`/`.pkg.tar.zst`, or run from source on any OS.
-- **[Ingot](docs/ingot.md)** - not started yet.
+- **[Ingot](docs/ingot.md)** - Rust, needs a toolchain (1.80+) to build: `cd ingot && cargo run`. Phase 1 only so far (hashing/entropy, NSRL, blocklist, CSV reports, web UI).
 
 Both released variants also need an NSRL known-good hash set (not included - see Settings). NSRL ships as RDSv3 hashes; BinSifter's NSRL loader expects the older RDSv2 text-file format, so you'll need to convert first - see NIST's own [RDSv3 to RDSv2 text files conversion guide](https://s3.amazonaws.com/rds.nsrl.nist.gov/RDS/RDSv3_Docs/RDSv3_to_RDSv2_text_files.pdf) (PDF).
 

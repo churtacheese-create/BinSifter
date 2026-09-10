@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BinSifter Ingot</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <div id="app">
+    <nav id="sidebar">
+      <div class="brand">
+        <span class="brand-mark">◆</span>
+        <span class="brand-text">BinSifter<br /><small>Ingot</small></span>
+      </div>
+      <button class="navlink" data-view="scan" aria-current="true">Scan</button>
+      <button class="navlink" data-view="results">Results</button>
+      <button class="navlink" data-view="dashboard">Dashboard</button>
+      <button class="navlink" data-view="settings">Settings</button>
+      <button class="navlink" data-view="logs">Logs</button>
+      <button class="navlink" data-view="about">About</button>
+      <div class="sidebar-foot">
+        <span id="health-badge" class="badge">connecting…</span>
+      </div>
+    </nav>
+
+    <main id="content">
+      <!-- Scan -->
+      <section class="view" data-view="scan" hidden>
+        <h1>Scan</h1>
+        <p class="muted">Point Ingot at a directory of unknown files. It hashes every
+          file, scores entropy, and checks each against the NSRL known-good set and the
+          optional known-bad blocklist. (YARA, capa, FLOSS, clustering land in later phases.)</p>
+
+        <div class="field">
+          <label for="scan-src">Source directory</label>
+          <input id="scan-src" type="text" spellcheck="false"
+                 placeholder="C:\evidence\batch-01  or  /cases/batch-01" />
+          <small class="muted">This path is read on the machine running Ingot. Set it here or on the Settings page.</small>
+        </div>
+
+        <div class="row">
+          <button id="scan-start" class="primary">Start scan</button>
+          <span id="scan-state" class="muted"></span>
+        </div>
+
+        <div id="scan-progress" hidden>
+          <div class="progressbar"><div id="scan-bar"></div></div>
+          <div class="progress-meta">
+            <span id="scan-count">0 / 0</span>
+            <span id="scan-current" class="muted mono"></span>
+          </div>
+        </div>
+
+        <div id="scan-reports" hidden>
+          <h2>Reports</h2>
+          <ul id="report-links"></ul>
+        </div>
+      </section>
+
+      <!-- Results -->
+      <section class="view" data-view="results" hidden>
+        <h1>Results</h1>
+        <div class="row">
+          <input id="results-filter" type="search" placeholder="Filter by path, hash, status…" />
+          <label class="check"><input type="checkbox" id="results-hide-nsrl" /> Hide NSRL-known</label>
+          <span id="results-count" class="muted"></span>
+        </div>
+        <div class="tablewrap">
+          <table id="results-table">
+            <thead>
+              <tr>
+                <th data-sort="path">Path</th>
+                <th data-sort="sha1">SHA-1</th>
+                <th data-sort="entropy">Entropy</th>
+                <th data-sort="nsrlMatch">NSRL</th>
+                <th data-sort="reputationStatus">Reputation</th>
+                <th data-sort="status">Status</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Dashboard -->
+      <section class="view" data-view="dashboard" hidden>
+        <h1>Dashboard</h1>
+        <p class="muted">Aggregates for the most recent scan.</p>
+        <div id="tiles" class="tiles"></div>
+      </section>
+
+      <!-- Settings -->
+      <section class="view" data-view="settings" hidden>
+        <h1>Settings</h1>
+        <form id="settings-form">
+          <div class="field">
+            <label for="set-src">Source directory</label>
+            <input id="set-src" name="srcDir" type="text" spellcheck="false" />
+          </div>
+          <div class="field">
+            <label for="set-nsrl">NSRL hash set (RDSv2 text / one hash per line)</label>
+            <input id="set-nsrl" name="nsrlPath" type="text" spellcheck="false" />
+          </div>
+          <div class="field">
+            <label for="set-yara">YARA rules file <span class="pill">phase 3</span></label>
+            <input id="set-yara" name="yaraRules" type="text" spellcheck="false" />
+          </div>
+          <div class="field">
+            <label for="set-capa">capa rules directory <span class="pill">phase 5</span></label>
+            <input id="set-capa" name="capaRules" type="text" spellcheck="false" />
+          </div>
+          <div class="field">
+            <label for="set-tools">Tools directory <span class="pill">phase 7</span></label>
+            <input id="set-tools" name="toolsDir" type="text" spellcheck="false" />
+          </div>
+          <div class="field">
+            <label for="set-ghidra">Ghidra directory <span class="pill">phase 7</span></label>
+            <input id="set-ghidra" name="ghidraDir" type="text" spellcheck="false" />
+          </div>
+          <div class="field">
+            <label for="set-catalog">Authenticode catalog directory <span class="pill">phase 6</span></label>
+            <input id="set-catalog" name="catalogDirectory" type="text" spellcheck="false" />
+          </div>
+          <div class="row">
+            <button type="submit" class="primary">Save settings</button>
+            <span id="settings-state" class="muted"></span>
+          </div>
+        </form>
+        <h2>Fixed locations</h2>
+        <dl id="fixed-locations" class="kv"></dl>
+      </section>
+
+      <!-- Logs -->
+      <section class="view" data-view="logs" hidden>
+        <h1>Logs</h1>
+        <div class="row">
+          <button id="logs-clear">Clear</button>
+          <label class="check"><input type="checkbox" id="logs-follow" checked /> Follow</label>
+        </div>
+        <pre id="log-output" class="mono"></pre>
+      </section>
+
+      <!-- About -->
+      <section class="view" data-view="about" hidden>
+        <h1>About</h1>
+        <p><strong id="about-version">BinSifter Ingot</strong></p>
+        <p class="muted">The Rust variant of BinSifter: a local backend service plus this
+          browser UI, built to run on any Linux, macOS, or Windows machine without a
+          desktop GUI toolkit. Bound to <code>127.0.0.1</code> only, no authentication —
+          a single-analyst local tool.</p>
+        <p class="muted">Source-available under the PolyForm Strict License 1.0.0. See the
+          repository <code>LICENSE</code>.</p>
+        <h2>Phase status</h2>
+        <ul class="muted">
+          <li><strong>Phase 1 (this build):</strong> hashing + Shannon entropy, NSRL known-good,
+            known-bad blocklist, 37-column CSV reports, live progress.</li>
+          <li>Later: file-type/imphash, YARA + MITRE ATT&CK, ssdeep/imphash clustering,
+            capa + FLOSS, Authenticode + archives, OS-scoped quick-launch tools, packaging.</li>
+        </ul>
+      </section>
+    </main>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>

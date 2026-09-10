@@ -15,4 +15,19 @@ Rowan (PowerShell/WinForms) is Windows-only by nature of its toolkit. Winnow (Py
 
 ## Status
 
-Not started. Rowan and Winnow are both being worked to completion first, one variant at a time - Ingot begins once Winnow's Linux packaging is confirmed working for real.
+**Started - Phase 1 complete.** The scaffold is in [`ingot/`](../ingot/): a
+Cargo workspace with an `ingot-core` scan-engine crate and an `ingot-server`
+crate that runs the axum service and embeds the browser UI. Working today:
+recursive file enumeration, a single-pass MD5/SHA-1/SHA-256 + Shannon entropy
+read, NSRL known-good lookup (cached and memory-mapped, using the same
+on-disk cache format as Rowan/Winnow so caches are interchangeable), the
+offline known-bad blocklist, and the four 37-column CSV reports - all wired
+into a live-progress web UI and validated against the Python variant's
+output.
+
+Later phases, one detection stage at a time (each gated by tests and a real
+scan, the same way Winnow was ported): file-type/imphash, YARA + MITRE
+ATT&CK, ssdeep/imphash clustering, capa + FLOSS (via the projects' own
+standalone binaries, auto-downloaded per-user), Authenticode + archive
+expansion, the OS-scoped quick-launch tool menu, then packaging. See
+[`ingot/IMPLEMENTATION_PLAN.md`](../ingot/IMPLEMENTATION_PLAN.md).

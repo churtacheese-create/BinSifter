@@ -35,6 +35,10 @@ desktop.ini
 .vscode/
 *.user
 
+# Ingot (Rust variant) build output
+ingot/target/
+target/
+
 # Future Python rewrite artifacts
 __pycache__/
 *.pyc
