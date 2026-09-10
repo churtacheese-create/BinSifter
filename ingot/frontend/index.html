@@ -29,10 +29,11 @@
       <section class="view" data-view="scan" hidden>
         <h1>Scan</h1>
         <p class="muted">Point Ingot at a directory of unknown files. It hashes every
-          file, scores entropy, computes the PE import hash, checks each against the NSRL
-          known-good set and the optional known-bad blocklist, and runs YARA (with
-          severity scoring and MITRE ATT&amp;CK enrichment). (capa, FLOSS, and clustering
-          land in later phases.)</p>
+          file, scores entropy, computes the PE import hash and an SSDEEP fuzzy hash,
+          checks each against the NSRL known-good set and the optional known-bad
+          blocklist, runs YARA (with severity scoring and MITRE ATT&amp;CK enrichment),
+          then clusters the batch by SSDEEP and imphash and drafts a YARA rule per
+          cluster. (capa and FLOSS land in a later phase.)</p>
 
         <div class="field">
           <label for="scan-src">Source directory</label>
@@ -76,6 +77,7 @@
                 <th data-sort="sha1">SHA-1</th>
                 <th data-sort="entropy">Entropy</th>
                 <th data-sort="imphash">Imphash</th>
+                <th data-sort="ssdeepClusterId">Cluster</th>
                 <th data-sort="yaraHitCount">YARA</th>
                 <th data-sort="yaraSeverityScore">Severity</th>
                 <th data-sort="yaraAttackTechniques">ATT&amp;CK</th>
@@ -161,12 +163,12 @@
         <h2>Phase status</h2>
         <ul class="muted">
           <li><strong>Working now:</strong> hashing + Shannon entropy, NSRL known-good,
-            known-bad blocklist, PE import hash, YARA matching with severity scoring and
-            MITRE ATT&CK enrichment, capa-eligibility classification, triage disposition
-            tracking, 37-column CSV reports, live progress.</li>
-          <li><strong>Later:</strong> ssdeep / imphash clustering + draft YARA rules,
-            capa + FLOSS, Authenticode + archive expansion, OS-scoped quick-launch tools,
-            packaging.</li>
+            known-bad blocklist, PE import hash, SSDEEP fuzzy hash, YARA matching with
+            severity scoring and MITRE ATT&CK enrichment, capa-eligibility
+            classification, SSDEEP + imphash clustering, per-cluster draft YARA rules,
+            triage disposition tracking, 37-column CSV reports, live progress.</li>
+          <li><strong>Later:</strong> capa + FLOSS, Authenticode + archive expansion,
+            OS-scoped quick-launch tools, packaging.</li>
         </ul>
       </section>
     </main>

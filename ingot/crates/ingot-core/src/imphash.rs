@@ -20,9 +20,9 @@
 //! Python variant hasn't ported it either (its byte layout needs checking
 //! against a known sample first), so Ingot leaves `rich_hash` unset too.
 //!
-//! Batch imphash clustering (`cluster_by_imphash`) is a post-scan pass and
-//! lands in a later phase alongside ssdeep clustering.
+//! [`cluster_by_imphash`] is the post-scan exact-match grouping pass.
 
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::Path;
 
@@ -99,6 +99,46 @@ pub fn compute_imphash(path: &Path) -> Option<String> {
     Some(hex::encode(Md5::digest(impstrs.join(",").as_bytes())))
 }
 
+/// Exact-match clustering across a scan batch - port of
+/// `imphash.cluster_by_imphash`. `imphashes`: `path -> imphash-or-None`,
+/// keyed so iteration is ascending path order. Returns `path -> (cluster_id,
+/// cluster_size)` only for files whose imphash is shared by at least one
+/// other file in the batch; callers default the rest to `(-1, 0)`. Cluster
+/// ids are numbered in first-seen-imphash order.
+pub fn cluster_by_imphash(
+    imphashes: &BTreeMap<String, Option<String>>,
+) -> BTreeMap<String, (i32, i32)> {
+    let mut order: Vec<String> = Vec::new();
+    let mut groups: HashMap<String, Vec<String>> = HashMap::new();
+    for (path, ih) in imphashes {
+        let Some(ih) = ih.as_deref().filter(|s| !s.is_empty()) else {
+            continue;
+        };
+        groups
+            .entry(ih.to_string())
+            .or_insert_with(|| {
+                order.push(ih.to_string());
+                Vec::new()
+            })
+            .push(path.clone());
+    }
+
+    let mut out = BTreeMap::new();
+    let mut cluster_id = 0i32;
+    for ih in &order {
+        let members = &groups[ih];
+        if members.len() < 2 {
+            continue;
+        }
+        let size = members.len() as i32;
+        for p in members {
+            out.insert(p.clone(), (cluster_id, size));
+        }
+        cluster_id += 1;
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -141,6 +181,21 @@ mod tests {
         assert_eq!(compute_imphash(Path::new("/no/such/file.exe")), None);
     }
 
-    // A real-PE parity test against pefile lives in tests/imphash_parity.rs,
-    // gated on a PE fixture being present.
+    #[test]
+    fn cluster_groups_shared_imphashes_only() {
+        let mut m = BTreeMap::new();
+        m.insert("a.exe".to_string(), Some("HHHH".to_string()));
+        m.insert("b.exe".to_string(), Some("HHHH".to_string()));
+        m.insert("c.exe".to_string(), Some("KKKK".to_string())); // unique -> absent
+        m.insert("d.exe".to_string(), None); // no imphash -> absent
+        m.insert("e.exe".to_string(), Some("HHHH".to_string()));
+
+        let clusters = cluster_by_imphash(&m);
+        assert_eq!(clusters.len(), 3);
+        assert_eq!(clusters["a.exe"], (0, 3));
+        assert_eq!(clusters["b.exe"], (0, 3));
+        assert_eq!(clusters["e.exe"], (0, 3));
+        assert!(!clusters.contains_key("c.exe"));
+        assert!(!clusters.contains_key("d.exe"));
+    }
 }

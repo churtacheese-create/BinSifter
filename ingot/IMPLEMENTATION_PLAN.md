@@ -231,10 +231,46 @@ Cost note: the release binary grew ~3.9 MB -> ~27 MB (yara-x pulls
 wasmtime + cranelift for its rule VM). Acceptable for a self-contained
 "bundles a YARA engine" binary; revisit if a JIT-off feature appears.
 
+## Phase 4 - SSDEEP + imphash clustering + draft rules - COMPLETE (2026-09-10)
+
+- `ssdeep.rs` - fuzzy hashing via the `fuzzyhash` crate (pure-Rust
+  spamsum, hash output **byte-identical to ppdeep**). The **comparison** is
+  a hand port of `ppdeep.compare` - `fuzzyhash`'s own `compare` scores
+  lower, and the thresholds (40 / 85) are calibrated to ppdeep, which is
+  also what Winnow uses (ppdeep's standard-Levenshtein sub-cost-1, not
+  libfuzzy's 2). Verified **0/1769 pairs differ** from `ppdeep.compare`.
+- `cluster_by_ssdeep` - transitive union-find, port of
+  `ssdeep_cluster.cluster_by_ssdeep`. `cluster_by_imphash` added to
+  `imphash.rs`, port of `imphash.cluster_by_imphash`.
+- `yara_rule_gen.rs` - port of `yara_rule_gen.py`, including the `(3 of
+  them)` quirk and the skeleton fallback. FLOSS strings aren't ported yet
+  so every rule currently takes the filesize-skeleton path (same as
+  Winnow today).
+- `engine.rs` post-scan pass: build path-ordered `imphashes` /
+  `ssdeep_hashes` maps, cluster, write the cluster fields back, then draft
+  a rule per size>=2 SSDEEP cluster. Cluster ids are numbered in ascending
+  path order so a rescan is reproducible (Winnow numbers them in
+  completion order, which isn't) - a deliberate small improvement.
+- **Cluster history (`SsdeepPreviouslySeen`) is not implemented** - Winnow
+  doesn't implement it either (still PowerShell-only); left `false`,
+  matching Winnow, to be added to both together later.
+- Results grid gained a Cluster column; Dashboard gained
+  SSDEEP-clusters / >=85%-similarity / imphash-clustered tiles.
+
+Validated: `cargo test --workspace` (56), clippy `-D warnings`, fmt clean.
+End-to-end scan cross-checked against **Winnow's own
+`binsifter.core.ssdeep_cluster` + `imphash`** (real ppdeep) - ssdeep
+hashes identical, SSDEEP + imphash cluster **membership identical**,
+`SsdeepMatches` / high-similarity / sizes identical, CSV cluster columns
+and draft-rule output verified. Release binary unchanged at ~27 MB.
+
+`fuzzyhash` release throughput measured at ~26 MB/s - roughly 22x faster
+than ppdeep's documented ~1.16 MB/s, so Ingot's fuzzy hashing is much
+faster than Winnow's (debug builds are ~3 MB/s, which is why the engine
+tests use small fixtures, not the 65 MB debug binary).
+
 ## Later phases (one stage per block, each gated)
 
-- **P4**: `ssdeep.rs` fuzzy hashing + post-scan SSDEEP clustering +
-  imphash clustering + `yara_rule_gen.rs` draft rules + cluster history.
 - **P5**: `tool_bootstrap.rs` - per-user download of standalone capa + FLOSS
   for the host OS; `capa.rs` / `floss.rs` shell-out integrations + IOC
   extraction; the YARA-hit / capa-eligible gating from `engine.py`.

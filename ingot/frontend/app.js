@@ -230,7 +230,8 @@ function renderResults() {
       (r.reputationStatus || "").toLowerCase().includes(q) ||
       (r.yaraMatches || "").toLowerCase().includes(q) ||
       (r.yaraSeverity || "").toLowerCase().includes(q) ||
-      (r.yaraAttackTechniques || "").toLowerCase().includes(q)
+      (r.yaraAttackTechniques || "").toLowerCase().includes(q) ||
+      (r.ssdeep || "").toLowerCase().includes(q)
     );
   });
 
@@ -276,11 +277,19 @@ function renderResults() {
       const attackCell = attackList
         ? `<span class="muted" title="${escapeHtml(attackList)}">${attackList.split(";").length} tech.</span>`
         : "";
+      let clusterCell = "";
+      if (r.ssdeepClusterId >= 0 && r.ssdeepClusterSize >= 2) {
+        const hs = r.ssdeepHasHighSimilarity ? ' <span class="tag bad">≥85%</span>' : "";
+        clusterCell = `<span title="${escapeHtml(r.ssdeepMatches || "")}">S#${r.ssdeepClusterId} ×${r.ssdeepClusterSize}</span>${hs}`;
+      } else if (r.imphashClusterId >= 0 && r.imphashClusterSize >= 2) {
+        clusterCell = `<span class="muted">I#${r.imphashClusterId} ×${r.imphashClusterSize}</span>`;
+      }
       return `<tr>
         <td class="path" title="${escapeHtml(r.path)}">${escapeHtml(r.path)}</td>
         <td class="hash">${(r.sha1 || "").slice(0, 16)}</td>
         <td>${fmtEntropy(r.entropy)}</td>
         <td class="hash">${r.imphash || ""}</td>
+        <td>${clusterCell}</td>
         <td>${yaraCell}</td>
         <td>${sevCell}</td>
         <td>${attackCell}</td>
@@ -336,6 +345,11 @@ function renderDashboard() {
   const sev = (s) => r.filter((x) => x.yaraHitCount > 0 && x.yaraSeverity === s).length;
   const capaEligible = r.filter((x) => x.capaEligible).length;
   const withAttack = r.filter((x) => x.yaraAttackTechniques).length;
+  const ssdeepClusters = new Set(
+    r.filter((x) => x.ssdeepClusterId >= 0 && x.ssdeepClusterSize >= 2).map((x) => x.ssdeepClusterId)
+  ).size;
+  const highSim = r.filter((x) => x.ssdeepHasHighSimilarity).length;
+  const imphashClustered = r.filter((x) => x.imphashClusterId >= 0 && x.imphashClusterSize >= 2).length;
   const tiles = [
     ["Files", r.length],
     ["Completed", completed],
@@ -351,6 +365,9 @@ function renderDashboard() {
     ["Low", sev("Low")],
     ["capa-eligible", capaEligible],
     ["ATT&CK mapped", withAttack],
+    ["SSDEEP clusters", ssdeepClusters],
+    ["Files ≥ 85% sim", highSim],
+    ["Imphash clustered", imphashClustered],
     ["Escalated", escalated],
   ];
   $("#tiles").innerHTML = tiles

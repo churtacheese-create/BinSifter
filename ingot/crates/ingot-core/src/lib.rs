@@ -8,10 +8,11 @@
 //! parity notes live in each module.
 //!
 //! Ported so far: [`hashing`], [`nsrl`], [`blocklist`], [`report`],
-//! [`imphash`], [`file_type`], [`disposition`], [`yara_scan`] (with
-//! severity bucketing), [`attack`] (MITRE ATT&CK enrichment), and the
-//! [`engine::scan_directory`] orchestration. ssdeep / capa / FLOSS /
-//! Authenticode / archives / clustering land in later phases.
+//! [`imphash`] (+ clustering), [`ssdeep`] (fuzzy hash + clustering),
+//! [`file_type`], [`disposition`], [`yara_scan`] (with severity bucketing),
+//! [`attack`] (MITRE ATT&CK enrichment), [`yara_rule_gen`] (draft rules),
+//! and the [`engine::scan_directory`] orchestration. capa / FLOSS /
+//! Authenticode / archives land in later phases.
 
 pub mod attack;
 pub mod blocklist;
@@ -25,6 +26,8 @@ mod imphash_ordinals;
 pub mod model;
 pub mod nsrl;
 pub mod report;
+pub mod ssdeep;
+pub mod yara_rule_gen;
 pub mod yara_scan;
 
 pub use config::{build_default_config, IngotConfig, SettingsFields};

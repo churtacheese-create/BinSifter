@@ -36,6 +36,8 @@ use crate::imphash;
 use crate::model::FileRecord;
 use crate::nsrl::{self, NsrlIndex};
 use crate::report::{self, ReportPaths};
+use crate::ssdeep;
+use crate::yara_rule_gen;
 use crate::yara_scan;
 
 /// Same ceiling as the Python variant's `MAX_SCAN_WORKERS`.
@@ -114,9 +116,10 @@ fn process_one_file(
             }
 
             // NSRL-known-good gate: a file NSRL vouches for skips imphash,
-            // YARA and capa-eligibility (and later ssdeep / capa / FLOSS).
+            // ssdeep, YARA and capa-eligibility (and later capa / FLOSS).
             if !record.nsrl_match {
                 record.imphash = imphash::compute_imphash(target);
+                record.ssdeep = ssdeep::compute_ssdeep_hash(target);
 
                 if let Some(scanner) = yara_scanner {
                     let yr = yara_scan::scan_file(scanner, target, ctx.attack_db);
@@ -271,12 +274,82 @@ where
     });
 
     records.sort_by(|a, b| a.path.cmp(&b.path));
+    let timestamp = Local::now().format("%Y-%m-%d_%H%M%S").to_string();
+
+    // --- post-scan clustering (single-threaded, over the whole batch) ----
+    // Iterated in ascending path order so cluster numbering is reproducible
+    // across a rescan of the same batch.
+    let imphashes: BTreeMap<String, Option<String>> = records
+        .iter()
+        .map(|r| (r.path.clone(), r.imphash.clone()))
+        .collect();
+    let imphash_clusters = imphash::cluster_by_imphash(&imphashes);
+    let idx_by_path: BTreeMap<String, usize> = records
+        .iter()
+        .enumerate()
+        .map(|(i, r)| (r.path.clone(), i))
+        .collect();
+    for (path, (cid, size)) in &imphash_clusters {
+        if let Some(&i) = idx_by_path.get(path) {
+            records[i].imphash_cluster_id = *cid;
+            records[i].imphash_cluster_size = *size;
+        }
+    }
+
+    let ssdeep_hashes: BTreeMap<String, String> = records
+        .iter()
+        .filter_map(|r| r.ssdeep.clone().map(|h| (r.path.clone(), h)))
+        .collect();
+    if !ssdeep_hashes.is_empty() {
+        let clusters = ssdeep::cluster_by_ssdeep(&ssdeep_hashes);
+        let mut cluster_count = 0;
+        for (path, info) in &clusters {
+            if let Some(&i) = idx_by_path.get(path) {
+                records[i].ssdeep_cluster_id = info.cluster_id;
+                records[i].ssdeep_cluster_size = info.cluster_size;
+                records[i].ssdeep_has_high_similarity = info.has_high_similarity;
+                records[i].ssdeep_matches =
+                    (!info.matches_summary.is_empty()).then(|| info.matches_summary.clone());
+            }
+            cluster_count = cluster_count.max(info.cluster_id + 1);
+        }
+        info!(
+            "SSDEEP clustering: {} file(s) hashed, {} cluster(s).",
+            ssdeep_hashes.len(),
+            cluster_count
+        );
+    }
+
+    // --- draft YARA rules from size>=2 SSDEEP clusters (best-effort) -----
+    if !config.report_directory.is_empty() {
+        let mut by_cluster: BTreeMap<i32, Vec<&FileRecord>> = BTreeMap::new();
+        for r in &records {
+            if r.ssdeep_cluster_id >= 0 && r.ssdeep_cluster_size >= 2 {
+                by_cluster.entry(r.ssdeep_cluster_id).or_default().push(r);
+            }
+        }
+        if !by_cluster.is_empty() {
+            match yara_rule_gen::generate_draft_rules(
+                &by_cluster,
+                &std::collections::HashMap::new(), // FLOSS strings land in Phase 5
+                &config.report_directory,
+                ssdeep::CLUSTER_THRESHOLD,
+                &timestamp,
+            ) {
+                Ok(res) if res.rules_written > 0 => info!(
+                    "Generated {} draft YARA rule(s) from SSDEEP clusters - review under {}",
+                    res.rules_written, res.output_dir
+                ),
+                Ok(_) => {}
+                Err(e) => warn!("Draft YARA rule generation skipped due to error: {e}"),
+            }
+        }
+    }
 
     // --- reports ---------------------------------------------------------
     let report_paths = if config.report_directory.is_empty() {
         None
     } else {
-        let timestamp = Local::now().format("%Y-%m-%d_%H%M%S").to_string();
         match report::write_all_reports(&records, &config.report_directory, &timestamp) {
             Ok(p) => {
                 info!("Reports written to {}", config.report_directory);
@@ -384,23 +457,16 @@ mod tests {
     }
 
     #[test]
-    fn prior_disposition_is_applied_and_imphash_gated_by_nsrl() {
+    fn prior_disposition_applied_and_ssdeep_imphash_gated_by_nsrl() {
         let dir = tempfile::tempdir().unwrap();
         let src = dir.path().join("src");
         let reports = dir.path().join("reports");
         std::fs::create_dir_all(&src).unwrap();
         std::fs::create_dir_all(&reports).unwrap();
 
-        // a real PE, and a plain file
-        let pe_src =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/debug/ingot.exe");
-        let have_pe = pe_src.is_file();
-        if have_pe {
-            std::fs::copy(&pe_src, src.join("sample.exe")).unwrap();
-        }
-        std::fs::write(src.join("plain.txt"), b"abc").unwrap();
+        std::fs::write(src.join("known.txt"), b"abc").unwrap();
+        std::fs::write(src.join("unknown.txt"), vec![0x41u8; 4096]).unwrap();
 
-        // seed a prior disposition for "abc" (its SHA-1)
         let abc_sha1 = "a9993e364706816aba3e25717850c26c9cd0d89d";
         crate::disposition::save_disposition_entry(
             reports.to_str().unwrap(),
@@ -410,37 +476,95 @@ mod tests {
         .unwrap();
 
         let mut config = cfg_for(&src, &reports);
-        // NSRL vouches for "abc" -> imphash-style stages must skip it
         let nsrl_src = dir.path().join("nsrl.txt");
         std::fs::write(&nsrl_src, format!("{abc_sha1}\n")).unwrap();
         config.nsrl_path = nsrl_src.to_string_lossy().into_owned();
 
         let result = scan_directory(&config, |_| {});
 
-        let plain = result
+        let known = result
             .records
             .iter()
-            .find(|r| r.path.ends_with("plain.txt"))
+            .find(|r| r.path.ends_with("known.txt"))
             .unwrap();
         assert_eq!(
-            plain.disposition, "Escalated",
+            known.disposition, "Escalated",
             "prior disposition not applied"
         );
-        assert!(plain.nsrl_match);
-        assert_eq!(plain.imphash, None, "NSRL-known file must skip imphash");
+        assert!(known.nsrl_match);
+        assert_eq!(known.imphash, None, "NSRL-known file must skip imphash");
+        assert_eq!(known.ssdeep, None, "NSRL-known file must skip ssdeep");
 
-        if have_pe {
-            let pe = result
-                .records
-                .iter()
-                .find(|r| r.path.ends_with("sample.exe"))
-                .unwrap();
-            assert!(!pe.nsrl_match);
-            let mine = pe.imphash.clone().expect("PE should have an imphash");
-            let direct = crate::imphash::compute_imphash(&src.join("sample.exe")).unwrap();
-            assert_eq!(mine, direct);
-            assert_eq!(mine.len(), 32);
+        let unknown = result
+            .records
+            .iter()
+            .find(|r| r.path.ends_with("unknown.txt"))
+            .unwrap();
+        assert!(!unknown.nsrl_match);
+        assert_eq!(unknown.imphash, None, "non-PE has no imphash");
+        assert!(
+            unknown.ssdeep.is_some(),
+            "non-NSRL file should be ssdeep-hashed"
+        );
+    }
+
+    #[test]
+    fn post_scan_clustering_populates_records_and_draft_rules() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("src");
+        let reports = dir.path().join("reports");
+        std::fs::create_dir_all(&src).unwrap();
+
+        // three near-identical files: a shared pseudo-random 24 KB body
+        // (varied bytes so spamsum produces a real hash) + a tiny per-file tail
+        let body: Vec<u8> = (0..24_000u32)
+            .map(|n| (n.wrapping_mul(2_654_435_761) >> 24) as u8)
+            .collect();
+        for i in 0..3 {
+            let mut b = body.clone();
+            b.extend_from_slice(format!("--variant-{i}-specific-tail--").as_bytes());
+            std::fs::write(src.join(format!("fam_{i}.bin")), &b).unwrap();
         }
+        // an unrelated file of similar size
+        let other: Vec<u8> = (0..24_000u32)
+            .map(|n| (n.wrapping_mul(40_503) >> 7) as u8)
+            .collect();
+        std::fs::write(src.join("lonely.bin"), &other).unwrap();
+
+        let result = scan_directory(&cfg_for(&src, &reports), |_| {});
+
+        let fam: Vec<_> = result
+            .records
+            .iter()
+            .filter(|r| r.path.contains("fam_"))
+            .collect();
+        assert_eq!(fam.len(), 3);
+        let cid = fam[0].ssdeep_cluster_id;
+        assert!(cid >= 0);
+        assert!(fam.iter().all(|r| r.ssdeep_cluster_id == cid));
+        assert!(fam.iter().all(|r| r.ssdeep_cluster_size == 3));
+        assert!(fam.iter().all(|r| r.ssdeep_matches.is_some()));
+
+        let lonely = result
+            .records
+            .iter()
+            .find(|r| r.path.ends_with("lonely.bin"))
+            .unwrap();
+        assert_eq!(lonely.ssdeep_cluster_size, 1, "singleton cluster");
+        assert!(lonely.ssdeep_matches.is_none());
+
+        // a size>=2 ssdeep cluster -> a draft rule was written (skeleton, since
+        // no FLOSS strings yet)
+        let gen_dir = reports.join("generated_rules");
+        let rules: Vec<_> = std::fs::read_dir(&gen_dir)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|e| e.path().extension().is_some_and(|x| x == "yar"))
+            .collect();
+        assert_eq!(rules.len(), 1);
+        let text = std::fs::read_to_string(rules[0].path()).unwrap();
+        assert!(text.contains("AUTO-GENERATED DRAFT"));
+        assert!(text.contains("cluster_size = 3"));
     }
 
     #[test]
