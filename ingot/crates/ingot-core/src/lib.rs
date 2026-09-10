@@ -8,14 +8,12 @@
 //! parity notes live in each module.
 //!
 //! Ported so far: [`hashing`], [`nsrl`], [`blocklist`], [`report`],
-//! [`imphash`], [`file_type`], [`disposition`], and the
-//! [`engine::scan_directory`] orchestration. YARA / ssdeep / capa / FLOSS /
-//! Authenticode / archives / ATT&CK / clustering land in later phases.
-//!
-//! [`file_type`] classification is a ready, tested module but is not wired
-//! into the scan yet - the other variants only compute capa-eligibility
-//! behind a YARA-hit gate, so it plugs in with YARA (Phase 3).
+//! [`imphash`], [`file_type`], [`disposition`], [`yara_scan`] (with
+//! severity bucketing), [`attack`] (MITRE ATT&CK enrichment), and the
+//! [`engine::scan_directory`] orchestration. ssdeep / capa / FLOSS /
+//! Authenticode / archives / clustering land in later phases.
 
+pub mod attack;
 pub mod blocklist;
 pub mod config;
 pub mod disposition;
@@ -27,6 +25,7 @@ mod imphash_ordinals;
 pub mod model;
 pub mod nsrl;
 pub mod report;
+pub mod yara_scan;
 
 pub use config::{build_default_config, IngotConfig, SettingsFields};
 pub use engine::{scan_directory, Progress, ScanResult};

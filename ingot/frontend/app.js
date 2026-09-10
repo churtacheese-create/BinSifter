@@ -227,7 +227,10 @@ function renderResults() {
       (r.path || "").toLowerCase().includes(q) ||
       (r.sha1 || "").toLowerCase().includes(q) ||
       (r.status || "").toLowerCase().includes(q) ||
-      (r.reputationStatus || "").toLowerCase().includes(q)
+      (r.reputationStatus || "").toLowerCase().includes(q) ||
+      (r.yaraMatches || "").toLowerCase().includes(q) ||
+      (r.yaraSeverity || "").toLowerCase().includes(q) ||
+      (r.yaraAttackTechniques || "").toLowerCase().includes(q)
     );
   });
 
@@ -262,11 +265,25 @@ function renderResults() {
       const sel = r.sha1
         ? `<select class="dispo" data-sha1="${r.sha1}">${opts}</select>`
         : `<span class="muted">${dispo}</span>`;
+      const sevClass = { Critical: "bad", High: "bad", Medium: "err", Low: "err" }[r.yaraSeverity] || "";
+      const yaraCell = r.yaraHitCount > 0
+        ? `<span title="${escapeHtml(r.yaraMatches || "")}">${r.yaraHitCount}</span>`
+        : "";
+      const sevCell = r.yaraHitCount > 0 && r.yaraSeverity !== "Unknown"
+        ? `<span class="tag ${sevClass}">${r.yaraSeverity}${r.yaraSeverityScore >= 0 ? " " + r.yaraSeverityScore : ""}</span>`
+        : "";
+      const attackList = r.yaraAttackTechniques || "";
+      const attackCell = attackList
+        ? `<span class="muted" title="${escapeHtml(attackList)}">${attackList.split(";").length} tech.</span>`
+        : "";
       return `<tr>
         <td class="path" title="${escapeHtml(r.path)}">${escapeHtml(r.path)}</td>
         <td class="hash">${(r.sha1 || "").slice(0, 16)}</td>
         <td>${fmtEntropy(r.entropy)}</td>
         <td class="hash">${r.imphash || ""}</td>
+        <td>${yaraCell}</td>
+        <td>${sevCell}</td>
+        <td>${attackCell}</td>
         <td>${nsrl}</td>
         <td>${rep}</td>
         <td>${status}</td>
@@ -315,6 +332,10 @@ function renderDashboard() {
   const highEntropy = r.filter((x) => x.entropy >= 7.5).length;
   const withImphash = r.filter((x) => x.imphash).length;
   const escalated = r.filter((x) => x.disposition === "Escalated").length;
+  const yaraHits = r.filter((x) => x.yaraHitCount > 0).length;
+  const sev = (s) => r.filter((x) => x.yaraHitCount > 0 && x.yaraSeverity === s).length;
+  const capaEligible = r.filter((x) => x.capaEligible).length;
+  const withAttack = r.filter((x) => x.yaraAttackTechniques).length;
   const tiles = [
     ["Files", r.length],
     ["Completed", completed],
@@ -323,6 +344,13 @@ function renderDashboard() {
     ["Known-bad", knownBad],
     ["Entropy ≥ 7.5", highEntropy],
     ["Have imphash", withImphash],
+    ["YARA hits", yaraHits],
+    ["Critical", sev("Critical")],
+    ["High", sev("High")],
+    ["Medium", sev("Medium")],
+    ["Low", sev("Low")],
+    ["capa-eligible", capaEligible],
+    ["ATT&CK mapped", withAttack],
     ["Escalated", escalated],
   ];
   $("#tiles").innerHTML = tiles

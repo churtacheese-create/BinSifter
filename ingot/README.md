@@ -11,19 +11,20 @@ and current status.
 
 ## Status
 
-**Phases 1-2 complete.** Working today: recursive file enumeration, a
+**Phases 1-3 complete.** Working today: recursive file enumeration, a
 single-pass MD5/SHA-1/SHA-256 + Shannon entropy read, NSRL known-good
 lookup (cached, memory-mapped, format-shared with the other variants), the
 offline known-bad blocklist, the PE import hash (imphash, byte-identical to
-pefile), triage disposition tracking (persisted by SHA-1, editable in the
+pefile), YARA matching on `yara-x` with severity scoring and MITRE ATT&CK
+technique enrichment (cross-checked against Winnow's yara-python output),
+PE/ELF/shellcode classification and capa-eligibility for YARA-flagged
+files, triage disposition tracking (persisted by SHA-1, editable in the
 Results grid), the 37-column CSV reports (all four filtered views), a
-live-progress browser UI, and the HTTP API behind it. A tested
-PE/ELF/shellcode classifier (`file_type`) is in but not wired to the scan
-yet - it plugs in with YARA.
+live-progress browser UI, and the HTTP API behind it.
 
-Not yet ported (later phases): YARA, MITRE ATT&CK enrichment, ssdeep /
-imphash clustering, capa, FLOSS, Authenticode, archive expansion, draft
-YARA rule generation, and the OS-scoped quick-launch tool menu.
+Not yet ported (later phases): ssdeep / imphash clustering, draft YARA
+rule generation, capa, FLOSS, Authenticode, archive expansion, and the
+OS-scoped quick-launch tool menu.
 
 ## Build & run
 

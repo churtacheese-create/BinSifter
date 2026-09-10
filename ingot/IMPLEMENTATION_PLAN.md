@@ -199,10 +199,40 @@ A dev-only pefile venv was used for validation (scratch dir, since
 removed); `crates/ingot-core/examples/imphash.rs` prints Ingot's imphash
 for given paths for future diffing.
 
+## Phase 3 - YARA + severity + MITRE ATT&CK - COMPLETE (2026-09-10)
+
+- `yara_scan.rs` - YARA matching on `yara-x` (pure-Rust, `relaxed_re_syntax`
+  on so classic rule sets compile; `include` resolves relative to the
+  rules file). Severity bucketing (`score` band -> `tc_detection_factor`
+  x20 -> severity word -> `Unknown`) and the worst-case-wins selection are
+  faithful ports of `yara_scan.py`. Metadata is collapsed first-insertion,
+  last-value-wins, matching how yara-python builds a dict.
+- `attack.rs` - MITRE ATT&CK enrichment, port of `attack_db.py`. Loads the
+  STIX `enterprise-attack.json` bundle (the fixed `Attack/` location), the
+  two-pass technique / entity / `uses` index, and `resolve()` including both
+  documented parity quirks (per-URL 10-cap check, `trim('/.)')`).
+- `file_type.rs` is now wired: for a file with >=1 YARA hit, `engine.rs`
+  computes `CapaEligible` + `PossibleFalseNegative` (capa/FLOSS themselves
+  are Phase 5). Per-thread `yara_x::Scanner` reuse via `rayon::map_init`.
+- YARA compile failure disables YARA for the scan (logged at ERROR) rather
+  than aborting - a deviation from `engine.py` (which raises); the Logs tab
+  surfaces it.
+- Results grid gained YARA / Severity / ATT&CK columns; Dashboard gained
+  YARA-hits + per-severity + capa-eligible + ATT&CK-mapped tiles.
+
+Validated: `cargo test --workspace` (45), clippy `-D warnings`, fmt clean.
+Cross-checked against **Winnow's own `binsifter.core.yara_scan`** (imported
+directly, real yara-python + real `enterprise-attack.json`) on a mixed
+fixture set - hit counts, severity, score, rule names, and the full
+73-technique ATT&CK resolution all identical. capa-eligibility gate,
+filtered `yara_matches_*.csv`, and all YARA CSV columns verified.
+
+Cost note: the release binary grew ~3.9 MB -> ~27 MB (yara-x pulls
+wasmtime + cranelift for its rule VM). Acceptable for a self-contained
+"bundles a YARA engine" binary; revisit if a JIT-off feature appears.
+
 ## Later phases (one stage per block, each gated)
 
-- **P3**: `yara.rs` on `yara-x` + MITRE ATT&CK enrichment (`attack.rs`,
-  reads `AttackData/enterprise-attack.json`) + YARA severity buckets.
 - **P4**: `ssdeep.rs` fuzzy hashing + post-scan SSDEEP clustering +
   imphash clustering + `yara_rule_gen.rs` draft rules + cluster history.
 - **P5**: `tool_bootstrap.rs` - per-user download of standalone capa + FLOSS

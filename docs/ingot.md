@@ -15,21 +15,24 @@ Rowan (PowerShell/WinForms) is Windows-only by nature of its toolkit. Winnow (Py
 
 ## Status
 
-**Started - Phases 1-2 complete.** The scaffold is in [`ingot/`](../ingot/):
+**Started - Phases 1-3 complete.** The scaffold is in [`ingot/`](../ingot/):
 a Cargo workspace with an `ingot-core` scan-engine crate and an
 `ingot-server` crate that runs the axum service and embeds the browser UI.
 Working today: recursive file enumeration, a single-pass MD5/SHA-1/SHA-256 +
 Shannon entropy read, NSRL known-good lookup (cached and memory-mapped,
 using the same on-disk cache format as Rowan/Winnow so caches are
 interchangeable), the offline known-bad blocklist, the PE import hash
-(imphash, reproduced byte-for-byte against pefile), triage disposition
-tracking (persisted by SHA-1, editable in the Results grid), and the four
-37-column CSV reports - all wired into a live-progress web UI and validated
-against the Python variant's output.
+(imphash, reproduced byte-for-byte against pefile), YARA matching on
+`yara-x` with severity scoring and MITRE ATT&CK technique enrichment
+(cross-checked against Winnow's own yara-python output), PE/ELF/shellcode
+classification and capa-eligibility for YARA-flagged files, triage
+disposition tracking (persisted by SHA-1, editable in the Results grid),
+and the four 37-column CSV reports - all wired into a live-progress web UI
+and validated against the Python variant's output.
 
 Later phases, one detection stage at a time (each gated by tests and a real
-scan, the same way Winnow was ported): YARA + MITRE ATT&CK, ssdeep/imphash
-clustering, capa + FLOSS (via the projects' own standalone binaries,
+scan, the same way Winnow was ported): ssdeep/imphash clustering + draft
+YARA rules, capa + FLOSS (via the projects' own standalone binaries,
 auto-downloaded per-user), Authenticode + archive expansion, the OS-scoped
 quick-launch tool menu, then packaging. See
 [`ingot/IMPLEMENTATION_PLAN.md`](../ingot/IMPLEMENTATION_PLAN.md).

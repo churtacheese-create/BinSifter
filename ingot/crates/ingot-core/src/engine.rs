@@ -1,16 +1,19 @@
 //! Scan orchestration - port of `binsifter.core.engine.scan_directory`.
 //!
-//! Wires the stages that need no external engine: recursive file
-//! enumeration, a single hash+entropy pass, prior-disposition lookup, NSRL
-//! known-good lookup, the offline known-bad blocklist, and (for non-NSRL
-//! files) the PE import hash. Per-file work runs on a bounded `rayon`
-//! thread pool (capped at 16, matching the Python variant's
-//! `MAX_SCAN_WORKERS`); with no GIL this is a plain data-parallel map rather
-//! than a process pool.
+//! Per-file pipeline, in order: a single hash+entropy pass, prior-disposition
+//! lookup, NSRL known-good lookup, the offline known-bad blocklist, then -
+//! only for files NSRL did not vouch for - the PE import hash, YARA matching
+//! (with severity bucketing + MITRE ATT&CK enrichment), and, for files YARA
+//! flagged, PE/ELF/shellcode classification (capa-eligibility). Work runs on
+//! a bounded `rayon` thread pool (capped at 16, matching the Python
+//! variant's `MAX_SCAN_WORKERS`); with no GIL this is a plain data-parallel
+//! map rather than a process pool, with one reused `yara_x::Scanner` per
+//! worker thread.
 //!
-//! The NSRL-known-good gate matches the other variants: a file NSRL vouches
-//! for skips imphash (and later ssdeep / YARA / capa / FLOSS) entirely.
-//! Prior disposition is applied to every file regardless, before the gate.
+//! Gates match the other variants: NSRL-known files skip imphash / YARA /
+//! capa-eligibility; capa-eligibility (`file_type`) is only computed for a
+//! file with at least one YARA hit. Prior disposition is applied to every
+//! file regardless, before any gate.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -19,17 +22,21 @@ use std::sync::Arc;
 
 use chrono::Local;
 use rayon::prelude::*;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 use walkdir::WalkDir;
+use yara_x::Scanner;
 
+use crate::attack::{self, AttackDb};
 use crate::blocklist;
 use crate::config::IngotConfig;
 use crate::disposition;
+use crate::file_type;
 use crate::hashing;
 use crate::imphash;
 use crate::model::FileRecord;
 use crate::nsrl::{self, NsrlIndex};
 use crate::report::{self, ReportPaths};
+use crate::yara_scan;
 
 /// Same ceiling as the Python variant's `MAX_SCAN_WORKERS`.
 pub const MAX_SCAN_WORKERS: usize = 16;
@@ -70,15 +77,22 @@ pub fn enumerate_files(src_dir: &str) -> Vec<String> {
     files
 }
 
+struct FileScanCtx<'a> {
+    nsrl_index: &'a NsrlIndex,
+    blocklist: Option<&'a std::collections::HashSet<String>>,
+    disposition_history: &'a BTreeMap<String, String>,
+    attack_db: Option<&'a AttackDb>,
+}
+
 fn process_one_file(
     path: &str,
-    nsrl_index: &NsrlIndex,
-    blocklist: Option<&std::collections::HashSet<String>>,
-    disposition_history: &BTreeMap<String, String>,
+    ctx: &FileScanCtx<'_>,
+    yara_scanner: Option<&mut Scanner>,
 ) -> FileRecord {
     let mut record = FileRecord::new(path);
+    let target = Path::new(path);
 
-    match hashing::hash_and_score_file(Path::new(path)) {
+    match hashing::hash_and_score_file(target) {
         Ok(h) => {
             record.md5 = Some(h.md5.clone());
             record.sha1 = Some(h.sha1.clone());
@@ -87,22 +101,42 @@ fn process_one_file(
 
             // Prior analyst disposition, keyed by SHA-1 - applied to every
             // file, before the NSRL gate (same as the other variants).
-            if let Some(prior) = disposition_history.get(&h.sha1.to_ascii_lowercase()) {
+            if let Some(prior) = ctx.disposition_history.get(&h.sha1.to_ascii_lowercase()) {
                 record.disposition = prior.clone();
             }
 
-            record.nsrl_match = nsrl_index.contains(&h.sha1);
+            record.nsrl_match = ctx.nsrl_index.contains(&h.sha1);
 
-            if let Some(bl) = blocklist {
+            if let Some(bl) = ctx.blocklist {
                 let (status, source) = blocklist::check_reputation(&h.md5, &h.sha1, &h.sha256, bl);
                 record.reputation_status = status;
                 record.reputation_source = source;
             }
 
-            // NSRL-known-good gate: a file NSRL vouches for skips imphash
-            // (and later ssdeep / YARA / capa / FLOSS).
+            // NSRL-known-good gate: a file NSRL vouches for skips imphash,
+            // YARA and capa-eligibility (and later ssdeep / capa / FLOSS).
             if !record.nsrl_match {
-                record.imphash = imphash::compute_imphash(Path::new(path));
+                record.imphash = imphash::compute_imphash(target);
+
+                if let Some(scanner) = yara_scanner {
+                    let yr = yara_scan::scan_file(scanner, target, ctx.attack_db);
+                    record.yara_matches =
+                        (!yr.rule_names.is_empty()).then(|| yr.rule_names.join("; "));
+                    record.yara_hit_count = yr.hit_count as i32;
+                    record.yara_severity = yr.severity;
+                    record.yara_severity_score = yr.severity_score;
+                    record.yara_attack_techniques = yr.attack_techniques;
+                }
+
+                // capa-eligibility is only computed for a file YARA flagged,
+                // matching engine.py (capa never runs against an unflagged
+                // file). capa/FLOSS themselves land in a later phase.
+                if record.yara_hit_count > 0 {
+                    let ft = file_type::classify(target, h.length);
+                    record.capa_eligible = ft.capa_eligible;
+                    record.possible_false_negative =
+                        file_type::is_possible_false_negative(&ft, record.yara_hit_count, target);
+                }
             }
 
             record.status = "Completed".to_string();
@@ -116,9 +150,9 @@ fn process_one_file(
     record
 }
 
-/// Run the Phase 1 pipeline over every file under `config.src_dir`.
-/// `on_progress` is invoked once per file as results complete (not in
-/// submission order); it must be cheap and `Sync`.
+/// Run the currently-implemented pipeline over every file under
+/// `config.src_dir`. `on_progress` is invoked once per file as results
+/// complete (not in submission order); it must be cheap and `Sync`.
 pub fn scan_directory<F>(config: &IngotConfig, on_progress: F) -> ScanResult
 where
     F: Fn(Progress) + Sync + Send,
@@ -167,6 +201,34 @@ where
         );
     }
 
+    // --- YARA rules ----------------------------------------------------
+    // Compiled once here; each worker thread gets its own reused Scanner
+    // borrowing this ruleset. A compile failure disables YARA for the scan
+    // (logged at ERROR) rather than aborting - the Logs tab surfaces it.
+    let yara_rules = if !config.yara_rules.is_empty() {
+        info!("Compiling YARA rules from {}...", config.yara_rules);
+        match yara_scan::compile_rules(Path::new(&config.yara_rules)) {
+            Ok(rules) => Some(rules),
+            Err(e) => {
+                error!("YARA rules failed to compile - YARA disabled for this scan: {e}");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // --- MITRE ATT&CK enrichment data (optional) ----------------------
+    let attack_db = attack::load_optional(&config.attack_data_path);
+    if let Some(db) = &attack_db {
+        info!(
+            "MITRE ATT&CK data loaded: {} techniques indexed.",
+            db.technique_count()
+        );
+    } else if config.attack_data_path.is_empty() {
+        info!("No MITRE ATT&CK data configured - TTP mapping disabled for this scan.");
+    }
+
     // --- parallel per-file pass ----------------------------------------
     let worker_count = default_worker_count().min(total.max(1));
     info!("Scanning {total} file(s) with {worker_count} worker thread(s)...");
@@ -179,24 +241,32 @@ where
         .expect("rayon pool");
 
     let on_progress = &on_progress;
-    let nsrl_ref = &nsrl_index;
-    let bl_ref = blocklist_hashes.as_ref();
-    let dispo_ref = &disposition_history;
     let counter_ref = &counter;
+    let ctx = FileScanCtx {
+        nsrl_index: &nsrl_index,
+        blocklist: blocklist_hashes.as_ref(),
+        disposition_history: &disposition_history,
+        attack_db: attack_db.as_ref(),
+    };
+    let ctx_ref = &ctx;
+    let yara_rules_ref = yara_rules.as_ref();
 
     let mut records: Vec<FileRecord> = pool.install(|| {
         paths
             .par_iter()
-            .map(|path| {
-                let record = process_one_file(path, nsrl_ref, bl_ref, dispo_ref);
-                let done = counter_ref.fetch_add(1, Ordering::SeqCst) + 1;
-                on_progress(Progress {
-                    done,
-                    total,
-                    record: &record,
-                });
-                record
-            })
+            .map_init(
+                || yara_rules_ref.map(Scanner::new),
+                |scanner, path| {
+                    let record = process_one_file(path, ctx_ref, scanner.as_mut());
+                    let done = counter_ref.fetch_add(1, Ordering::SeqCst) + 1;
+                    on_progress(Progress {
+                        done,
+                        total,
+                        record: &record,
+                    });
+                    record
+                },
+            )
             .collect()
     });
 
@@ -371,5 +441,79 @@ mod tests {
             assert_eq!(mine, direct);
             assert_eq!(mine.len(), 32);
         }
+    }
+
+    #[test]
+    fn yara_matches_drive_severity_and_capa_eligibility_gate() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("src");
+        let reports = dir.path().join("reports");
+        std::fs::create_dir_all(&src).unwrap();
+
+        // one file the rule hits, one it doesn't
+        std::fs::write(src.join("hit.bin"), b"....MALWARE_MARKER_42....").unwrap();
+        std::fs::write(src.join("clean.bin"), b"nothing to see here").unwrap();
+
+        let rules = dir.path().join("rules.yar");
+        std::fs::write(
+            &rules,
+            r#"rule marker {
+                 meta:
+                   score = 95
+                   reference = "https://attack.mitre.org/techniques/T1055"
+                 strings:
+                   $m = "MALWARE_MARKER_42"
+                 condition:
+                   $m
+               }"#,
+        )
+        .unwrap();
+
+        // tiny ATT&CK bundle for the technique the rule references
+        let bundle = dir.path().join("attack.json");
+        std::fs::write(
+            &bundle,
+            serde_json::json!({"objects":[
+                {"type":"attack-pattern","id":"attack-pattern--z","name":"Process Injection",
+                 "external_references":[{"source_name":"mitre-attack","external_id":"T1055"}]}
+            ]})
+            .to_string(),
+        )
+        .unwrap();
+
+        let mut config = cfg_for(&src, &reports);
+        config.yara_rules = rules.to_string_lossy().into_owned();
+        config.attack_data_path = bundle.to_string_lossy().into_owned();
+
+        let result = scan_directory(&config, |_| {});
+
+        let hit = result
+            .records
+            .iter()
+            .find(|r| r.path.ends_with("hit.bin"))
+            .unwrap();
+        assert_eq!(hit.yara_hit_count, 1);
+        assert_eq!(hit.yara_matches.as_deref(), Some("marker"));
+        assert_eq!(hit.yara_severity, "Critical");
+        assert_eq!(hit.yara_severity_score, 95);
+        assert_eq!(
+            hit.yara_attack_techniques.as_deref(),
+            Some("T1055 Process Injection []")
+        );
+        // .bin under 100k with a YARA hit -> shellcode -> capa-eligible
+        assert!(
+            hit.capa_eligible,
+            "YARA-flagged small .bin should be capa-eligible"
+        );
+
+        let clean = result
+            .records
+            .iter()
+            .find(|r| r.path.ends_with("clean.bin"))
+            .unwrap();
+        assert_eq!(clean.yara_hit_count, 0);
+        assert_eq!(clean.yara_severity, "Unknown");
+        // no YARA hit -> capa-eligibility never computed
+        assert!(!clean.capa_eligible);
     }
 }
