@@ -455,12 +455,16 @@ Locally verified: both workflow YAMLs parse; `cargo build --release
 --locked --target x86_64-pc-windows-msvc -p ingot-server` succeeds and the
 packaging shell script produces the expected archive layout; MSRV 1.93.0
 builds and tests clean; `cargo test --workspace` (84), clippy `-D
-warnings`, `cargo fmt --check` all green. **Not yet run on GitHub** - the
-first `workflow_dispatch` run of `ingot-release.yml` (all four targets
-green) is the real gate for this phase, same caveat the Winnow Linux
-packaging job carried (`installer/README.md`). Windows/macOS runner builds
-of the wasmtime/ring/pe-sign stack in particular are unverified until that
-run.
+warnings`, `cargo fmt --check` all green.
+
+**GitHub-verified 2026-09-10** - two `workflow_dispatch` runs of
+`ingot-release.yml`: all four targets build green and upload their archive
+artifacts (11-13 MB each), the `release` job correctly skips on a non-tag
+run. The wasmtime/ring/pe-sign/yara-x stack compiles on ubuntu-latest,
+windows-latest, and macos-latest (Apple silicon). `x86_64-apple-darwin`
+was moved off the scarce `macos-13` Intel runner to a cross-compile on
+`macos-latest` after the first run's Intel job sat unscheduled for 30+ min;
+the cross-build (including `ring`'s x86_64 asm on an arm64 host) passes.
 
 ## Post-test-scan fixes - 2026-09-10
 
