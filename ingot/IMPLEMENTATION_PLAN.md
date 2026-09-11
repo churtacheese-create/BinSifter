@@ -428,11 +428,13 @@ that was missing for the Rust code.
   is in the matrix because `tools.rs` / `archive.rs` / `authenticode.rs`
   carry real `cfg`/`std::env::consts::OS` branches.
 - `.github/workflows/ingot-release.yml` - `ingot-v*` tag (or
-  `workflow_dispatch`) builds the `ingot` binary on GitHub's **native**
-  runners for four targets - `x86_64-unknown-linux-gnu` (ubuntu-latest),
+  `workflow_dispatch`) builds the `ingot` binary on GitHub-hosted runners
+  for four targets - `x86_64-unknown-linux-gnu` (ubuntu-latest),
   `x86_64-pc-windows-msvc` (windows-latest), `aarch64-apple-darwin`
-  (macos-latest), `x86_64-apple-darwin` (macos-13) - no cross-compilation.
-  Each is packaged as `ingot-<version>-<target>.{tar.gz,zip}` containing the
+  (macos-latest, native), `x86_64-apple-darwin` (macos-latest,
+  cross-compiled - Xcode's SDK is universal, and free Intel runners are now
+  too scarce to queue on). Each is packaged as
+  `ingot-<version>-<target>.{tar.gz,zip}` containing the
   binary + `LICENSE` + `README.md`. A tag push additionally publishes a
   GitHub Release with all four archives and a `SHA256SUMS` file.
   `workflow_dispatch` builds + uploads artifacts only (no Release) - run
