@@ -538,7 +538,7 @@ async function ghidraLaunch(filePath) {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ filePath }),
     });
-    alert("Ghidra headless analysis started — it runs for a few minutes. See the Logs tab.");
+    alert("Ghidra headless analysis started — it runs for a few minutes, then Ghidra opens with the analyzed project loaded.");
   } catch (e) { alert("Ghidra launch failed: " + e.message); }
 }
 

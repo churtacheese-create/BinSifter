@@ -39,6 +39,7 @@ desktop.ini
 ingot/target/
 ingot/dist/
 ingot/logs/
+ingot-release-test/
 target/
 
 # Future Python rewrite artifacts

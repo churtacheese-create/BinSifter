@@ -23,7 +23,7 @@ All four need PowerShell 7 (`pwsh.exe`) already installed. See `installer/README
 
 Right-click any row in Results for on-demand actions, driven by "Path to tools"/"Path to Ghidra" in Settings:
 
-- **No confirmation needed** (read-only inspection): PE Studio, DIE, CFF Explorer (copies the path to your clipboard instead of opening the file directly - CFF Explorer's own command line is reserved for its Lua scripting engine), Resource Hacker, Ghidra headless analysis, and Sigcheck (signature/provenance check).
+- **No confirmation needed** (read-only inspection): PE Studio, DIE, CFF Explorer (copies the path to your clipboard instead of opening the file directly - CFF Explorer's own command line is reserved for its Lua scripting engine), Resource Hacker, Ghidra (runs headless analysis, then opens the Ghidra GUI with the analyzed project loaded), and Sigcheck (signature/provenance check).
 - **Confirmation required** (execution-adjacent): x64dbg, x32dbg, and an isolated Speakeasy code emulation.
 - **Export for AI analysis** writes a Markdown+JSON pair of the file's already-extracted findings for you to hand to whatever AI tool you choose - no AI is called from BinSifter itself.
 

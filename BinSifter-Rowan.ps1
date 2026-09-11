@@ -5570,19 +5570,91 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                     # filename-based project name instead of an error dialog.
                     $record = $null
                     $hasRecord = $FileRecords.TryGetValue($targetPath, [ref]$record)
-                    $projectName = if ($hasRecord -and $record.SHA1) { "BinSifter_$($record.SHA1)" } else { "BinSifter_$([IO.Path]::GetFileNameWithoutExtension($targetPath))" }
+                    # The SHA1 branch is always plain hex, already safe. The
+                    # fallback (no SHA1 on record) uses the file's own stem,
+                    # which can carry anything the original filename had -
+                    # sanitized because Ghidra's own argument parser rejected
+                    # a project name containing a space + parens with
+                    # `InvalidInputException: Bad argument`, confirmed
+                    # against a real sample, independently of the cmd-level
+                    # issues the staged-copy fix below addresses.
+                    $projectName = if ($hasRecord -and $record.SHA1) {
+                        "BinSifter_$($record.SHA1)"
+                    } else {
+                        $safeStem = ([IO.Path]::GetFileNameWithoutExtension($targetPath)) -replace '[^A-Za-z0-9_-]', '_'
+                        "BinSifter_$safeStem"
+                    }
+                    $projectFile = Join-Path $ghidraProjectsDir "$projectName.gpr"
+                    # analyzeHeadless.bat sits at <ghidra>\support\; ghidraRun.bat
+                    # (the GUI launcher) at the install root - derived the same way
+                    # Winnow's results.py does.
+                    $ghidraRunExe = Join-Path (Split-Path -Parent (Split-Path -Parent $ghidraExe)) 'ghidraRun.bat'
                     # Fire-and-forget, same as the other quick-launch tools -
-                    # headless analysis can run for minutes, and Ghidra is
-                    # purely static (no execution risk), so there's nothing to
-                    # wait on or warn about. Note: this process isn't tracked
-                    # in a registry, so it won't be force-closed if BinSifter
-                    # exits first - harmless for a read-only analysis run, but
-                    # worth knowing if you close BinSifter mid-analysis.
-                    Start-Process -FilePath $ghidraExe -ArgumentList @(
-                        "`"$ghidraProjectsDir`"", "`"$projectName`"",
-                        '-import', "`"$targetPath`"",
-                        '-overwrite', '-analysisTimeoutPerFile', '300'
+                    # headless analysis can run for minutes, and Ghidra is purely
+                    # static (no execution risk). This process isn't tracked in a
+                    # registry, so it won't be force-closed if BinSifter exits
+                    # first - harmless for a read-only run, but worth knowing if
+                    # you close BinSifter mid-analysis.
+                    #
+                    # Chain: analyzeHeadless, then (on success) open the resulting
+                    # project in Ghidra's own GUI so the analyzed program is loaded
+                    # for review - added per a direct request, matching Winnow's
+                    # _watch_ghidra_completion(). Driven from a temp .bat because
+                    # cmd.exe's quoting rules don't survive PowerShell's
+                    # -ArgumentList round-trip; the .bat deletes itself when done.
+                    # REAL BUG FOUND AND FIXED 2026-09-10, confirmed against a real
+                    # Ghidra install: without `call` before each nested .bat/.cmd,
+                    # invoking one batch file from another transfers control into
+                    # it permanently - analyzeHeadless.bat would finish (real
+                    # .gpr/.rep output confirmed) and the whole script would exit
+                    # right there, never reaching the ghidraRun line or the
+                    # self-delete. `call` is what returns control to the caller.
+                    # SECOND REAL BUG FOUND AND FIXED THE SAME DAY, against a real
+                    # sample filename containing "(2)": cmd.exe's batch parser
+                    # treats `(`/`)` as command-grouping syntax EVEN INSIDE a
+                    # double-quoted argument on the same line - cmd exited 255,
+                    # "X.exe was unexpected at this time", well before the `call`
+                    # fix even mattered. Fixed with the standard batch idiom for
+                    # paths containing special characters: `set "VAR=value"` each
+                    # path on its own line (cmd does not re-tokenize inside a
+                    # `set` assignment), then reference `%VAR%` in the actual
+                    # command - expansion happens after the line is already
+                    # parsed, so the literal parens are never re-interpreted.
+                    # THIRD REAL BUG, same sample, found even after the `set` fix
+                    # above: Ghidra's OWN analyzeHeadless.bat (not ours) does
+                    # `for %%f in ("%~2") do (...)` for its -import argument, and
+                    # cmd's `for ... in (set)` clause has the identical
+                    # "parens break parsing" problem, even for a value that
+                    # arrived safely via our `set` var - confirmed directly: a
+                    # byte-identical copy under a paren-free name analyzed clean
+                    # in 15s, the original path produced zero output. Since this
+                    # lives inside Ghidra's bundled script, the fix is to never
+                    # hand it a risky path: stage a safe-named copy and import
+                    # that instead (deleted right after analysis reads it -
+                    # Ghidra copies the bytes into its own project storage, so
+                    # the staged copy isn't needed past that point).
+                    $stagedExt = [IO.Path]::GetExtension($targetPath)
+                    $stagedTarget = Join-Path $ghidraProjectsDir ("rowan_ghidra_import_{0}{1}" -f ([guid]::NewGuid().ToString('N')), $stagedExt)
+                    Copy-Item -LiteralPath $targetPath -Destination $stagedTarget -Force
+                    $batLines = @(
+                        '@echo off'
+                        ('set "RW_HEADLESS={0}"' -f $ghidraExe)
+                        ('set "RW_PROJDIR={0}"' -f $ghidraProjectsDir)
+                        ('set "RW_PROJNAME={0}"' -f $projectName)
+                        ('set "RW_TARGET={0}"' -f $stagedTarget)
+                        ('set "RW_GHIDRARUN={0}"' -f $ghidraRunExe)
+                        ('set "RW_GPR={0}"' -f $projectFile)
+                        'call "%RW_HEADLESS%" "%RW_PROJDIR%" "%RW_PROJNAME%" -import "%RW_TARGET%" -overwrite -analysisTimeoutPerFile 300'
+                        'set "RW_RC=%errorlevel%"'
+                        'del "%RW_TARGET%"'
+                        'if not "%RW_RC%" == "0" goto done'
+                        'call "%RW_GHIDRARUN%" "%RW_GPR%"'
+                        ':done'
+                        'del "%~f0"'
                     )
+                    $batPath = Join-Path ([IO.Path]::GetTempPath()) ("BinSifter_ghidra_{0}.bat" -f ([guid]::NewGuid().ToString('N')))
+                    [IO.File]::WriteAllLines($batPath, $batLines)
+                    Start-Process -FilePath $env:ComSpec -ArgumentList '/c', "`"$batPath`"" -WindowStyle Hidden
                     # Without this, only the error paths above ever showed a
                     # MessageBox, so a successful click looked identical to
                     # nothing happening at all (same fix applied on the Winnow
@@ -5592,7 +5664,7 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                     # acknowledgment, not a progress indicator.
                     [System.Windows.Forms.MessageBox]::Show(
                         $grid.FindForm(),
-                        "Ghidra headless analysis started for $([IO.Path]::GetFileName($targetPath)).`r`n`r`nThis can take several minutes. Results will be saved under:`r`n$(Join-Path $ghidraProjectsDir $projectName)",
+                        "Ghidra headless analysis started for $([IO.Path]::GetFileName($targetPath)).`r`n`r`nThis can take several minutes. Results will be saved under:`r`n$(Join-Path $ghidraProjectsDir $projectName)`r`n`r`nGhidra will open with this project once analysis completes.",
                         'BinSifter',
                         [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
                 }

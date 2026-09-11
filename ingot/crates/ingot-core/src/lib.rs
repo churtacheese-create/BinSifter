@@ -40,6 +40,10 @@ pub mod report;
 pub mod ssdeep;
 pub mod tool_bootstrap;
 pub mod tools;
+#[cfg(windows)]
+mod win_clipboard;
+#[cfg(windows)]
+mod win_foreground;
 pub mod yara_rule_gen;
 pub mod yara_scan;
 

@@ -537,6 +537,212 @@ a 10 GB file scanned with `INGOT_FILE_TIMEOUT_SECONDS=25` timed out at 25 s
 as an errored record and the scan **completed** instead of hanging; the
 652-file `System32` scan that previously stalled now finishes.
 
+## Quick-launch menu fixes + Ghidra GUI preload - 2026-09-10
+
+Manual testing after the fixes above surfaced three more `tools.rs` issues,
+plus a feature port from Winnow, extended to Rowan too:
+
+- **DIE and Sigcheck "didn't open"** - `["diec", "die"]` resolved DIE's
+  *console* build first (runs, prints to a discarded stdout, exits); reordered
+  to `["die", "diec"]` on every OS so "Open in DIE" gets the GUI. Sigcheck
+  is a Sysinternals tool - without `-accepteula` it blocks on a first-run EULA
+  dialog from a service context, invisibly; added `-accepteula -nobanner`.
+  Also reworked the Windows terminal-tool launch: the old `cmd /c start ""
+  cmd /k "<joined>"` nested-quoting couldn't round-trip through Rust's
+  `Command` arg escaping (cmd.exe's quote rules aren't the ones `Command`
+  targets) - now writes a temp `.bat` (self-deleting after `pause`) and
+  `start`s that instead.
+- **Tools opened behind the browser** - Ingot is a headless service, so
+  Windows' foreground-activation lock stops a spawned GUI tool from taking
+  focus. Added `win_foreground.rs` (`#[cfg(windows)]`, new `windows-sys`
+  dependency): after spawning a GUI tool, a short-lived watcher polls
+  (`EnumWindows`) for its top-level window and lifts it with a
+  `HWND_TOPMOST` -> `HWND_NOTOPMOST` Z-order toggle. **Deliberately not**
+  `AttachThreadInput` + forced `SetForegroundWindow` - that first
+  implementation attached to the window's input queue mid-startup and
+  crashed DIE (a Qt app) ~4 s after launch, caught by watching the spawned
+  process rather than trusting a green HTTP response. The Z-order-only
+  version is gentler: the window surfaces on top, the user clicks it to
+  focus, nothing has its input queue touched.
+- **Ghidra GUI preload** - ported Winnow's `_watch_ghidra_completion`
+  behavior (open `ghidraRun <project>.gpr` once headless analysis finishes,
+  so the analyzed program is loaded for review) to both Ingot and Rowan.
+  Ingot's `launch_ghidra` and Rowan's Ghidra quick-launch both now chain
+  `analyzeHeadless ... && ghidraRun <gpr>` as one detached unit (a temp
+  `.bat` on Windows, `sh -c` on Unix for Ingot) rather than a watched
+  process + a second launch - simpler for a stateless server, and the chain
+  survives a restart. `ghidraRun <gpr>` opening the project is Ghidra's own
+  documented behavior; not independently GUI-verified end-to-end here (same
+  caveat Winnow's own port carries) - `-import`/`-overwrite` and the chain
+  wiring are verified (a live Ghidra headless run against a real 43 KB
+  sample produced the expected `.gpr`/`.lock`, killed before it reached the
+  GUI-boot step to avoid leaving Ghidra running unattended).
+
+Validated: `cargo test --workspace` (93 - `die_prefers_the_gui_over_the_
+console_build`, `sigcheck_accepts_the_eula_non_interactively` added),
+clippy `-D warnings`, fmt clean, `Cargo.lock` diff minimal (`windows-sys`
+0.59 already in the tree transitively). Live on Windows: DIE now resolves
+to `die.exe` and stays running (previously died ~4 s after launch under the
+`AttachThreadInput` version); Sigcheck opens a titled console window
+running `-accepteula -nobanner` and pauses for the analyst to read it;
+pestudio/CFF Explorer/Resource Hacker still launch clean under the new
+foreground code; the Ghidra chain script was inspected and the headless
+half runs and produces real output. Rowan's Ghidra block re-parses clean
+(`Parser.ParseFile`); not yet run against a real Ghidra install.
+
+## Two more real bugs from that same manual pass - 2026-09-10
+
+1. **CFF Explorer never had the Rowan/Winnow clipboard-copy special case.**
+   CFF Explorer's own command line is reserved for its Lua scripting engine,
+   so a target-path argument is silently ignored - the app opens but never
+   loads the flagged file. Ingot's `tools.rs` never ported the
+   `copy_path_instead` behavior Rowan/Winnow have. Added: `ToolDef` gained
+   `copy_path_instead`, `cff`'s definition sets it (relabelled "Open in CFF
+   Explorer (copies path to clipboard)"), `launch_tool` skips the target
+   argv when it's set and copies the path to the clipboard after launch via
+   new `win_clipboard.rs` (`#[cfg(windows)]`, raw `OpenClipboard` /
+   `GlobalAlloc` / `SetClipboardData` - Ingot and the browser are always the
+   same machine, so setting the OS clipboard from the server is exactly
+   "the analyst's clipboard").
+2. **Ghidra GUI never opened, confirmed with a real headless run watched to
+   completion (not just inspected).** Root cause: the chain bat invoked
+   `analyzeHeadless.bat` (and `ghidraRun.bat`) **without `call`** - in batch
+   scripting, running a nested `.bat`/`.cmd` without `call` transfers
+   control into it permanently, so when `analyzeHeadless.bat` finished, the
+   whole script terminated right there and never reached the `ghidraRun`
+   line. Confirmed directly: the real `.gpr`/`.rep` output existed (analysis
+   genuinely completed) but the chain's temp `.bat` never self-deleted (it
+   never reached `:done`). Fixed by prefixing both nested invocations with
+   `call`, in both Ingot's `launch_ghidra` and Rowan's Ghidra quick-launch
+   block (same bug, same fix, both never `call`ed either).
+
+Validated: `cargo test --workspace` (93, unchanged - these were runtime
+logic bugs, not something a unit test would catch without spinning up a
+real Ghidra install), clippy `-D warnings`, fmt clean. **Live end-to-end,
+watched to completion, not just inspected:** triggered `/api/ghidra`
+against a real file, watched `analyzeHeadless` run and exit, confirmed the
+chain `.bat` self-deleted (reached `:done`), and confirmed a `javaw.exe`
+process came up with window title **"Ghidra: BinSifter_<name>"** - the
+project loaded, exactly the ported behavior. Rowan's fix re-parses clean;
+not independently run against Rowan itself (no live Rowan session in this
+pass) - same fix, same root cause, high confidence but flagging the gap
+honestly.
+
+**Known minor gap, not fixed here:** the Ghidra GUI process itself isn't
+foreground-raised the way quick-launch tools are (`win_foreground.rs`) -
+identifying the right `javaw` PID out of the detached chain is more work
+than the other tools' direct-spawn case, and wasn't asked for. It may still
+open behind the browser.
+
+## Ghidra GUI still didn't open - two more real bugs, found by re-testing against the actual reported file - 2026-09-10/11
+
+The `call` fix above was verified only against `where.exe` (no special
+characters) - it genuinely fixed what it targeted, but the owner's re-test
+against the real file that started this (a filename containing `"(2)"`)
+still failed. Re-diagnosed the same way as before - watch a real run to
+completion, not just inspect the script - and found two further, *separate*
+failure modes, both triggered by the parens, neither fixable by anything on
+Ingot's/Rowan's own command-line-construction side alone:
+
+1. **cmd.exe's batch parser treats `(`/`)` as command-grouping syntax even
+   inside a double-quoted argument on the same line.** A direct repro
+   (`analyzeHeadless.bat ... -import "...(2).exe" ...` with the path
+   inlined) exited 255, `"X.exe was unexpected at this time"`. Standard fix:
+   `set "VAR=value"` each path on its own line (cmd does not re-tokenize
+   inside a `set` assignment), then reference `%VAR%` in the actual
+   command - **but this alone was not enough**, see #2.
+2. **Ghidra's own bundled `analyzeHeadless.bat` (not Ingot's/Rowan's script)
+   independently re-breaks on the same parens**, in two of its own code
+   paths, each confirmed separately by watching a real run to completion:
+   - Its `-import` handling does `for %%f in ("%~2") do (...)` for wildcard
+     expansion - cmd's `for ... in (set)` clause has the identical
+     "parens break parsing" problem even for a value that arrived safely via
+     `set`. Confirmed directly: a byte-identical copy of the real file under
+     a paren-free name analyzed clean in 15s (`analyzeHeadless`'s own log:
+     "Analysis succeeded", "Import succeeded"); the original path produced
+     silently zero output.
+   - Independently, the **project name** argument (the `BinSifter_<stem>`
+     fallback used when no SHA1 record exists yet) also broke Ghidra's own
+     Java argument parser - `Exception in thread "main"
+     ghidra.util.exception.InvalidInputException: Bad argument: <path>` -
+     even with an already-safe import path. Isolated by testing a safe
+     target with a still-parens-containing project name alone.
+
+   Since both live inside Ghidra's bundled script/parser, not Ingot's or
+   Rowan's own code, there's nothing to `set`-var around - the fix is to
+   never hand Ghidra a risky value at all:
+   - **Target path**: stage a byte-identical copy under a generated,
+     special-character-free name (`tempfile`-style random suffix, original
+     extension kept) before importing, and delete it right after
+     `analyzeHeadless` reads it (Ghidra copies the bytes into its own
+     project storage, so the staged copy isn't needed past that point).
+     New `stage_safe_import_copy()` in `tools.rs`; Rowan stages the same way
+     with `Copy-Item` + a GUID-based name.
+   - **Project name**: sanitize the filename-stem fallback (new
+     `sanitize_for_ghidra()` - replace anything but `[A-Za-z0-9_-]` with
+     `_`) before using it as Ghidra's project name. The SHA1 branch was
+     already safe (plain hex) and is untouched.
+   - The `errorlevel` check also had to move: `del`-ing the staged copy
+     right after the analyze call would otherwise clobber `%errorlevel%`
+     before the `if errorlevel 1 goto done` line ever read it - now captured
+     into `%INGOT_RC%`/`%RW_RC%` immediately after the `call`, before any
+     other command runs.
+
+Validated: `cargo test --workspace` (94 - added
+`sanitize_for_ghidra_strips_spaces_and_parens`), clippy `-D warnings`, fmt
+clean; Rowan re-parses clean. **Live, watched to actual completion, against
+the exact real file that started this** (not `where.exe`): triggered
+`/api/ghidra` on `General_Player_V1.7.0.0.T.20150929 (2).exe`, watched the
+chain run and self-delete at t+30s, and confirmed a `javaw.exe` window
+titled **"Ghidra: BinSifter_General_Player_V1_7_0_0_T_20150929__2_"** -
+the analyzed project loaded. This is the same file, same failure, the owner
+hit twice in manual testing before this fix.
+
+## Ghidra GUI foreground raise - 2026-09-11
+
+Closed the "known minor gap" flagged above: after the parens/staging fixes,
+Ghidra's GUI genuinely opened with the analyzed project loaded, but the
+owner's next report was "opened this test scan but opened in the
+background" - same foreground-activation-lock problem `win_foreground.rs`
+already solves for directly-spawned quick-launch tools, just not extended
+to Ghidra.
+
+The blocker: Ghidra's GUI process (`javaw.exe`) comes up at the end of a
+fully detached shell chain (`analyzeHeadless` -> `ghidraRun`) minutes after
+Ingot's own `launch_ghidra` call returns, so there's no PID on the Rust side
+to hand to the existing PID-based `raise_when_ready`. Fixed by generalizing
+`win_foreground.rs`:
+
+- New `Match` enum (`Pid(u32)` / `TitleContains(String)`) behind a shared
+  `find_window`/`watch_and_lift` core - `raise_when_ready(pid)` is now a
+  thin wrapper over the `Pid` path, unchanged in behavior.
+- New `raise_when_titled(title_substring, timeout)` polls every 2s (this
+  runs for minutes, not seconds) for a visible top-level window whose title
+  contains the substring, and lifts it the same Z-order-toggle way.
+- `launch_ghidra`'s Windows branch calls
+  `raise_when_titled(format!("Ghidra: {project_name}"), Duration::from_secs(480))`
+  right after the chain spawns - 480s comfortably covers the
+  `-analysisTimeoutPerFile 300` ceiling plus JVM/analysis startup slack. The
+  title format was empirically confirmed against a real run in the prior
+  fix round.
+- Not ported to Rowan: Rowan's Ghidra quick-launch runs from a foreground
+  WinForms app the analyst just clicked into, not a headless service, so it
+  isn't subject to the same foreground-activation lock - not requested,
+  not added speculatively.
+
+Validated: `cargo test --workspace` (94, unchanged - no new unit-testable
+logic, this is a live-window-manager behavior), clippy `-D warnings`, fmt
+clean, release build. **Live, watched to actual completion, against the
+exact real file**: triggered `/api/ghidra` on
+`General_Player_V1.7.0.0.T.20150929 (2).exe` with no scan session active
+(project-name fallback path, the harder of the two), watched the chain run
+to completion, and confirmed via `GetForegroundWindow()` that Ghidra's
+CodeBrowser window came up as the actual foreground window. Separately
+confirmed by the project owner's own manual test run at the same time
+(coincidental overlap - the owner was independently exercising the rest of
+the right-click menu against the same instance): "Ghidra came up in front
+this time too."
+
 ## Verification (Phase 1)
 
 1. `cargo test --workspace` - all green.
