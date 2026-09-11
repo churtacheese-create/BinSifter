@@ -41,12 +41,12 @@ headless analysis, and a Markdown/JSON "export for AI analysis" - all wired
 into a live-progress web UI and, at every stage, cross-checked against the
 Python variant's output (or, for Authenticode, `Get-AuthenticodeSignature`).
 
+**Released as [v0.1.0](https://github.com/churtacheese-create/BinSifter/releases/tag/ingot-v0.1.0).**
 Packaging is a GitHub Actions matrix (`ingot-release.yml`) that builds the
 `ingot` binary on native runners for Linux x86-64, Windows x86-64, and
 macOS (Apple silicon + Intel) and attaches the archives to a GitHub Release
 on an `ingot-v*` tag; a separate `ingot-ci.yml` runs fmt/clippy/tests on
-Linux and Windows for every change. Both workflows are committed but have
-not had their first GitHub run yet.
+Linux and Windows for every change.
 
 Known gaps, none of them in the Python variant either: catalog (`.cat`)
 signature verification, SSDEEP cluster history, and Speakeasy emulation

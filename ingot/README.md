@@ -55,12 +55,14 @@ The UI defaults to <http://127.0.0.1:8477>.
 
 ## Releases
 
-Tagged builds (`ingot-v*`) publish a GitHub Release with a self-contained
-`ingot` binary for Linux x86-64, Windows x86-64, and macOS (Apple silicon
-and Intel), each as `ingot-<version>-<target>.{tar.gz,zip}` alongside a
-`SHA256SUMS` file - see
+**Current release: [v0.1.0](https://github.com/churtacheese-create/BinSifter/releases/tag/ingot-v0.1.0).**
+Every tagged build (`ingot-v*`) publishes a GitHub Release with a
+self-contained `ingot` binary for Linux x86-64, Windows x86-64, and macOS
+(Apple silicon and Intel), each as `ingot-<version>-<target>.{tar.gz,zip}`
+alongside a `SHA256SUMS` file - see
 [`../.github/workflows/ingot-release.yml`](../.github/workflows/ingot-release.yml).
-Extract and run `ingot`; nothing else to install. There is no OS installer
+Download the archive for your platform, extract it, and run `ingot`
+(`ingot.exe` on Windows); nothing else to install. There is no OS installer
 (`.deb`/`.msi`/`.pkg`) - it's a single binary with no runtime dependencies.
 
 CI ([`ingot-ci.yml`](../.github/workflows/ingot-ci.yml)) runs `fmt`,
