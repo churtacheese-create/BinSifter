@@ -36,10 +36,15 @@ clustering and a draft YARA rule per SSDEEP cluster, triage disposition
 tracking (persisted by SHA-1, editable in the Results grid), the four
 37-column CSV reports, a right-click quick-launch tool menu on the Results
 grid scoped automatically to whichever OS Ingot is running on (the service
-knows its own platform, so there's no install-time question), Ghidra
-headless analysis, and a Markdown/JSON "export for AI analysis" - all wired
-into a live-progress web UI and, at every stage, cross-checked against the
-Python variant's output (or, for Authenticode, `Get-AuthenticodeSignature`).
+knows its own platform, so there's no install-time question, and a missing
+Linux tool can install itself on request - Windows/macOS tools that have no
+verified-safe auto-install source get a manual-install hint instead), Ghidra
+headless analysis, a Markdown/JSON "export for AI analysis", and a
+severity-colored, clickable Dashboard - all wired into a live-progress web
+UI and, at every stage, cross-checked against the Python variant's output
+(or, for Authenticode, `Get-AuthenticodeSignature`). Every Settings/Scan
+path field has a server-side "Browse..." dialog, since a browser tab has no
+native OS file picker to hand back a real filesystem path.
 
 **Released as [v0.1.0](https://github.com/churtacheese-create/BinSifter/releases/tag/ingot-v0.1.0).**
 Packaging is a GitHub Actions matrix (`ingot-release.yml`) that builds the

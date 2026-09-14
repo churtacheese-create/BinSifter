@@ -95,9 +95,14 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .route("/api/health", get(api::health))
         .route("/api/config", get(api::get_config).put(api::put_config))
+        .route("/api/browse", get(api::browse))
         .route("/api/tools", get(api::get_tools))
         .route("/api/tools/install/{tool}", post(api::install_tool))
         .route("/api/launch-tools", get(api::get_launch_tools))
+        .route(
+            "/api/launch-tools/install/{id}",
+            post(api::install_launch_tool),
+        )
         .route("/api/launch", post(api::launch))
         .route("/api/ghidra", post(api::launch_ghidra))
         .route("/api/ai-export", post(api::ai_export))

@@ -130,6 +130,113 @@ $("#settings-form").addEventListener("submit", async (ev) => {
   }
 });
 
+// ---------------------------------------------------------------- browse
+// Server-side directory/file picker for every "Browse..." button. Ingot's
+// UI is a plain page in the user's own browser, not an embedded webview -
+// there's no native OS file-picker dialog available to it, and a dropped/
+// picked file's real filesystem path isn't readable from browser JS either
+// (a deliberate browser privacy restriction, not something Ingot can work
+// around) - so this lists a directory on the machine actually running
+// Ingot instead, via /api/browse, and the user navigates and picks.
+const browseState = { targetInput: null, kind: "dir", currentDir: "", selectedFile: "" };
+
+function browseIconFor(entry) {
+  return entry.isDir ? "📁" : "📄";
+}
+
+async function browseLoad(path) {
+  const err = $("#browse-error");
+  err.textContent = "";
+  try {
+    const qs = path ? `?path=${encodeURIComponent(path)}` : "";
+    const r = await api(`/api/browse${qs}`);
+    browseState.currentDir = r.path;
+    browseState.selectedFile = "";
+    $("#browse-path").value = r.path;
+    $("#browse-up").disabled = !r.parent;
+    $("#browse-up").dataset.parent = r.parent || "";
+    const list = $("#browse-list");
+    const rows = r.entries.filter((e) => e.isDir || browseState.kind === "file");
+    if (!rows.length) {
+      list.innerHTML = `<div class="browse-empty">(empty)</div>`;
+    } else {
+      list.innerHTML = rows
+        .map(
+          (e) =>
+            `<button type="button" class="browse-entry${e.isDir ? " is-dir" : ""}" data-path="${escapeHtml(e.path)}" data-is-dir="${e.isDir}">
+              <span class="icon">${browseIconFor(e)}</span><span>${escapeHtml(e.name)}</span>
+            </button>`
+        )
+        .join("");
+    }
+    updateBrowseSelectButton();
+  } catch (e) {
+    err.textContent = "Could not list that folder: " + e.message;
+  }
+}
+
+function updateBrowseSelectButton() {
+  const btn = $("#browse-select");
+  if (browseState.kind === "dir") {
+    btn.textContent = "Select this folder";
+    btn.disabled = false;
+  } else {
+    btn.textContent = browseState.selectedFile ? "Select this file" : "Select a file";
+    btn.disabled = !browseState.selectedFile;
+  }
+}
+
+$("#browse-list").addEventListener("click", (ev) => {
+  const btn = ev.target.closest(".browse-entry");
+  if (!btn) return;
+  const isDir = btn.dataset.isDir === "true";
+  if (isDir) {
+    browseLoad(btn.dataset.path);
+    return;
+  }
+  $$(".browse-entry.is-selected", $("#browse-list")).forEach((b) => b.classList.remove("is-selected"));
+  btn.classList.add("is-selected");
+  browseState.selectedFile = btn.dataset.path;
+  updateBrowseSelectButton();
+});
+
+$("#browse-up").addEventListener("click", () => {
+  const parent = $("#browse-up").dataset.parent;
+  if (parent) browseLoad(parent);
+});
+
+$("#browse-go").addEventListener("click", () => browseLoad($("#browse-path").value.trim()));
+$("#browse-path").addEventListener("keydown", (ev) => {
+  if (ev.key === "Enter") { ev.preventDefault(); browseLoad($("#browse-path").value.trim()); }
+});
+
+$("#browse-cancel").addEventListener("click", () => $("#browse-modal").close());
+
+$("#browse-select").addEventListener("click", () => {
+  const value = browseState.kind === "dir" ? browseState.currentDir : browseState.selectedFile;
+  if (!value) return;
+  if (browseState.targetInput) {
+    browseState.targetInput.value = value;
+    browseState.targetInput.dispatchEvent(new Event("change"));
+  }
+  $("#browse-modal").close();
+});
+
+function openBrowse(inputEl, kind) {
+  browseState.targetInput = inputEl;
+  browseState.kind = kind;
+  $("#browse-title").textContent = kind === "dir" ? "Choose a folder" : "Choose a file";
+  $("#browse-modal").showModal();
+  browseLoad(inputEl.value.trim());
+}
+
+$$(".browse-btn").forEach((btn) =>
+  btn.addEventListener("click", () => {
+    const input = document.getElementById(btn.dataset.target);
+    if (input) openBrowse(input, btn.dataset.kind);
+  })
+);
+
 // ---------------------------------------------------------------- scan
 async function syncSrcDir() {
   const v = $("#scan-src").value.trim();
@@ -487,11 +594,14 @@ $("#results-table tbody").addEventListener("contextmenu", async (ev) => {
   }
   const items = [];
   for (const t of launchTools.tools || []) {
-    items.push({
-      label: t.path ? t.label : `${t.label} (not installed)`,
-      disabled: !t.path,
-      run: () => runLaunch(t, path),
-    });
+    if (t.path) {
+      items.push({ label: t.label, run: () => runLaunch(t, path) });
+    } else {
+      items.push({
+        label: t.installable ? `Install ${t.label}…` : `${t.label} (not installed)…`,
+        run: () => installMissingTool(t),
+      });
+    }
   }
   if (launchTools.ghidra?.available) {
     items.push({ label: "Ghidra headless analysis", run: () => ghidraLaunch(path) });
@@ -530,6 +640,23 @@ async function runLaunch(tool, filePath) {
       body: JSON.stringify({ toolId: tool.id, filePath }),
     });
   } catch (e) { alert("Launch failed: " + e.message); }
+}
+
+async function installMissingTool(tool) {
+  if (!confirm(
+    tool.installable
+      ? `${tool.label} is not installed. Ask Ingot to download and install it now?`
+      : `${tool.label} is not installed. Show install instructions?`
+  )) return;
+  try {
+    const r = await api(`/api/launch-tools/install/${encodeURIComponent(tool.id)}`, { method: "POST" });
+    if (r && r.installable === false) {
+      alert(`Ingot can't auto-install ${tool.label} on this system.\n\n${r.hint}`);
+      return;
+    }
+    alert(`Installing ${tool.label}… check the Logs tab for progress. Right-click again in a bit to pick it up.`);
+    setTimeout(loadLaunchTools, 10000);
+  } catch (e) { alert("Install failed: " + e.message); }
 }
 
 async function ghidraLaunch(filePath) {
@@ -591,25 +718,32 @@ const DASHBOARD_FACETS = {
   escalated:  { label: "Disposition: Escalated", fn: (x) => x.disposition === "Escalated" },
 };
 
-// tile display order: [facet key, tile label]
+// tile display order: [facet key, tile label, severity class]
+// Severity coloring mirrors Rowan's/Winnow's Dashboard: danger = red
+// (malicious/known-bad/escalated findings), warn = amber (worth a look -
+// matches this same app's own YARA severity tag coloring: Critical/High are
+// "bad", Medium/Low are "err"/amber), ok = green (accounted-for/trustworthy),
+// info = neutral accent (an enrichment count, not itself a finding).
 const DASHBOARD_TILES = [
-  ["all", "Files"], ["completed", "Completed"], ["errors", "Errors"],
-  ["nsrl", "NSRL known-good"], ["knownBad", "Known-bad"], ["highEntropy", "Entropy ≥ 7.5"],
-  ["imphash", "Have imphash"], ["yara", "YARA hits"],
-  ["sevCritical", "Critical"], ["sevHigh", "High"], ["sevMedium", "Medium"], ["sevLow", "Low"],
-  ["capaEligible", "capa-eligible"], ["capaHits", "capa hits"], ["capaDet", "capa detections"],
-  ["iocs", "Files with IOCs"], ["attack", "ATT&CK mapped"],
-  ["ssdeep", "SSDEEP clusters"], ["highSim", "Files ≥ 85% sim"], ["imphashClustered", "Imphash clustered"],
-  ["sigValid", "Valid signature"], ["sigProblem", "Signature problem"],
-  ["fromArchive", "From an archive"], ["escalated", "Escalated"],
+  ["all", "Files", null], ["completed", "Completed", "ok"], ["errors", "Errors", "warn"],
+  ["nsrl", "NSRL known-good", "ok"], ["knownBad", "Known-bad", "danger"], ["highEntropy", "Entropy ≥ 7.5", "warn"],
+  ["imphash", "Have imphash", "info"], ["yara", "YARA hits", "warn"],
+  ["sevCritical", "Critical", "danger"], ["sevHigh", "High", "danger"],
+  ["sevMedium", "Medium", "warn"], ["sevLow", "Low", "warn"],
+  ["capaEligible", "capa-eligible", "info"], ["capaHits", "capa hits", "info"], ["capaDet", "capa detections", "info"],
+  ["iocs", "Files with IOCs", "warn"], ["attack", "ATT&CK mapped", "info"],
+  ["ssdeep", "SSDEEP clusters", "info"], ["highSim", "Files ≥ 85% sim", "warn"], ["imphashClustered", "Imphash clustered", "info"],
+  ["sigValid", "Valid signature", "ok"], ["sigProblem", "Signature problem", "danger"],
+  ["fromArchive", "From an archive", "info"], ["escalated", "Escalated", "danger"],
 ];
 
 function renderDashboard() {
   const r = state.records;
-  $("#tiles").innerHTML = DASHBOARD_TILES.map(([key, label]) => {
+  $("#tiles").innerHTML = DASHBOARD_TILES.map(([key, label, sev]) => {
     const f = DASHBOARD_FACETS[key];
     const n = f.count ? f.count(r) : r.filter(f.fn).length;
-    return `<button class="tile" data-facet="${key}"${n ? "" : " disabled"}>
+    const sevClass = n && sev ? ` sev-${sev}` : "";
+    return `<button class="tile${sevClass}" data-facet="${key}"${n ? "" : " disabled"}>
       <div class="n">${n}</div><div class="l">${label}</div></button>`;
   }).join("");
 }

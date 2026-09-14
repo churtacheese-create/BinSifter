@@ -42,13 +42,18 @@
           need their standalone binaries &mdash; install them on the Settings page.</p>
         <p class="muted">On the Results grid, right-click any file for a quick-launch menu
           of analysis tools found in your tools directory (the set is scoped to the OS
-          Ingot is running on), Ghidra (headless analysis, then the GUI opens with the
-          project loaded), and &ldquo;Export for AI analysis&rdquo;.</p>
+          Ingot is running on &mdash; missing Linux tools offer to install themselves;
+          missing Windows/macOS tools show where to get and place them), Ghidra
+          (headless analysis, then the GUI opens with the project loaded), and
+          &ldquo;Export for AI analysis&rdquo;.</p>
 
         <div class="field">
           <label for="scan-src">Source directory</label>
-          <input id="scan-src" type="text" spellcheck="false"
-                 placeholder="C:\evidence\batch-01  or  /cases/batch-01" />
+          <div class="field-row">
+            <input id="scan-src" type="text" spellcheck="false"
+                   placeholder="C:\evidence\batch-01  or  /cases/batch-01" />
+            <button type="button" class="browse-btn" data-target="scan-src" data-kind="dir">Browse…</button>
+          </div>
           <small class="muted">This path is read on the machine running Ingot. Set it here or on the Settings page.</small>
         </div>
 
@@ -129,31 +134,52 @@
         <form id="settings-form">
           <div class="field">
             <label for="set-src">Source directory</label>
-            <input id="set-src" name="srcDir" type="text" spellcheck="false" />
+            <div class="field-row">
+              <input id="set-src" name="srcDir" type="text" spellcheck="false" />
+              <button type="button" class="browse-btn" data-target="set-src" data-kind="dir">Browse…</button>
+            </div>
           </div>
           <div class="field">
             <label for="set-nsrl">NSRL hash set (RDSv2 text / one hash per line)</label>
-            <input id="set-nsrl" name="nsrlPath" type="text" spellcheck="false" />
+            <div class="field-row">
+              <input id="set-nsrl" name="nsrlPath" type="text" spellcheck="false" />
+              <button type="button" class="browse-btn" data-target="set-nsrl" data-kind="file">Browse…</button>
+            </div>
           </div>
           <div class="field">
             <label for="set-yara">YARA rules file (one <code>.yar</code>, may <code>include</code> others)</label>
-            <input id="set-yara" name="yaraRules" type="text" spellcheck="false" />
+            <div class="field-row">
+              <input id="set-yara" name="yaraRules" type="text" spellcheck="false" />
+              <button type="button" class="browse-btn" data-target="set-yara" data-kind="file">Browse…</button>
+            </div>
           </div>
           <div class="field">
             <label for="set-capa">capa rules directory (optional &mdash; the bundled binary has its own rules)</label>
-            <input id="set-capa" name="capaRules" type="text" spellcheck="false" />
+            <div class="field-row">
+              <input id="set-capa" name="capaRules" type="text" spellcheck="false" />
+              <button type="button" class="browse-btn" data-target="set-capa" data-kind="dir">Browse…</button>
+            </div>
           </div>
           <div class="field">
             <label for="set-tools">Tools directory <span class="muted">(for the Results right-click menu)</span></label>
-            <input id="set-tools" name="toolsDir" type="text" spellcheck="false" />
+            <div class="field-row">
+              <input id="set-tools" name="toolsDir" type="text" spellcheck="false" />
+              <button type="button" class="browse-btn" data-target="set-tools" data-kind="dir">Browse…</button>
+            </div>
           </div>
           <div class="field">
             <label for="set-ghidra">Ghidra directory <span class="muted">(for headless analysis)</span></label>
-            <input id="set-ghidra" name="ghidraDir" type="text" spellcheck="false" />
+            <div class="field-row">
+              <input id="set-ghidra" name="ghidraDir" type="text" spellcheck="false" />
+              <button type="button" class="browse-btn" data-target="set-ghidra" data-kind="dir">Browse…</button>
+            </div>
           </div>
           <div class="field">
             <label for="set-catalog">Authenticode catalog directory <span class="pill">not yet used</span></label>
-            <input id="set-catalog" name="catalogDirectory" type="text" spellcheck="false" />
+            <div class="field-row">
+              <input id="set-catalog" name="catalogDirectory" type="text" spellcheck="false" />
+              <button type="button" class="browse-btn" data-target="set-catalog" data-kind="dir">Browse…</button>
+            </div>
           </div>
           <div class="row">
             <button type="submit" class="primary">Save settings</button>
@@ -218,10 +244,14 @@
             (standalone binaries, installed per-user), SSDEEP + imphash clustering,
             per-cluster draft YARA rules, triage disposition tracking, 37-column CSV
             reports, live progress with elapsed time and per-phase status, an
-            OS-scoped quick-launch tool menu on the Results grid (right-click),
+            OS-scoped quick-launch tool menu on the Results grid (right-click,
+            with on-request install of the missing Linux tools and a manual-install
+            hint with the search directory for everything else),
             Ghidra headless analysis that opens the GUI with the project loaded
             when it finishes, Markdown/JSON export for AI analysis,
-            clickable Dashboard tiles that filter the Results grid, and
+            clickable, severity-colored Dashboard tiles that filter the Results grid,
+            a server-side Browse dialog for every Settings/Scan path field
+            (a plain browser tab has no native file picker), and
             antivirus/EDR detection with a Windows Defender scan-exclusion helper.</li>
           <li><strong>Known gaps:</strong> catalog <code>.cat</code> signature
             verification, SSDEEP cluster history, and Speakeasy emulation (no
@@ -232,6 +262,23 @@
   </div>
 
   <div id="ctxmenu" hidden></div>
+
+  <dialog id="browse-modal">
+    <div class="modal-head">
+      <strong id="browse-title">Choose a folder</strong>
+      <button id="browse-cancel">Cancel</button>
+    </div>
+    <div class="row browse-pathrow">
+      <button id="browse-up" title="Up one level" aria-label="Up one level">&uarr;</button>
+      <input id="browse-path" type="text" spellcheck="false" />
+      <button id="browse-go">Go</button>
+    </div>
+    <div id="browse-list" class="browse-list"></div>
+    <div class="modal-head browse-foot">
+      <span id="browse-error" class="muted"></span>
+      <button id="browse-select" class="primary">Select this folder</button>
+    </div>
+  </dialog>
 
   <dialog id="ai-modal">
     <div class="modal-head">

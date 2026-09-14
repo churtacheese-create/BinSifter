@@ -743,6 +743,80 @@ confirmed by the project owner's own manual test run at the same time
 the right-click menu against the same instance): "Ghidra came up in front
 this time too."
 
+## Browse dialog, colored Dashboard tiles, quick-launch tool auto-install - 2026-09-13
+
+Three real gaps found from a real test scan on an Ubuntu 26.04 VM
+(`binsifter-ingot_09132026.txt`): Settings had no "Browse..." button (Rowan
+and Winnow both have one), Dashboard tiles weren't color-coded by severity
+the way Rowan's/Winnow's are, and a missing Results right-click quick-launch
+tool was just greyed out with no path to actually get it.
+
+- **Browse.** Ingot's UI is a plain page in the user's own browser, not an
+  embedded webview - there's no native OS file-picker dialog available to
+  it, and (confirmed, not assumed) a browser tab cannot recover a dropped/
+  picked file's real filesystem path either, a deliberate privacy
+  restriction that also rules out drag-and-drop as a path-filling
+  mechanism here (Electron gets this via a patched API; a page served over
+  plain HTTP to a real browser does not). Implemented a real equivalent
+  instead: `GET /api/browse?path=...` (`api.rs`) lists a directory on the
+  machine actually running Ingot (dirs first, case-insensitive, dotfiles
+  hidden on Unix); the frontend renders it as a navigable `<dialog>`
+  (`#browse-modal` in `index.html`, wired in `app.js`) with breadcrumb-style
+  path entry, an Up button, and per-field dir/file mode. Every Settings
+  field and the Scan page's own source-directory field got a "Browse..."
+  button. Drag-and-drop was deliberately not built, per the above.
+- **Colored Dashboard tiles.** `DASHBOARD_TILES` in `app.js` now carries a
+  severity class per tile (`danger`/`warn`/`ok`/`info`), applied only when
+  the tile's count is nonzero. Mapping reuses this same app's own existing
+  YARA severity convention (Critical/High = danger, Medium/Low = warn, from
+  `renderResults`' `sevClass`) rather than importing Rowan's/Winnow's exact
+  palette, so a file's severity reads the same color whether you're looking
+  at the Results grid or the Dashboard. Known-bad/signature-problem/
+  escalated = danger; NSRL/signed/completed = ok (matches Winnow's
+  Success-green treatment for the same facts); IOCs/high-entropy/errors =
+  warn; enrichment counts with no inherent severity (imphash/capa/ATT&CK/
+  clusters) stay neutral info. CSS in `app.css` (`.tile.sev-*`).
+- **Quick-launch tool auto-install.** New `ingot-core::quicklaunch_bootstrap`
+  module, real installers (not stubs) for the 7 Linux quick-launch tools
+  using the exact GitHub repos/asset-matching rules Winnow's
+  `tool_bootstrap.py` already verified work: PE-bear (hasherezade/pe-bear),
+  DIE (horsicq/DIE-engine), and Cutter (rizinorg/cutter) are single-asset
+  Linux AppImage downloads; Anya (elementmerc/anya) is a musl CLI tarball;
+  angr and unblob are PyPI packages installed into a private virtualenv
+  (wheel-first for angr's Cargo-based native extension, `--without-pip` +
+  ensurepip/get-pip.py fallback for venv creation, same as Winnow's
+  hard-won fixes for both). Deliberately Linux-only: Ingot's Windows tool
+  set (PE Studio/CFF Explorer/Resource Hacker/x64dbg/x32dbg/Sigcheck) and
+  the macOS/Windows copies of DIE/Cutter/radare2 have no equivalent
+  verified-safe per-user download source anywhere in this codebase - Rowan
+  itself has never auto-installed any of its own quick-launch tools - so
+  rather than hard-code a guessed download URL, `manual_hint(id)` gives the
+  same "here's where to get it" guidance Rowan's own missing-tool dialogs
+  already use (e.g. its Speakeasy-missing message), and the API layer
+  (`install_launch_tool` in `api.rs`) appends the actual configured/
+  auto-install tools directory so a manual install is picked up
+  automatically with no Settings change. `tools.rs::resolve_tools` now also
+  walks `quicklaunch_bootstrap::tools_dir()` (the same fixed per-user
+  directory capa/FLOSS already install into) so anything installed this way
+  - or dropped there by hand - resolves on every future launch, exactly
+  like capa/FLOSS. The Results right-click menu: a resolved tool launches as
+  before; a missing installable one reads "Install X..." and prompts before
+  downloading; a missing non-installable one reads "X (not installed)..."
+  and shows the manual-install message. `POST /api/launch-tools/install/{id}`
+  never 4xx's for "no installer" - that's real information for the user, not
+  a request error, so it's a `200` with `installable: false` + the hint.
+
+Validated: `cargo test --workspace` (97 - added
+`quicklaunch_bootstrap::tests`), clippy `-D warnings`, fmt clean. Live
+against a running `ingot-server` on Windows: `/api/browse` lists real
+directories including ones with spaces, home-dir fallback works with no
+`path` given, and `/api/launch-tools/install/{id}` returns the expected
+`400` for a tool that isn't in this OS's set and a `200` with a real hint
+(including the actual configured tools directory) for an installable-
+elsewhere-but-not-here tool. The Linux download/pip-install code paths
+themselves (`is_installable` gates them out entirely on Windows/macOS) are
+unverified pending the next real Ubuntu VM test round.
+
 ## Verification (Phase 1)
 
 1. `cargo test --workspace` - all green.

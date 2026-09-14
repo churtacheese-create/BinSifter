@@ -15,8 +15,10 @@
 //! downloaded by [`tool_bootstrap`]), [`iocs`], [`authenticode`] (PE
 //! signature verification), [`archive`] (zip/tar/gzip/7z expansion),
 //! [`tools`] (OS-scoped quick-launch tools + Ghidra headless),
-//! [`ai_export`], [`av_detect`] (installed-AV detection + Defender
-//! exclusion), and the [`engine::scan_directory`] orchestration.
+//! [`quicklaunch_bootstrap`] (on-request installer for those tools, Linux
+//! only - see its module docs), [`ai_export`], [`av_detect`]
+//! (installed-AV detection + Defender exclusion), and the
+//! [`engine::scan_directory`] orchestration.
 
 pub mod ai_export;
 pub mod archive;
@@ -36,6 +38,7 @@ mod imphash_ordinals;
 pub mod iocs;
 pub mod model;
 pub mod nsrl;
+pub mod quicklaunch_bootstrap;
 pub mod report;
 pub mod ssdeep;
 pub mod tool_bootstrap;

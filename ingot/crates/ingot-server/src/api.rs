@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
@@ -110,6 +110,111 @@ pub async fn put_config(
     Json(config.clone()).into_response()
 }
 
+// ------------------------------------------------------------------ browse
+
+/// Server-side directory/file browser for the Settings/Scan "Browse..."
+/// buttons. Ingot's UI is a plain page in the user's own browser (not an
+/// embedded webview), so there's no native OS file-picker dialog available
+/// to it - a browser tab can't be handed a real filesystem path back from
+/// `<input type="file">` for privacy reasons. This lists a directory on the
+/// machine actually running Ingot instead, which the client renders as a
+/// navigable modal. Same trust boundary as everything else in this API:
+/// loopback-only, single local user, no auth.
+#[derive(Deserialize)]
+pub struct BrowseQuery {
+    #[serde(default)]
+    path: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowseEntry {
+    name: String,
+    path: String,
+    is_dir: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowseResponse {
+    path: String,
+    parent: Option<String>,
+    entries: Vec<BrowseEntry>,
+}
+
+fn browse_start_dir(requested: &str) -> PathBuf {
+    if !requested.trim().is_empty() {
+        let p = PathBuf::from(requested.trim());
+        if p.is_dir() {
+            return p;
+        }
+        // a file path (the field already has one) - start in its folder
+        if let Some(parent) = p.parent() {
+            if parent.is_dir() {
+                return parent.to_path_buf();
+            }
+        }
+    }
+    directories::UserDirs::new()
+        .map(|d| d.home_dir().to_path_buf())
+        .unwrap_or_else(|| {
+            if cfg!(windows) {
+                PathBuf::from("C:\\")
+            } else {
+                PathBuf::from("/")
+            }
+        })
+}
+
+pub async fn browse(Query(q): Query<BrowseQuery>) -> Response {
+    let dir = browse_start_dir(&q.path);
+    let read = match std::fs::read_dir(&dir) {
+        Ok(r) => r,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                format!("could not read {}: {e}", dir.display()),
+            )
+                .into_response()
+        }
+    };
+
+    let mut entries: Vec<BrowseEntry> = read
+        .flatten()
+        .filter_map(|entry| {
+            let path = entry.path();
+            let is_dir = entry.file_type().ok()?.is_dir();
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.starts_with('.') && cfg!(not(windows)) {
+                // hide dotfiles/dotdirs on Unix - same convention every
+                // native file picker follows, and nothing a Settings field
+                // here ever needs to point at lives under one
+                return None;
+            }
+            Some(BrowseEntry {
+                name,
+                path: path.to_string_lossy().into_owned(),
+                is_dir,
+            })
+        })
+        .collect();
+    entries.sort_by(|a, b| {
+        b.is_dir.cmp(&a.is_dir).then_with(|| {
+            a.name
+                .to_ascii_lowercase()
+                .cmp(&b.name.to_ascii_lowercase())
+        })
+    });
+
+    let parent = dir.parent().map(|p| p.to_string_lossy().into_owned());
+    Json(BrowseResponse {
+        path: dir.to_string_lossy().into_owned(),
+        parent,
+        entries,
+    })
+    .into_response()
+}
+
 // ------------------------------------------------------------------- tools
 
 /// capa / FLOSS binary status. `available` means Ingot found (or downloaded)
@@ -200,6 +305,65 @@ pub async fn launch(State(state): State<AppState>, Json(req): Json<LaunchRequest
         Ok(Err(e)) => (StatusCode::BAD_REQUEST, format!("{e}")).into_response(),
         Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "launch task failed").into_response(),
     }
+}
+
+/// On-request install for a missing Results right-click quick-launch tool.
+/// If Ingot has a real installer for `id` on this OS
+/// ([`ingot_core::quicklaunch_bootstrap::is_installable`]), kicks it off in
+/// the background (mirrors `install_tool` above) and returns `202`; the
+/// right-click menu re-resolves the tool set on its next open. Otherwise
+/// returns `200` with `installable: false` and a manual-install hint that
+/// includes where a manually-installed copy is found automatically - never
+/// a `4xx`, since "no installer for this tool" isn't a request error, it's
+/// real information the UI shows the user instead of attempting a download.
+pub async fn install_launch_tool(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Response {
+    if !ingot_core::tools::tools_for_os()
+        .iter()
+        .any(|t| t.id == id.as_str())
+    {
+        return (StatusCode::BAD_REQUEST, "unknown tool for this OS").into_response();
+    }
+
+    if !ingot_core::quicklaunch_bootstrap::is_installable(&id) {
+        let tools_dir = state.inner.config.read().unwrap().tools_dir.clone();
+        let auto_dir = ingot_core::quicklaunch_bootstrap::tools_dir();
+        let hint = ingot_core::quicklaunch_bootstrap::manual_hint(&id);
+        let where_to_put_it = if tools_dir.trim().is_empty() {
+            format!(
+                "Once installed, either set \"Tools directory\" in Settings to its folder, or place/symlink it under {} - Ingot searches that folder automatically on every launch.",
+                auto_dir.display()
+            )
+        } else {
+            format!(
+                "Once installed, place/symlink it under your configured tools directory ({tools_dir}) or under {} - Ingot searches both automatically on every launch.",
+                auto_dir.display()
+            )
+        };
+        return Json(json!({
+            "installable": false,
+            "hint": format!("{hint} {where_to_put_it}"),
+        }))
+        .into_response();
+    }
+
+    let label = id.clone();
+    tokio::task::spawn_blocking(
+        move || match ingot_core::quicklaunch_bootstrap::install(&label) {
+            Ok(path) => {
+                tracing::info!("{label} installed: {}", path.display());
+            }
+            Err(e) => tracing::error!("{label} install failed: {e:#}"),
+        },
+    );
+
+    (
+        StatusCode::ACCEPTED,
+        Json(json!({ "started": id, "installable": true })),
+    )
+        .into_response()
 }
 
 #[derive(Deserialize)]

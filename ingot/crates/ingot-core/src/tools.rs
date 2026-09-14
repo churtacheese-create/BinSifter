@@ -251,12 +251,25 @@ pub struct ResolvedTool {
     pub path: String,
     pub needs_confirm: bool,
     pub needs_terminal: bool,
+    /// Whether Ingot has a real on-request installer for this tool on this
+    /// OS - see [`crate::quicklaunch_bootstrap::is_installable`]. Missing
+    /// tools with this `false` get a manual-install hint from the UI
+    /// instead of an "install" action.
+    pub installable: bool,
 }
 
 pub fn resolve_tools(tools_dir: &str) -> Vec<ResolvedTool> {
     // one walk of the (possibly large) tools directory, shared across every
-    // tool - previously this walked the whole tree once per tool.
-    let candidates = walk_candidates(tools_dir);
+    // tool - previously this walked the whole tree once per tool. Also
+    // walks the fixed auto-install directory
+    // (`quicklaunch_bootstrap::tools_dir()`) so a tool installed via the
+    // right-click "install" action is found on every future launch with no
+    // Settings change needed, exactly like capa/FLOSS already are.
+    let mut candidates = walk_candidates(tools_dir);
+    let auto_dir = crate::quicklaunch_bootstrap::tools_dir();
+    candidates.extend(walk_candidates(&auto_dir.to_string_lossy()));
+    candidates.sort();
+    candidates.dedup();
     tools_for_os()
         .iter()
         .map(|t| ResolvedTool {
@@ -268,6 +281,7 @@ pub fn resolve_tools(tools_dir: &str) -> Vec<ResolvedTool> {
                 .unwrap_or_default(),
             needs_confirm: t.needs_confirm,
             needs_terminal: t.needs_terminal,
+            installable: crate::quicklaunch_bootstrap::is_installable(t.id),
         })
         .collect()
 }

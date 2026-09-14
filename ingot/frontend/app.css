@@ -96,6 +96,10 @@ input[type="text"], input[type="search"] {
 }
 input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 
+.field-row { display: flex; gap: 8px; align-items: center; }
+.field-row input { flex: 1; min-width: 0; }
+.browse-btn { flex: 0 0 auto; white-space: nowrap; }
+
 .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 14px 0; }
 .check { display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted); }
 
@@ -179,19 +183,41 @@ select.dispo:disabled { opacity: .5; }
 /* ---- tiles ---- */
 .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-top: 12px; }
 .tile {
+  position: relative;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 9px;
-  padding: 14px;
+  padding: 14px 14px 14px 20px;
   font: inherit;
   text-align: left;
   cursor: pointer;
+  overflow: hidden;
+}
+.tile::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 5px;
+  background: var(--border);
 }
 .tile:hover { border-color: var(--accent); }
 .tile:disabled { cursor: default; opacity: .55; }
 .tile:disabled:hover { border-color: var(--border); }
 .tile .n { font-size: 26px; font-weight: 700; }
 .tile .l { color: var(--text-muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+
+/* Severity/semantic coloring - a colored left edge plus a colored count,
+   matching how Rowan's/Winnow's Dashboard tiles color-code by severity
+   (Critical/High = red/amber, Signed/NSRL/Completed = green, IOCs/entropy
+   = amber "worth a look", neutral counts stay uncolored). */
+.tile.sev-danger::before { background: var(--danger); }
+.tile.sev-danger .n { color: var(--danger); }
+.tile.sev-warn::before { background: var(--warn); }
+.tile.sev-warn .n { color: var(--warn); }
+.tile.sev-ok::before { background: var(--ok); }
+.tile.sev-ok .n { color: var(--ok); }
+.tile.sev-info::before { background: var(--accent); }
+.tile.sev-info .n { color: var(--accent); }
 
 /* ---- results facet chip (set by a Dashboard tile) ---- */
 #results-facet { margin-top: -4px; }
@@ -251,6 +277,49 @@ ul#report-links a { color: var(--accent); }
 #ctxmenu button:hover:not(:disabled) { background: var(--surface-2); }
 #ctxmenu button:disabled { color: var(--text-muted); cursor: default; }
 .ctx-sep { height: 1px; background: var(--border); margin: 4px 6px; }
+
+/* ---- Browse (directory/file picker) modal ---- */
+#browse-modal {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  max-width: 640px;
+  width: 90vw;
+  padding: 16px;
+}
+#browse-modal::backdrop { background: rgba(0, 0, 0, .45); }
+.browse-pathrow { margin: 4px 0 10px; }
+.browse-pathrow input { flex: 1; font-family: var(--mono); font-size: 12.5px; }
+.browse-foot { margin-top: 10px; margin-bottom: 0; justify-content: space-between; }
+.browse-foot span { flex: 1; }
+.browse-list {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  height: 46vh;
+  overflow: auto;
+}
+.browse-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 7px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.browse-entry:last-child { border-bottom: 0; }
+.browse-entry:hover { background: var(--surface-2); }
+.browse-entry .icon { width: 1.2em; text-align: center; color: var(--text-muted); }
+.browse-entry.is-dir .icon { color: var(--accent); }
+.browse-entry.is-selected { background: var(--surface-2); border-color: var(--accent); }
+.browse-empty { padding: 14px 12px; color: var(--text-muted); }
 
 /* ---- AI export modal ---- */
 #ai-modal {
