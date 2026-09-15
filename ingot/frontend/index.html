@@ -206,6 +206,17 @@
         </div>
         <div id="av-status" class="muted"></div>
 
+        <h2>Update</h2>
+        <p class="muted">Checks this repository's <code>ingot-v*</code> GitHub releases for a
+          newer version. Installing downloads the matching build, verifies it against the
+          release's own checksums, and replaces the running binary in place &mdash; Ingot then
+          restarts itself automatically to finish.</p>
+        <div class="row">
+          <button id="update-check">Check for updates</button>
+          <button id="update-install" hidden>Download and install update</button>
+        </div>
+        <div id="update-status" class="muted"></div>
+
         <h2>Fixed locations</h2>
         <dl id="fixed-locations" class="kv"></dl>
       </section>
@@ -252,7 +263,9 @@
             clickable, severity-colored Dashboard tiles that filter the Results grid,
             a server-side Browse dialog for every Settings/Scan path field
             (a plain browser tab has no native file picker), and
-            antivirus/EDR detection with a Windows Defender scan-exclusion helper.</li>
+            antivirus/EDR detection with a Windows Defender scan-exclusion helper, and
+            a Settings-page self-update (checks GitHub, verifies the download against
+            its release checksums, and restarts itself into the new version).</li>
           <li><strong>Known gaps:</strong> catalog <code>.cat</code> signature
             verification, SSDEEP cluster history, and Speakeasy emulation (no
             standalone binary) &mdash; none are in the other variants either.</li>

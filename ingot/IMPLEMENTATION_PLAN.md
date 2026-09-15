@@ -817,6 +817,82 @@ elsewhere-but-not-here tool. The Linux download/pip-install code paths
 themselves (`is_installable` gates them out entirely on Windows/macOS) are
 unverified pending the next real Ubuntu VM test round.
 
+## Ghidra headless silently failed on Linux - project path can't live under `~/.local/share` - 2026-09-14
+
+The very next real VM round (same Ubuntu 26.04 box) reported the Linux tool
+auto-installs above all worked (PE-bear/Anya/DIE/Cutter/unblob/angr all
+downloaded and launched live over the network, confirmed from the run's own
+log), but Ghidra's GUI never opened after a right-click "Ghidra headless
+analysis." Ingot's own log showed only "Ghidra headless analysis started...”
+twice, then silence - no error, no completion, nothing.
+
+Root cause, found by SSHing into the VM and reproducing the exact command
+Ingot ran (with output captured this time, which Ingot itself was throwing
+away - see below): Ghidra 12.1.3's own `HeadlessAnalyzer` aborted instantly
+with `IllegalArgumentException: Path element starting with '.' is not
+permitted`, from `ghidra.framework.model.ProjectLocator` ->
+`GhidraURL.checkValidProjectPath` -> `NamingUtilities.checkName`. Ghidra
+rejects ANY path component starting with `.` in a project's location - and
+`launch_ghidra` put `ghidra_projects/` under `report_dir`, which lives under
+`config::data_root()`, which on Linux is `~/.local/share/ingot` (the XDG
+convention) - `.local` trips it, every single time, unconditionally. This
+is not an edge case: Ghidra headless could never have worked on Linux with
+Ingot's default configuration, full stop. Windows/macOS never hit it only
+because `%LOCALAPPDATA%`/`~/Library/Application Support` have no
+dot-prefixed component - accidental safety, not a design guarantee.
+
+Confirmed against the real file three times before touching any code
+(re-running the exact `analyzeHeadless` invocation by hand): (1) under the
+real `~/.local/share/...` project dir, the exact same abort, reproduced on
+demand; (2) under a plain non-dotted test directory, full success -
+`Analysis succeeded`, `.gpr`/`.rep` written; (3) `ghidraRun` against that
+project genuinely opened the GUI (`GhidraClassLoader`/decompile helper
+processes alive, growing CPU time) once launched with the VM's real
+session's `DISPLAY`/`WAYLAND_DISPLAY`/`XAUTHORITY` (pulled from
+`systemctl --user show-environment`, since testing over plain SSH as a
+different user has no display at all - a separate, self-inflicted gap in
+the test rig, not a bug in Ingot).
+
+**Fixed**: new `config::ghidra_projects_root()` - `~/BinSifter-Ingot-Ghidra-
+Projects/` directly under the user's home directory, deliberately outside
+`data_root()` so it can never inherit a dot-prefixed ancestor on any OS.
+`tools::launch_ghidra` no longer takes a `report_dir` argument at all (it
+was only ever used to build the now-relocated `projects_dir`); its Windows
+branch is untouched (already battle-tested across several earlier rounds -
+not touched without being able to re-verify it as carefully as Linux this
+round).
+
+**Also fixed the actual observability gap that made this take a live SSH
+session to diagnose instead of a log line**: the non-Windows launch chain
+(`analyzeHeadless && ghidraRun`) had its stdout/stderr both sent to
+`Stdio::null()` - Ingot logged "started" the instant it spawned the shell
+and never learned anything again. Now redirects to
+`<project_name>.launch.log` inside the project directory itself, via shell
+redirection embedded in the command string (`{ ... } > log 2>&1`) rather
+than a Rust-side `Stdio::piped()` - keeps the chain genuinely detached (no
+pipe for Ingot to drain, so it still survives an Ingot restart exactly as
+before) while making a future failure diagnosable from the Reports/project
+directory alone. `info!` now names the log file when available. Windows'
+already-more-mature `.bat`-based launch keeps its own `Stdio::null()`
+unchanged - a separate improvement, not bundled into an unrelated fix.
+
+Validated: `cargo test --workspace` (97, no new unit-testable logic - this
+is real-filesystem/real-Ghidra behavior, consistent with this project's own
+precedent that Ghidra-launch correctness gets proven live, not with a
+mock), clippy `-D warnings`, fmt clean. **Live end-to-end against the exact
+real file and the exact real API endpoint**, not just the standalone repro:
+copied the three changed files onto the VM's own separate git checkout
+(`/home/hal/BinSifter`), rebuilt `--release` there, ran the real `ingot`
+binary with the VM's real session environment, and called
+`POST /api/ghidra` for real - `.gpr`/`.rep`/`.launch.log` created under the
+new `~/BinSifter-Ingot-Ghidra-Projects/`, analysis reported "Import
+succeeded," and Ghidra's own `application.log` confirmed
+`GhidraRun startup complete` / `Opening project` with the java process
+alive and stable. VM checkout reverted to its last commit and all test
+artifacts (project files, log files, background processes) cleaned up
+afterward - this round's actual code changes live only in the main
+repository, to be committed from there as usual.
+
 ## Verification (Phase 1)
 
 1. `cargo test --workspace` - all green.

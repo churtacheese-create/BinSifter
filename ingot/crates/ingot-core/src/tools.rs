@@ -513,26 +513,17 @@ fn stage_safe_import_copy(target: &Path, dir: &Path) -> anyhow::Result<PathBuf> 
     Ok(path)
 }
 
-/// Kick off `analyzeHeadless` for `target` into `<report_dir>/ghidra_projects/`,
-/// then - on success - open the resulting project in Ghidra's own GUI so the
-/// analyzed program is loaded for review (the behaviour Winnow / Rowan have).
-/// Fire-and-forget: the chain runs detached as one shell process, so it
-/// survives an Ingot restart. Headless analysis runs for minutes.
-pub fn launch_ghidra(
-    headless: &str,
-    target: &Path,
-    report_dir: &str,
-    sha1: Option<&str>,
-) -> anyhow::Result<PathBuf> {
-    if report_dir.is_empty() {
-        return Err(anyhow!(
-            "configure a report directory first - Ghidra projects live under it"
-        ));
-    }
+/// Kick off `analyzeHeadless` for `target` into
+/// [`crate::config::ghidra_projects_root`], then - on success - open the
+/// resulting project in Ghidra's own GUI so the analyzed program is loaded
+/// for review (the behaviour Winnow / Rowan have). Fire-and-forget: the
+/// chain runs detached as one shell process, so it survives an Ingot
+/// restart. Headless analysis runs for minutes.
+pub fn launch_ghidra(headless: &str, target: &Path, sha1: Option<&str>) -> anyhow::Result<PathBuf> {
     if !target.is_file() {
         return Err(anyhow!("target file no longer exists"));
     }
-    let projects_dir = Path::new(report_dir).join("ghidra_projects");
+    let projects_dir = crate::config::ghidra_projects_root();
     std::fs::create_dir_all(&projects_dir)?;
     // The SHA1 branch is always plain hex, already safe. The fallback (no
     // SHA1 - e.g. Ghidra invoked before a scan populated the session) uses
@@ -648,7 +639,7 @@ pub fn launch_ghidra(
         );
     }
     #[cfg(not(target_os = "windows"))]
-    {
+    let log_path = {
         // POSIX sh doesn't share cmd's "parens are special even when quoted"
         // trap - `(`/`)` lose all special meaning inside double quotes - so
         // shell_join's plain quoting is sufficient here.
@@ -666,20 +657,43 @@ pub fn launch_ghidra(
             ghidra_run.to_string_lossy().into_owned(),
             gpr.to_string_lossy().into_owned(),
         ]);
+        // Redirected to a file (not a Rust-side Stdio::piped()) so the chain
+        // stays truly detached - Ingot never has to keep a pipe drained, and
+        // the log survives an Ingot restart same as the analysis itself
+        // does. Added after a real failure (Ghidra's own project-path
+        // validation rejecting `data_root()`'s dot-prefixed Linux location)
+        // was invisible anywhere in Ingot's own logs - every earlier run
+        // just logged "started" and went silent.
+        let log_path = projects_dir.join(format!("{project_name}.launch.log"));
+        let log_path_s = shell_join(std::slice::from_ref(
+            &log_path.to_string_lossy().into_owned(),
+        ));
         Command::new("sh")
             .arg("-c")
-            .arg(format!("{analyze} && {open_gui}"))
+            .arg(format!(
+                "{{ {analyze} && {open_gui} ; }} > {log_path_s} 2>&1"
+            ))
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
             .context("could not launch analyzeHeadless")?;
-    }
+        Some(log_path)
+    };
+    #[cfg(target_os = "windows")]
+    let log_path: Option<PathBuf> = None;
 
-    info!(
-        "Ghidra headless analysis started for {} - the GUI opens with the project when it finishes",
-        target.display()
-    );
+    match log_path {
+        Some(p) => info!(
+            "Ghidra headless analysis started for {} - the GUI opens with the project when it finishes (log: {})",
+            target.display(),
+            p.display()
+        ),
+        None => info!(
+            "Ghidra headless analysis started for {} - the GUI opens with the project when it finishes",
+            target.display()
+        ),
+    }
     Ok(gpr)
 }
 

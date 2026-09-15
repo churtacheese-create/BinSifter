@@ -78,6 +78,10 @@ If there's no internet connection when a tool is missing, BinSifter tells you so
 
 Any entry showing "(not configured)" means that tool's path wasn't found under "Path to tools" (or "Path to Ghidra" for the Ghidra entry).
 
+## Updating
+
+Settings has a "Check for updates" button. Winnow never overwrites its own install - it's a root-owned system package (`.deb`/`.rpm`/`.pkg.tar.zst`), and rewriting those files outside `dpkg`/`rpm`/`pacman` would corrupt their own integrity tracking - so this only checks GitHub, downloads the matching package to your Downloads folder, and shows you the exact `sudo apt/dnf/pacman` command to run.
+
 ## Dark/light mode
 
 Winnow follows your desktop's theme automatically at startup - checked once at launch, not live (a theme change while Winnow is running needs a relaunch to pick up). Detection isn't distro-specific (dark/light mode is a desktop-environment concept, not a distro one - any of Debian/Red Hat/Arch's families can run GNOME, KDE Plasma, XFCE, or something else), so it tries, in order: the desktop-agnostic `xdg-desktop-portal` Settings API (covers whichever desktop environment provides a portal backend), GNOME's `gsettings`, KDE Plasma's `kdeglobals` config file, then XFCE's `xfconf-query`. Falls back to light mode if none of those can tell.

@@ -35,6 +35,7 @@ tempfile = "3"
 pe-sign = "0.1"
 rustls-native-certs = "0.8"
 base64 = "0.22"
+self-replace = "1"
 
 # archive expansion (all pure-Rust so static cross builds stay possible)
 zip = { version = "8", default-features = false, features = ["deflate", "aes-crypto"] }

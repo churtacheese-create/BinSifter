@@ -6,11 +6,13 @@
 mod api;
 mod assets;
 
+use std::sync::Arc;
+
 use anyhow::Context;
 use axum::routing::{get, post};
 use axum::Router;
 use clap::Parser;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, Notify};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::prelude::*;
@@ -90,7 +92,8 @@ async fn main() -> anyhow::Result<()> {
         ingot_core::config::data_root().display()
     );
 
-    let state = AppState::new(config, log_tx);
+    let shutdown = Arc::new(Notify::new());
+    let state = AppState::new(config, log_tx, shutdown.clone());
 
     let app = Router::new()
         .route("/api/health", get(api::health))
@@ -108,6 +111,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/ai-export", post(api::ai_export))
         .route("/api/av", get(api::get_av))
         .route("/api/av/exclude", post(api::av_exclude))
+        .route("/api/update/check", get(api::check_update))
+        .route("/api/update/install", post(api::install_update))
         .route("/api/scan", post(api::start_scan))
         .route("/api/scan/current", get(api::scan_status))
         .route("/api/scan/current/events", get(api::scan_events))
@@ -139,13 +144,19 @@ async fn main() -> anyhow::Result<()> {
     }
 
     axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
+        .with_graceful_shutdown(shutdown_signal(shutdown))
         .await?;
 
     Ok(())
 }
 
-async fn shutdown_signal() {
-    let _ = tokio::signal::ctrl_c().await;
+/// Waits for either Ctrl+C or a proactive shutdown request (the self-update
+/// flow, which has already spawned the new binary and just needs this
+/// instance to release the port).
+async fn shutdown_signal(shutdown: Arc<Notify>) {
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => {}
+        _ = shutdown.notified() => {}
+    }
     tracing::info!("Shutting down.");
 }

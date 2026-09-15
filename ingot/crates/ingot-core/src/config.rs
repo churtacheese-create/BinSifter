@@ -16,7 +16,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
-use directories::ProjectDirs;
+use directories::{ProjectDirs, UserDirs};
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 
@@ -41,6 +41,31 @@ pub fn data_root() -> PathBuf {
         dir
     })
     .clone()
+}
+
+/// Where Ghidra headless project files (`.gpr`/`.rep`) get created -
+/// deliberately NOT nested under [`data_root`]. Confirmed live against a
+/// real Ghidra 12.1.3 headless run: its own `ProjectLocator` (via
+/// `GhidraURL.checkValidProjectPath` -> `NamingUtilities.checkName`) aborts
+/// with `IllegalArgumentException: Path element starting with '.' is not
+/// permitted` for ANY path component starting with `.` - and `data_root()`
+/// on Linux is `~/.local/share/...` (the XDG convention), whose `.local`
+/// segment trips this every time. Windows/macOS data roots happen not to
+/// have a dot-prefixed component (`%LOCALAPPDATA%`, `~/Library/Application
+/// Support`), so this was invisible there - but Ghidra projects live
+/// outside `data_root()` unconditionally rather than only-by-accident on
+/// two of three platforms.
+pub fn ghidra_projects_root() -> PathBuf {
+    let dir = UserDirs::new()
+        .map(|d| d.home_dir().join("BinSifter-Ingot-Ghidra-Projects"))
+        .unwrap_or_else(|| data_root().join("ghidra_projects"));
+    if let Err(e) = fs::create_dir_all(&dir) {
+        warn!(
+            "Could not create Ghidra projects directory {}: {e}",
+            dir.display()
+        );
+    }
+    dir
 }
 
 /// The seven fields the Settings page owns and that get cached to disk.

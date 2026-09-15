@@ -17,7 +17,7 @@ use axum::Json;
 use futures_util::stream::Stream;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, Notify};
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt;
 
@@ -35,6 +35,11 @@ struct Inner {
     config: RwLock<IngotConfig>,
     scan: RwLock<Option<Arc<ScanSession>>>,
     log_tx: broadcast::Sender<String>,
+    /// Fired to trigger a graceful shutdown proactively (alongside the
+    /// normal Ctrl+C path) - used by the self-update flow, which spawns
+    /// the new binary first, then asks this instance to exit so the new
+    /// one can bind the port.
+    shutdown: Arc<Notify>,
 }
 
 struct ScanSession {
@@ -71,12 +76,17 @@ impl ScanSession {
 }
 
 impl AppState {
-    pub fn new(config: IngotConfig, log_tx: broadcast::Sender<String>) -> Self {
+    pub fn new(
+        config: IngotConfig,
+        log_tx: broadcast::Sender<String>,
+        shutdown: Arc<Notify>,
+    ) -> Self {
         AppState {
             inner: Arc::new(Inner {
                 config: RwLock::new(config),
                 scan: RwLock::new(None),
                 log_tx,
+                shutdown,
             }),
         }
     }
@@ -380,10 +390,7 @@ pub async fn launch_ghidra(
     State(state): State<AppState>,
     Json(req): Json<FileRequest>,
 ) -> Response {
-    let (ghidra_dir, report_dir) = {
-        let c = state.inner.config.read().unwrap();
-        (c.ghidra_dir.clone(), c.report_directory.clone())
-    };
+    let ghidra_dir = state.inner.config.read().unwrap().ghidra_dir.clone();
     let sha1 = state.inner.scan.read().unwrap().as_ref().and_then(|s| {
         record_for_path(&s.records.lock().unwrap(), &req.file_path).and_then(|r| r.sha1.clone())
     });
@@ -392,12 +399,7 @@ pub async fn launch_ghidra(
     match tokio::task::spawn_blocking(move || {
         let headless = ingot_core::tools::resolve_ghidra_headless(&ghidra_dir)
             .ok_or_else(|| anyhow::anyhow!("Ghidra not found - set its directory in Settings"))?;
-        ingot_core::tools::launch_ghidra(
-            &headless.to_string_lossy(),
-            &target,
-            &report_dir,
-            sha1.as_deref(),
-        )
+        ingot_core::tools::launch_ghidra(&headless.to_string_lossy(), &target, sha1.as_deref())
     })
     .await
     {
@@ -497,6 +499,54 @@ pub async fn av_exclude(
         Ok(Err(e)) => (StatusCode::BAD_REQUEST, format!("{e}")).into_response(),
         Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "exclusion task failed").into_response(),
     }
+}
+
+// ------------------------------------------------------------------ update
+
+/// Check GitHub for a newer `ingot-v*` release. Never installs anything.
+pub async fn check_update() -> Response {
+    match tokio::task::spawn_blocking(ingot_core::update::check_for_update).await {
+        Ok(Ok(info)) => Json(info).into_response(),
+        Ok(Err(e)) => (StatusCode::BAD_REQUEST, format!("{e}")).into_response(),
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "update check failed").into_response(),
+    }
+}
+
+/// Downloads and installs the newest `ingot-v*` release, then restarts:
+/// spawns the (now-updated) binary as a detached child with this process's
+/// own argv - forcing `--no-open` since whoever triggered this is already
+/// looking at a live Settings page - and asks this instance to shut down
+/// gracefully so the new one can bind the port. Fire-and-forget like the
+/// other install endpoints: the browser's existing health-check polling
+/// (`pollHealth()`) already reflects the brief restart with no new
+/// frontend logic needed.
+pub async fn install_update(State(state): State<AppState>) -> Response {
+    tokio::task::spawn_blocking(move || {
+        if let Err(e) = ingot_core::update::download_and_replace() {
+            tracing::error!("self-update failed: {e:#}");
+            return;
+        }
+        let exe = match std::env::current_exe() {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::error!("updated the binary but could not locate it to relaunch: {e:#}");
+                return;
+            }
+        };
+        let mut args: Vec<String> = std::env::args().skip(1).collect();
+        if !args.iter().any(|a| a == "--no-open") {
+            args.push("--no-open".to_string());
+        }
+        match std::process::Command::new(&exe).args(&args).spawn() {
+            Ok(_) => {
+                tracing::info!("Restarting into the updated Ingot...");
+                state.inner.shutdown.notify_one();
+            }
+            Err(e) => tracing::error!("update installed, but could not relaunch: {e:#}"),
+        }
+    });
+
+    (StatusCode::ACCEPTED, Json(json!({ "started": true }))).into_response()
 }
 
 // -------------------------------------------------------------------- scan

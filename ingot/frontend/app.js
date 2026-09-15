@@ -12,6 +12,8 @@ const state = {
   scanTimer: null,
   scanPoll: null,
   facet: null,
+  awaitingRestart: false,
+  sawOfflineSinceUpdate: false,
 };
 
 // ---------------------------------------------------------------- navigation
@@ -50,9 +52,15 @@ async function pollHealth() {
     badge.textContent = `${h.name} ${h.version}`;
     badge.className = "badge ok";
     $("#about-version").textContent = `${h.name} ${h.version}`;
+    // An update in progress briefly takes the service offline while it
+    // restarts - reload only once it's gone offline AND come back (not on
+    // every ordinary successful poll), so the page picks up the new
+    // version cleanly instead of running old JS against a new backend.
+    if (state.awaitingRestart && state.sawOfflineSinceUpdate) location.reload();
   } catch {
     badge.textContent = "service offline";
     badge.className = "badge bad";
+    if (state.awaitingRestart) state.sawOfflineSinceUpdate = true;
   }
 }
 
@@ -813,6 +821,54 @@ $("#av-exclude")?.addEventListener("click", async () => {
   } catch (e) {
     $("#av-status").textContent = e.message;
   } finally {
+    btn.disabled = false;
+  }
+});
+
+// ---------------------------------------------------------------- update
+let pendingUpdate = null;
+
+$("#update-check")?.addEventListener("click", async () => {
+  const btn = $("#update-check");
+  const out = $("#update-status");
+  btn.disabled = true;
+  out.textContent = "Checking…";
+  $("#update-install").hidden = true;
+  pendingUpdate = null;
+  try {
+    const r = await api("/api/update/check");
+    if (r.updateAvailable) {
+      pendingUpdate = r;
+      out.textContent = `Version ${r.latestVersion} is available (you have ${r.currentVersion}).`;
+      $("#update-install").hidden = false;
+    } else {
+      out.textContent = `You're running the latest version (${r.currentVersion}).`;
+    }
+  } catch (e) {
+    out.textContent = "Update check failed: " + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$("#update-install")?.addEventListener("click", async () => {
+  if (!pendingUpdate) return;
+  if (!confirm(
+    `Download and install version ${pendingUpdate.latestVersion}?\n\n` +
+    `Ingot will restart itself automatically to finish - this page will briefly ` +
+    `show "service offline" while it does.`
+  )) return;
+  const btn = $("#update-install");
+  const out = $("#update-status");
+  btn.disabled = true;
+  out.textContent = "Downloading and installing… watch the Logs tab for progress.";
+  try {
+    await api("/api/update/install", { method: "POST" });
+    out.textContent = "Installing — Ingot will restart automatically in a few seconds.";
+    state.awaitingRestart = true;
+    state.sawOfflineSinceUpdate = false;
+  } catch (e) {
+    out.textContent = "Update failed: " + e.message;
     btn.disabled = false;
   }
 });

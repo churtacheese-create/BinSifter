@@ -29,6 +29,10 @@ Right-click any row in Results for on-demand actions, driven by "Path to tools"/
 
 Any entry showing "(not configured)" means that tool's path wasn't found under "Path to tools" (or "Path to Ghidra" for the Ghidra entry).
 
+## Updating
+
+Settings has a "Check for updates" button - if a newer version is on GitHub, it downloads and installs it, then restarts BinSifter. Only works for the plain-script install (the Setup.exe/MSI, which run `BinSifter-Rowan.ps1` via `pwsh.exe`); the portable `.exe` build points you at the releases page instead, since it's a compiled binary and can't be safely replaced while running.
+
 ## License
 
 BinSifter is source-available, not open source. See the repo root's `LICENSE` (PolyForm Strict License 1.0.0).

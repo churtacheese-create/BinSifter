@@ -33,6 +33,12 @@ BinSifter_CHANGELOG.md next to this script.
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# Hand-kept in sync with the shared `v*` GitHub release tag (same tag line
+# Winnow's binsifter.__version__ tracks) - bump this alongside that tag on
+# every release. Used by the About page and the Settings page's "Check for
+# updates" feature; Rowan had no version tracking at all before this.
+$Global:BinSifterVersion = '2.0.8'
+
 function Test-SystemDarkMode {
     try {
         $value = Get-ItemPropertyValue `
@@ -6077,6 +6083,50 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
             $lblDefenderStatus.Text = ''
             $null = $layout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))
             $layout.Controls.Add($lblDefenderStatus, 1, $rowIndex)
+            $rowIndex++
+
+            # Checks GitHub's releases for a newer v* tag (the line Rowan
+            # shares with Winnow). Only supports the plain-script install
+            # (this file, run via pwsh.exe/powershell.exe - not locked
+            # while running, so it's safe to overwrite and relaunch) - the
+            # portable PS2EXE-compiled .exe is a real locked binary and
+            # gets a "download it yourself" message instead of a different
+            # replace mechanism built just for that disposable format.
+            $lblUpdateHeader = New-Object System.Windows.Forms.Label
+            $lblUpdateHeader.Text = 'Update'
+            $lblUpdateHeader.AutoSize = $true
+            $lblUpdateHeader.Margin = New-Object System.Windows.Forms.Padding(3, 28, 0, 3)
+            $lblUpdateHeader.Font = New-Object System.Drawing.Font('Segoe UI', 9, [System.Drawing.FontStyle]::Bold)
+            $lblUpdateHeader.ForeColor = $theme.Fore
+            $null = $layout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))
+            $layout.Controls.Add($lblUpdateHeader, 1, $rowIndex)
+            $rowIndex++
+
+            $lblUpdateExplainer = New-Object System.Windows.Forms.Label
+            $lblUpdateExplainer.Text = "Checks this repository's GitHub releases for a newer version. If one is found, downloads it and restarts BinSifter to finish installing - only supported when running the plain BinSifter-Rowan.ps1 script (the Setup.exe/MSI install); the portable .exe build will be pointed at the releases page instead."
+            $lblUpdateExplainer.AutoSize = $true
+            $lblUpdateExplainer.MaximumSize = New-Object System.Drawing.Size(620, 0)
+            $lblUpdateExplainer.Margin = New-Object System.Windows.Forms.Padding(3, 0, 8, 6)
+            $lblUpdateExplainer.ForeColor = $theme.MutedFore
+            $null = $layout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))
+            $layout.Controls.Add($lblUpdateExplainer, 1, $rowIndex)
+            $rowIndex++
+
+            $btnCheckUpdate = New-ThemedButton -Text 'Check for updates' -Width 320 -Height 32
+            $btnCheckUpdate.Margin = New-Object System.Windows.Forms.Padding(3, 0, 0, 3)
+            $null = $layout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))
+            $layout.Controls.Add($btnCheckUpdate, 1, $rowIndex)
+            $rowIndex++
+
+            $lblUpdateStatus = New-Object System.Windows.Forms.Label
+            $lblUpdateStatus.AutoSize = $true
+            $lblUpdateStatus.MaximumSize = New-Object System.Drawing.Size(620, 0)
+            $lblUpdateStatus.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+            $lblUpdateStatus.Margin = New-Object System.Windows.Forms.Padding(3, 6, 0, 0)
+            $lblUpdateStatus.ForeColor = $theme.MutedFore
+            $lblUpdateStatus.Text = ''
+            $null = $layout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))
+            $layout.Controls.Add($lblUpdateStatus, 1, $rowIndex)
 
             $page.Controls.Add($layout)
 
@@ -6084,6 +6134,7 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
                 Page = $page; Fields = $fieldBoxes; BtnSave = $btnSave; LblStatus = $lblStatus
                 BtnAddDefenderExclusion = $btnAddDefenderExclusion; LblDefenderStatus = $lblDefenderStatus
                 BtnDetectAv = $btnDetectAv; LblAvStatus = $lblAvStatus
+                BtnCheckUpdate = $btnCheckUpdate; LblUpdateStatus = $lblUpdateStatus
             }
         }
 
@@ -6428,7 +6479,7 @@ For repeatable case work, preserve the report directory (Reports\ next to BinSif
             $lblVersion.Font = New-Object System.Drawing.Font('Segoe UI', 12, [System.Drawing.FontStyle]::Bold)
             $lblVersion.ForeColor = $theme.Fore
             $lblVersion.Location = New-Object System.Drawing.Point(6, 155)
-            $lblVersion.Text = "BinSifter Rowan"
+            $lblVersion.Text = "BinSifter Rowan $Global:BinSifterVersion"
 
             $lblDesc = New-Object System.Windows.Forms.Label
             $lblDesc.AutoSize = $true
@@ -6759,6 +6810,157 @@ For repeatable case work, preserve the report directory (Reports\ next to BinSif
             finally {
                 $settings.BtnAddDefenderExclusion.Enabled = $true
             }
+        })
+
+        $settings.BtnCheckUpdate.Add_Click({
+            $settings.BtnCheckUpdate.Enabled = $false
+            $settings.LblUpdateStatus.ForeColor = $theme.Fore
+            $settings.LblUpdateStatus.Text = 'Checking for updates...'
+            [System.Windows.Forms.Application]::DoEvents()
+
+            # Only the plain-script install (this file, run via
+            # pwsh.exe/powershell.exe) is a safe self-update target - the
+            # script file isn't locked while running. The portable
+            # PS2EXE-compiled .exe is a real locked binary that would need a
+            # fundamentally different replace-on-relaunch mechanism, not
+            # built here for a disposable/no-install format.
+            $hostExe = try { [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName } catch { $null }
+            $hostName = if ($hostExe) { Split-Path -Leaf $hostExe } else { '' }
+            if ($hostName -notin @('pwsh.exe', 'powershell.exe')) {
+                $settings.LblUpdateStatus.ForeColor = $theme.MutedFore
+                $settings.LblUpdateStatus.Text = "Update isn't supported for this portable build - download the latest version from https://github.com/churtacheese-create/BinSifter/releases"
+                $settings.BtnCheckUpdate.Enabled = $true
+                return
+            }
+
+            try {
+                $releases = Invoke-RestMethod -Uri 'https://api.github.com/repos/churtacheese-create/BinSifter/releases?per_page=30' `
+                    -Headers @{ 'User-Agent' = 'BinSifter-Rowan' } -TimeoutSec 10
+            }
+            catch {
+                $settings.LblUpdateStatus.ForeColor = $theme.Danger
+                $settings.LblUpdateStatus.Text = "Could not check for updates: $($_.Exception.Message)"
+                $settings.BtnCheckUpdate.Enabled = $true
+                return
+            }
+
+            # Rowan and Winnow share one `v*` tag line on the same GitHub
+            # repo Ingot also publishes to (Ingot's own line is the
+            # disjoint `ingot-v*`) - never use /releases/latest, which would
+            # happily return whichever tag is newest by publish time
+            # regardless of prefix. Filter by tag first, then pick the max
+            # by parsed version, not just first-in-list.
+            $currentParts = $Global:BinSifterVersion -split '\.' | ForEach-Object { [int]$_ }
+            $bestParts = $null
+            # PowerShell has no built-in tuple comparison, so (major, minor,
+            # patch) is compared field-by-field, most-significant first.
+            foreach ($release in @($releases)) {
+                if ($release.tag_name -notmatch '^v(\d+)\.(\d+)\.(\d+)$') { continue }
+                $parts = @([int]$Matches[1], [int]$Matches[2], [int]$Matches[3])
+                if ($null -eq $bestParts -or
+                    $parts[0] -gt $bestParts[0] -or
+                    ($parts[0] -eq $bestParts[0] -and $parts[1] -gt $bestParts[1]) -or
+                    ($parts[0] -eq $bestParts[0] -and $parts[1] -eq $bestParts[1] -and $parts[2] -gt $bestParts[2])) {
+                    $bestParts = $parts
+                }
+            }
+
+            $isNewer = $false
+            if ($bestParts) {
+                $isNewer = $bestParts[0] -gt $currentParts[0] -or
+                    ($bestParts[0] -eq $currentParts[0] -and $bestParts[1] -gt $currentParts[1]) -or
+                    ($bestParts[0] -eq $currentParts[0] -and $bestParts[1] -eq $currentParts[1] -and $bestParts[2] -gt $currentParts[2])
+            }
+
+            if (-not $isNewer) {
+                $settings.LblUpdateStatus.ForeColor = $theme.Success
+                $settings.LblUpdateStatus.Text = "You're running the latest version ($Global:BinSifterVersion)."
+                $settings.BtnCheckUpdate.Enabled = $true
+                return
+            }
+
+            $latestVersion = $bestParts -join '.'
+            $confirmed = [System.Windows.Forms.MessageBox]::Show(
+                $form,
+                "Version $latestVersion is available (you have $Global:BinSifterVersion). Download and install now?`r`n`r`nBinSifter will close and restart to complete the update.",
+                'Update available',
+                [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question,
+                [System.Windows.Forms.MessageBoxDefaultButton]::Button2)
+            if ($confirmed -ne [System.Windows.Forms.DialogResult]::Yes) {
+                $settings.LblUpdateStatus.ForeColor = $theme.MutedFore
+                $settings.LblUpdateStatus.Text = "Update available: $latestVersion - not installed."
+                $settings.BtnCheckUpdate.Enabled = $true
+                return
+            }
+
+            $settings.LblUpdateStatus.ForeColor = $theme.Fore
+            $settings.LblUpdateStatus.Text = 'Downloading update...'
+            [System.Windows.Forms.Application]::DoEvents()
+
+            # The complete list of files this script actually loads from
+            # disk at $BinSifterRoot (Import-ThemedLogo / the window-icon
+            # loader) - see $bootstrapScriptRoot's own loader at the bottom
+            # of this file. Fetched straight from the tagged commit's raw
+            # content - Rowan needs no compile step for any package format,
+            # so the plain files in the repo ARE the release.
+            $updateFiles = @(
+                'BinSifter-Rowan.ps1',
+                'BinSifter-Logo-Horizontal.png',
+                'BinSifter-Logo-Horizontal-Dark.png',
+                'BinSifter-WindowIcon.png'
+            )
+            $stagingDir = Join-Path $env:TEMP "BinSifterRowanUpdate_$([guid]::NewGuid())"
+            try {
+                $null = New-Item -Path $stagingDir -ItemType Directory -Force -ErrorAction Stop
+                foreach ($file in $updateFiles) {
+                    $url = "https://raw.githubusercontent.com/churtacheese-create/BinSifter/v$latestVersion/$file"
+                    Invoke-WebRequest -Uri $url -OutFile (Join-Path $stagingDir $file) -TimeoutSec 30 -ErrorAction Stop
+                }
+                # Sanity-check the downloaded script isn't a truncated/failed
+                # download before ever touching the real install - a bad
+                # download must never brick a working BinSifter.
+                $downloadedScript = Join-Path $stagingDir 'BinSifter-Rowan.ps1'
+                if ((Get-Item $downloadedScript).Length -lt 100KB) {
+                    throw "Downloaded BinSifter-Rowan.ps1 looks truncated ($((Get-Item $downloadedScript).Length) bytes) - not installing."
+                }
+            }
+            catch {
+                $settings.LblUpdateStatus.ForeColor = $theme.Danger
+                $settings.LblUpdateStatus.Text = "Update download failed: $($_.Exception.Message)"
+                $settings.BtnCheckUpdate.Enabled = $true
+                Remove-Item -Path $stagingDir -Recurse -Force -ErrorAction SilentlyContinue
+                return
+            }
+
+            # BinSifter must actually be closed before its own files are
+            # replaced - a small detached helper (not this process, which
+            # is about to exit) waits for this PID, copies the staged files
+            # over $BinSifterRoot, then relaunches. Written fresh to a temp
+            # file rather than shipped separately, since it only ever needs
+            # to exist for the few seconds this update takes.
+            $relaunchPath = Join-Path $BinSifterRoot 'BinSifter-Rowan.ps1'
+            $helperPath = Join-Path $env:TEMP "BinSifterRowanUpdateHelper_$([guid]::NewGuid()).ps1"
+            $helperScript = @"
+param([int]`$OldPid, [string]`$StagingDir, [string]`$TargetDir, [string]`$RelaunchPath)
+try { Wait-Process -Id `$OldPid -ErrorAction SilentlyContinue -Timeout 30 } catch { }
+Start-Sleep -Milliseconds 500
+Copy-Item -Path (Join-Path `$StagingDir '*') -Destination `$TargetDir -Force -ErrorAction SilentlyContinue
+Start-Process -FilePath 'pwsh.exe' -ArgumentList @('-File', `$RelaunchPath)
+Remove-Item -Path `$StagingDir -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -Path `$PSCommandPath -Force -ErrorAction SilentlyContinue
+"@
+            Set-Content -Path $helperPath -Value $helperScript -Encoding UTF8
+
+            Start-Process -FilePath 'pwsh.exe' -ArgumentList @(
+                '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $helperPath,
+                '-OldPid', $PID, '-StagingDir', $stagingDir, '-TargetDir', $BinSifterRoot, '-RelaunchPath', $relaunchPath
+            ) -WindowStyle Hidden
+
+            $settings.LblUpdateStatus.ForeColor = $theme.Success
+            $settings.LblUpdateStatus.Text = 'Update downloaded - BinSifter will now close to finish installing...'
+            [System.Windows.Forms.Application]::DoEvents()
+            Start-Sleep -Milliseconds 800
+            $form.Close()
         })
 
         # ================= Scan Queue wiring =================

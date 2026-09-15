@@ -17,7 +17,8 @@
 //! [`tools`] (OS-scoped quick-launch tools + Ghidra headless),
 //! [`quicklaunch_bootstrap`] (on-request installer for those tools, Linux
 //! only - see its module docs), [`ai_export`], [`av_detect`]
-//! (installed-AV detection + Defender exclusion), and the
+//! (installed-AV detection + Defender exclusion), [`update`] (on-request
+//! self-update against GitHub releases), and the
 //! [`engine::scan_directory`] orchestration.
 
 pub mod ai_export;
@@ -43,6 +44,7 @@ pub mod report;
 pub mod ssdeep;
 pub mod tool_bootstrap;
 pub mod tools;
+pub mod update;
 #[cfg(windows)]
 mod win_clipboard;
 #[cfg(windows)]

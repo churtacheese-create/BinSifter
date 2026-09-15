@@ -27,7 +27,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from binsifter.core import av_detect
+from binsifter import __version__ as _BINSIFTER_VERSION
+from binsifter.core import av_detect, update_check
 from binsifter.core.config import (
     BinSifterConfig,
     find_tool_path,
@@ -153,6 +154,54 @@ class SettingsPage(QWidget):
         self.av_detect_status_label.setWordWrap(True)
         root.addWidget(self.av_detect_status_label)
 
+        # Checks GitHub's releases for a newer v* tag (Rowan's and Winnow's
+        # shared line). Never installs anything itself - Winnow is a
+        # root-owned system package (.deb/.rpm/.pkg.tar.zst), so rewriting
+        # its files outside dpkg/rpm/pacman would corrupt their own
+        # integrity tracking. This downloads the matching package to an
+        # ordinary per-user folder and shows the exact command to run.
+        self._pending_update: update_check.UpdateCheckResult | None = None
+        root.addSpacing(24)
+        update_label = QLabel("Update")
+        update_label.setStyleSheet(
+            f"color: {accent_to_css(theme.Fore)}; border: none; background: transparent; font-weight: bold;"
+        )
+        root.addWidget(update_label)
+
+        update_explainer = QLabel(
+            "Checks this repository's GitHub releases for a newer version. Winnow never installs "
+            "an update itself - packages you get through your distro's package manager should be "
+            "updated through it, not overwritten by the app - so this downloads the matching "
+            "package and shows you the exact command to run."
+        )
+        update_explainer.setWordWrap(True)
+        update_explainer.setStyleSheet(f"color: {accent_to_css(theme.MutedFore)}; border: none; background: transparent;")
+        root.addWidget(update_explainer)
+
+        root.addSpacing(8)
+        self.check_update_button = QPushButton("Check for updates")
+        self.check_update_button.setFixedHeight(32)
+        self.check_update_button.setStyleSheet(
+            f"QPushButton {{ background-color: {qcolor_to_css(theme.ButtonBack)}; "
+            f"color: {accent_to_css(theme.Fore)}; border: 1px solid {qcolor_to_css(theme.Border)}; }}"
+        )
+        self.check_update_button.clicked.connect(self._on_check_update_clicked)
+        root.addWidget(self.check_update_button)
+
+        self.download_update_button = QPushButton("Download update")
+        self.download_update_button.setFixedHeight(32)
+        self.download_update_button.setStyleSheet(
+            f"QPushButton {{ background-color: {qcolor_to_css(theme.Accent)}; "
+            f"color: {accent_to_css(theme.AccentFore)}; border: none; }}"
+        )
+        self.download_update_button.clicked.connect(self._on_download_update_clicked)
+        self.download_update_button.hide()
+        root.addWidget(self.download_update_button)
+
+        self.update_status_label = QLabel("")
+        self.update_status_label.setWordWrap(True)
+        root.addWidget(self.update_status_label)
+
         root.addStretch(1)
 
     def _on_browse(self, line_edit: QLineEdit, field_type: str, dialog_filter: str | None) -> None:
@@ -231,3 +280,72 @@ class SettingsPage(QWidget):
         self.av_detect_status_label.setStyleSheet(f"color: {accent_to_css(theme.Success)}; border: none; background: transparent;")
         self.av_detect_status_label.setText("\n".join(lines))
         self.av_detect_button.setEnabled(True)
+
+    def _on_check_update_clicked(self) -> None:
+        theme = self._theme
+        self.check_update_button.setEnabled(False)
+        self.download_update_button.hide()
+        self._pending_update = None
+        self.update_status_label.setStyleSheet(f"color: {accent_to_css(theme.Fore)}; border: none; background: transparent;")
+        self.update_status_label.setText("Checking...")
+        QApplication.processEvents()
+
+        try:
+            result = update_check.check_for_update(_BINSIFTER_VERSION)
+        except update_check.UpdateCheckError as exc:
+            self.update_status_label.setStyleSheet(f"color: {accent_to_css(theme.Danger)}; border: none; background: transparent;")
+            self.update_status_label.setText(str(exc))
+            self.check_update_button.setEnabled(True)
+            return
+
+        if not result.update_available:
+            self.update_status_label.setStyleSheet(f"color: {accent_to_css(theme.Success)}; border: none; background: transparent;")
+            self.update_status_label.setText(f"You're running the latest version ({result.current_version}).")
+            self.check_update_button.setEnabled(True)
+            return
+
+        self._pending_update = result
+        self.update_status_label.setStyleSheet(f"color: {accent_to_css(theme.Fore)}; border: none; background: transparent;")
+        self.update_status_label.setText(
+            f"Version {result.latest_version} is available (you have {result.current_version})."
+        )
+        self.download_update_button.show()
+        self.check_update_button.setEnabled(True)
+
+    def _on_download_update_clicked(self) -> None:
+        theme = self._theme
+        result = self._pending_update
+        if result is None:
+            return
+
+        manager = update_check.detect_package_manager()
+        self.download_update_button.setEnabled(False)
+        self.update_status_label.setStyleSheet(f"color: {accent_to_css(theme.Fore)}; border: none; background: transparent;")
+        self.update_status_label.setText("Downloading...")
+        QApplication.processEvents()
+
+        if manager is None:
+            self.update_status_label.setStyleSheet(f"color: {accent_to_css(theme.MutedFore)}; border: none; background: transparent;")
+            self.update_status_label.setText(
+                "Could not tell which package manager owns this install (are you running from "
+                f"source?) - download the update yourself from {result.release_url}"
+            )
+            self.download_update_button.setEnabled(True)
+            return
+
+        try:
+            path = update_check.download_update_asset(result, manager)
+        except update_check.UpdateCheckError as exc:
+            self.update_status_label.setStyleSheet(f"color: {accent_to_css(theme.Danger)}; border: none; background: transparent;")
+            self.update_status_label.setText(str(exc))
+            self.download_update_button.setEnabled(True)
+            return
+
+        command = update_check.install_command_for(manager, path)
+        lines = [f"Downloaded to {path}.", "", "To install, run:", "", f"  {command}"]
+        if update_check.is_winnow_running():
+            lines.insert(0, "BinSifter Winnow is currently running - close it before running the command below.")
+            lines.insert(1, "")
+        self.update_status_label.setStyleSheet(f"color: {accent_to_css(theme.Success)}; border: none; background: transparent;")
+        self.update_status_label.setText("\n".join(lines))
+        self.download_update_button.setEnabled(True)
