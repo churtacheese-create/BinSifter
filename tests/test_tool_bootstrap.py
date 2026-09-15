@@ -224,11 +224,22 @@ def test_gdb_gef_failure_does_not_get_directory_fallback_appended(monkeypatch, t
     binary the "drop it under BinSifter's own folder" instruction makes
     sense for, it's a ~/.gdbinit-sourced script tied to an existing real
     gdb already on PATH."""
+    fake_gdb = tmp_path / "gdb"
+    fake_gdb.write_text("#!/bin/sh\n")  # just needs to exist - is_file() is all run_tool_bootstrap() checks
     config = _config_with_all_tools_missing()
-    config.GdbExe = "/usr/bin/gdb"
-    monkeypatch.setattr(tb.shutil, "which", lambda name: "/usr/bin/gdb" if name == "gdb" else None)
+    config.GdbExe = str(fake_gdb)
+    monkeypatch.setattr(tb.shutil, "which", lambda name: str(fake_gdb) if name == "gdb" else None)
     monkeypatch.setattr(tb, "check_internet_available", lambda: True)
     monkeypatch.setattr(tb, "get_auto_installed_tools_dir", lambda: tmp_path / "AutoInstalledTools")
+    # This test exercises the "gdb present but GEF isn't configured yet"
+    # fall-through path specifically - real-machine state must never decide
+    # that. Confirmed on a real Ubuntu box that already had GEF genuinely
+    # configured (a prior real tool-bootstrap round had legitimately sourced
+    # it into ~/.gdbinit): without this mock, run_tool_bootstrap() takes the
+    # "already_present" branch instead and never reaches _install_gef at
+    # all, silently passing or failing depending on whichever machine ran
+    # this rather than the logic under test.
+    monkeypatch.setattr(tb, "_gef_already_configured", lambda: False)
 
     for key in tb.TOOL_FILE_NAMES:
         monkeypatch.setitem(tb._INSTALLERS, key, lambda _d, k=key: tb.ToolBootstrapResult(k, k, "failed", detail="stubbed"))

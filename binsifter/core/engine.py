@@ -1328,6 +1328,23 @@ def scan_directory(
         # every worker has had a chance to report one (or more, across
         # respawns) via capa_pid_queue.
         _reap_capa_children(capa_pid_queue)
+        # capa_pid_queue is already fully drained above (get_nowait() until
+        # Empty) - nothing put on it from here on will ever be read, so
+        # there's nothing worth flushing. Without cancel_join_thread(),
+        # Python's own multiprocessing.Queue leaves a background feeder
+        # thread alive that the interpreter's atexit machinery will try to
+        # join on process exit; a real hang from exactly this was found
+        # running the full test suite in one process (many scan_directory()
+        # calls, each leaving its own never-closed Queues behind) - the
+        # process finished printing every test result, then hung
+        # indefinitely (confirmed via /proc/<pid>/task/*/wchan showing a
+        # thread blocked in anon_pipe_write) rather than actually exiting.
+        # See https://docs.python.org/3/library/multiprocessing.html#pipes-and-queues
+        # ("Bear in mind that a process that has put items in a queue will
+        # wait before terminating until all the buffered items are fed by
+        # the background thread to the underlying pipe").
+        capa_pid_queue.cancel_join_thread()
+        capa_pid_queue.close()
 
         # Every worker is gone (pool.terminate() above), so no more
         # LogRecords can arrive on log_queue - safe to stop the drain
@@ -1336,6 +1353,13 @@ def scan_directory(
         # of it in the queue.
         log_queue.put(_LOG_QUEUE_SENTINEL)
         log_drain_thread.join(timeout=5)
+        # Same reasoning as capa_pid_queue above - everything worth reading
+        # was already drained by log_drain_thread before it returned (or,
+        # in the timeout-exceeded case, nothing further will ever read it
+        # anyway), so don't let this queue's feeder thread block a future
+        # process exit trying to flush data nobody will consume.
+        log_queue.cancel_join_thread()
+        log_queue.close()
 
     pool_wall_seconds = time.perf_counter() - pool_wall_start
 
