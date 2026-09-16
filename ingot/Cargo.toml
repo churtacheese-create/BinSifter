@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/ingot-core", "crates/ingot-server"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 # MSRV floor is set by yara-x + its bundled wasmtime/cranelift, which chase a
 # recent toolchain; bump this as those deps do (CI's `msrv` job pins it).

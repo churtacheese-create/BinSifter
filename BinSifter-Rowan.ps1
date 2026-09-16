@@ -37,7 +37,7 @@ $ErrorActionPreference = 'Stop'
 # Winnow's binsifter.__version__ tracks) - bump this alongside that tag on
 # every release. Used by the About page and the Settings page's "Check for
 # updates" feature; Rowan had no version tracking at all before this.
-$Global:BinSifterVersion = '2.0.8'
+$Global:BinSifterVersion = '2.0.9'
 
 function Test-SystemDarkMode {
     try {

@@ -3,7 +3,7 @@
 This is Winnow, BinSifter's Python/PySide6 variant - the cross-platform
 rewrite of Rowan, the original PowerShell 7 + WinForms variant
 (BinSifter-Rowan.ps1, kept in the repo root for reference).
-A third variant, Ingot (Rust), is planned but not yet started.
+A third variant, Ingot (Rust), is released (see ingot/).
 See BinSifter_CHANGELOG.md for Rowan's history, and the
 "BinSifter post-prototype roadmap" project note for why this rewrite exists.
 
@@ -18,4 +18,4 @@ Package layout:
                        pipeline use without a GUI.
 """
 
-__version__ = "2.0.8"
+__version__ = "2.0.9"
