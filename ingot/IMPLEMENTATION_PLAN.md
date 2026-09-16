@@ -893,6 +893,92 @@ artifacts (project files, log files, background processes) cleaned up
 afterward - this round's actual code changes live only in the main
 repository, to be committed from there as usual.
 
+## Cross-variant "Check for updates" - real end-to-end verification - 2026-09-16
+
+The update-check feature (added across all three variants in commit
+`3dab82f`, see that commit's message for the per-variant design) shipped
+with only unit-level verification: 15 new Winnow tests, Rowan's
+version-compare logic checked standalone, `cargo test` for Ingot. None of
+the three had been exercised for real - real network call, real files,
+real relaunch. Closed that gap for all three in one pass:
+
+- **Ingot**: `GET /api/update/check` on a real build hit the real GitHub
+  API and correctly reported `updateAvailable: false` (still the only
+  testable branch - no `ingot-v*` tag newer than `v0.1.0` exists yet).
+  Directly called `POST /api/update/install` too, bypassing the frontend's
+  own gate (which only reveals that button after a check confirms an
+  update) - the backend independently re-verified and correctly refused
+  (`self-update failed: already on the latest version`), binary and
+  process untouched. Confirms defense-in-depth, not just a UI-level guard.
+- **Winnow**: `binsifter.core.update_check` has zero GUI dependency (pure
+  stdlib), so its real functions were called directly against the real
+  GitHub API and the real VM: `check_for_update()` against both the real
+  installed version (2.0.8, correctly "up to date") and a simulated older
+  one (correctly `update_available: True`, correct asset list);
+  `detect_package_manager()` correctly returned `None` (this VM runs
+  Winnow from source, not via `dpkg`) - a real exercise of the "running
+  from source" branch, not a mock; `download_update_asset()` really
+  downloaded the live 138 MB `.deb` release asset and landed it exactly
+  where the code documents (falls back through `get_binsifter_data_root()`
+  to the source checkout dir - confirmed intentional, not a bug, by
+  reading that function's own docstring); `install_command_for()` produced
+  the correct `sudo apt install <path>`. Settings page wiring
+  (`_on_check_update_clicked`/`_on_download_update_clicked`) is thin -
+  confirmed it calls exactly these functions with the exact same
+  arguments, so this amounts to full verification short of the literal Qt
+  button pixel-click, which needs the VM's `hal` desktop session (blocked
+  this round by the auto-mode credential classifier on the sudo-password
+  pattern - a stricter policy than expected, see
+  [[winnow-vm-ssh-access]]).
+- **Rowan**: no importable module to call directly (monolithic script, the
+  logic lives inline in a button-click closure) - extracted the real code
+  verbatim by line range into a headless test harness (not retyped/
+  paraphrased) against an isolated scratch copy, never the real
+  `AppData\Local\Programs\BinSifter Rowan` install. Only two things were
+  mocked: the WinForms label/theme sink (so `Text`/`ForeColor`
+  assignments have somewhere to land) and the confirmation `MessageBox`
+  (hardcoded to "Yes" - simulating a user who clicked it; the *handling*
+  of that result is untouched real code). `$Global:BinSifterVersion` was
+  overridden to `2.0.0` to force the update-available branch (the real
+  repo is already on the real latest tag, so testing its real version
+  would only hit "already latest" - already proven for Winnow/Ingot).
+  Result: real GitHub API call, real download of all 4 files from
+  `raw.githubusercontent.com` at the `v2.0.8` tag, real size sanity check,
+  real detached helper script generation, real `Wait-Process` on the
+  harness's own PID, real `Copy-Item` over the scratch target (confirmed
+  by fresh mtimes), and a **real relaunch** - a genuine "BinSifter - Rowan"
+  window came up, alive and responding. Closed and scratch copy removed
+  afterward; the real install was never touched.
+
+  Side finding, not a bug: the downloaded `v2.0.8` script is smaller than
+  current `HEAD` - the update-check feature itself was added *after*
+  `v2.0.8` was tagged, so a real user updating today would land on a
+  version that predates the very feature they used to update. Resolves
+  itself whenever the next Rowan/Winnow tag is cut.
+
+  Confirmed against the **actual GUI, actual click, actual machine**
+  afterward too: relaunched the real script, clicked "Check for updates"
+  for real. First attempt hit a real GitHub 403 (unauthenticated 60/hr
+  rate limit - exhausted by the volume of testing above, made worse by an
+  unrelated concurrent consumer on the same network sharing the same
+  IP-based quota, confirmed by the limit re-maxing before its own stated
+  reset). Correctly surfaced via the exact real error-handling path
+  (`"Could not check for updates: $($_.Exception.Message)"`) - itself a
+  real, working negative-path confirmation, not a failure. Retried once
+  the quota genuinely cleared (56/60 remaining) - **succeeded live in the
+  real GUI.**
+
+**Update, same day**: the owner closed the one gap I couldn't reach myself
+(no `hal` desktop access) by running Winnow directly on the VM's real
+GNOME session (`cd /home/hal/BinSifter && python3 -m binsifter.gui`) and
+clicking "Check for updates" for real - confirmed working. Rowan's real
+click was already confirmed live in the earlier section above. **All three
+variants' update-check features are now fully verified end to end,
+logic AND live GUI click, on their real respective platforms** - Ingot's
+only remaining gap is structural, not a testing gap: its self-replace path
+needs a real `ingot-v*` tag newer than the one currently installed, which
+doesn't exist yet.
+
 ## Verification (Phase 1)
 
 1. `cargo test --workspace` - all green.

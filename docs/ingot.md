@@ -57,3 +57,15 @@ Known gaps, none of them in the Python variant either: catalog (`.cat`)
 signature verification, SSDEEP cluster history, and Speakeasy emulation
 (which has no standalone binary). See
 [`ingot/IMPLEMENTATION_PLAN.md`](../ingot/IMPLEMENTATION_PLAN.md).
+
+## Updating
+
+Settings has a "Check for updates" button. Unlike Rowan and Winnow, Ingot
+is a single self-contained binary with no installer and nothing to
+corrupt, so it fully self-updates: it checks this repo's `ingot-v*`
+releases (never Rowan/Winnow's shared `v*` line), and if a newer one
+exists, downloads the matching platform archive, verifies it against the
+release's own `SHA256SUMS`, replaces itself in place via the
+[`self-replace`](https://crates.io/crates/self-replace) crate, and
+restarts - briefly showing "service offline" in the browser tab while it
+does.
